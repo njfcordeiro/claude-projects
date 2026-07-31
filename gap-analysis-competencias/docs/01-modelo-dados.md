@@ -1,8 +1,11 @@
 # Modelo de dados — Gap Analysis de Competências
 
-> **v2 — validado contra `Tabelas_criação_programa.xlsx`.** Substitui os
-> pressupostos genéricos da v1. A estrutura real tem um motor de pontuação
-> por **LOB (Line of Business)** que a v1 não previa — ver secção 4.
+> **v3 — fórmula de pontuação da LOB e questões de organização confirmadas
+> com o utilizador** (Núcleo não liga a Direção; `lobs_exigidos` é uma
+> contagem simples; regras de pontuação sem crédito parcial). Ficheiro
+> Excel re-verificado nesta versão — idêntico byte-a-byte ao da v2, os
+> problemas de qualidade de dados da secção 6 continuam por corrigir na
+> origem.
 
 ## 1. O que o Excel realmente contém
 
@@ -31,20 +34,56 @@ Não é o Cargo que define diretamente as competências exigidas. É o **LOB**
   "atingido".
 - Cada LOB lista as competências que conta, cada uma com: `obrigatório`
   (sim/não), `pontos` (peso) e `nível mínimo`.
-- Um colaborador "pontua" numa competência da LOB só se o seu nível atual
-  ≥ nível mínimo exigido; os pontos das competências que cumpre somam-se.
-- Uma LOB só está "atingida" se: (a) a soma de pontos ≥ `pontos_minimos`,
-  e (b) todas as competências marcadas `obrigatório` estão cumpridas, e
-  (c) todas as certificações marcadas `obrigatório` na LOB estão na posse
-  do colaborador.
-- O **Cargo** só entra depois: tem um campo `Lobs Exigidos` — um número
-  (ex.: 2, 3) de LOBs que um colaborador nesse cargo precisa de atingir
-  (não uma lista de LOBs específicas — fica em aberto quais).
+- Um colaborador só pontua numa competência da LOB se o seu nível atual
+  ≥ nível mínimo exigido — **sem crédito parcial**: nível abaixo do mínimo
+  vale 0 pontos nessa linha, não uma fração dos `pontos`.
+- Uma LOB só está "atingida" se, **em simultâneo**:
+  1. a soma de pontos das competências cumpridas ≥ `pontos_minimos`;
+  2. **todas** as competências marcadas `obrigatório` estão cumpridas —
+     uma em falta bloqueia a LOB, mesmo que os pontos já cheguem ao mínimo
+     só com as não-obrigatórias;
+  3. **todas** as certificações marcadas `obrigatório` na LOB estão na
+     posse do colaborador **e dentro da validade** — uma certificação
+     obrigatória em falta bloqueia a LOB da mesma forma que uma competência
+     obrigatória em falta, e uma certificação com `data_validade`
+     ultrapassada deixa de contar (o colaborador volta a precisar de a
+     renovar para a LOB continuar atingida).
+- O **Cargo** só entra depois: tem um campo `Lobs Exigidos` — uma
+  **contagem simples** (ex.: 2, 3) de LOBs que um colaborador nesse cargo
+  precisa de atingir, não importa quais especificamente.
 
 Isto é uma diferença estrutural importante face à v1 (que assumia
 `job_skill_requirements` diretas por cargo). O gap analysis certo é:
-**colaborador → LOB (via competências/certificações com pontos) → cargo
-(via contagem de LOBs atingidas)**.
+**colaborador → LOB (via competências/certificações com pontos, tudo-ou-nada
+por requisito) → cargo (via contagem de LOBs atingidas, sem LOBs específicas
+fixadas)**.
+
+Formalizando:
+
+```
+pontos_obtidos(colaborador, lob) =
+    Σ pontos_da_linha
+    para cada lob_requisito_competencia da LOB
+    onde nivel_atual_colaborador(competencia) >= nivel_minimo_da_linha
+    -- nível abaixo do mínimo → 0 pontos nessa linha (sem parcial)
+
+competencias_obrigatorias_ok(colaborador, lob) =
+    todas as lob_requisito_competencia com obrigatorio=Sim têm
+    nivel_atual_colaborador(competencia) >= nivel_minimo_da_linha
+
+certificacoes_obrigatorias_ok(colaborador, lob) =
+    todas as lob_requisito_certificacao com obrigatorio=Sim têm um registo
+    em colaborador_certificacao para essa certificação, com
+    data_validade >= hoje (ou sem data de validade)
+
+LOB atingida(colaborador, lob) =
+    pontos_obtidos(colaborador, lob) >= lob.pontos_minimos
+    E competencias_obrigatorias_ok(colaborador, lob)
+    E certificacoes_obrigatorias_ok(colaborador, lob)
+
+gap_cargo(colaborador, cargo) =
+    cargo.lobs_exigidos − COUNT(lobs onde LOB atingida(colaborador, lob) = true)
+```
 
 ## 3. Esquema relacional (revisto)
 
@@ -341,36 +380,41 @@ Mantenho a recomendação da v1:
 4. **`Colaboradores&Certificações`**: uma `Data de validade` tem o valor
    literal `31/06/2026`, que não é uma data válida (junho só tem 30 dias).
    Precisa de correção na origem.
-5. **Núcleo não tem FK explícita para Direção** no Excel, apesar de os
-   nomes sugerirem hierarquia (ex.: Núcleos "AMS", "AMS - HCM",
-   "AMS - OUT", "AMS - SF" parecem sub-equipas da Direção "AMS"). Um
-   colaborador tem `direcao_id` e `nucleo_id` de forma independente, o que
-   permite combinações inconsistentes. Ver questão 7.1.
+5. **Núcleo não liga a Direção** (confirmado com o utilizador — são eixos
+   de classificação independentes, apesar de os nomes sugerirem hierarquia
+   em alguns casos, ex. "AMS" / "AMS - HCM"). O esquema da secção 3 já
+   reflete isto: `nucleos` não tem FK para `direcoes`.
 6. **Cobertura de dados parcial**: só 63 dos 196 colaboradores têm
    avaliações de competências; certificações só estão preenchidas para 1
    colaborador; recomendações de LOB só para 2. Não é um problema de
    esquema — é expectável em dados de arranque — mas convém não assumir
    que a folha atual é o dataset completo.
 
-## 7. Questões em aberto para validar contigo
+## 7. Questões em aberto
 
-1. **Núcleo pertence a uma Direção?** Se sim, adiciono
-   `nucleos.direcao_id FK`. Se não, confirmo que são eixos de classificação
-   independentes mesmo.
-2. **`cargos.lobs_exigidos` é só uma contagem** ("precisa de atingir 2
-   LOBs") **ou há LOBs específicas obrigatórias por cargo**? Se houver
-   específicas, preciso de uma tabela `cargo_lob_exigida` em vez de (ou
-   além de) um número solto.
-3. Confirmam a fórmula de pontuação da LOB que descrevi na secção 2 (soma
-   de pontos das competências cumpridas ≥ `pontos_minimos`, mais todos os
-   obrigatórios — competências e certificações — cumpridos)? É a leitura
-   que faço da estrutura `LOBS`, mas vale confirmar antes de a codificar.
+Confirmado com o utilizador:
+
+1. ~~Núcleo pertence a uma Direção?~~ **Não** — eixos de classificação
+   independentes. `nucleos` sem FK para `direcoes` (secção 3).
+2. ~~`cargos.lobs_exigidos` é contagem ou LOBs específicas?~~
+   **Contagem simples.** Não é preciso `cargo_lob_exigida`.
+3. ~~Fórmula de pontuação da LOB?~~ **Confirmada e formalizada na
+   secção 2**: sem crédito parcial por competência; obrigatório em falta
+   (competência ou certificação) bloqueia a LOB mesmo com pontos
+   suficientes; certificação expirada deixa de contar.
+
+Ainda por confirmar (sem impacto bloqueante no esquema — posso avançar
+com valores por omissão razoáveis e ajustar depois):
+
 4. Certificações/formações têm fluxo de aprovação por RH antes de
    contarem como válidas, ou é registo direto pelo colaborador/gestor?
 5. Precisas de suporte multi-empresa (multi-tenant) já nesta fase?
 
-Quando confirmares os pontos 1–3 (os que têm impacto direto no esquema),
-avanço para o schema Prisma/SQL de migração inicial, já com um script de
-importação do Excel para popular as tabelas de catálogo (Direção, Área,
-Núcleo, Carreira, Categoria, Cargo, Níveis, Competências, Certificações,
-Formações, LOBs) e os dados de `Colaboradores`.
+Com os pontos 1–3 fechados, o esquema da secção 3 está estável. Próximo
+passo natural: gerar o schema Prisma/SQL de migração inicial, mais um
+script de importação do Excel para popular as tabelas de catálogo
+(Direção, Área, Núcleo, Carreira, Categoria, Cargo, Níveis, Competências,
+Certificações, Formações, LOBs) e os dados de `Colaboradores` — aplicando
+as correções da secção 6 (dedupe do colaborador 160, resolução de
+`manager_id` por nome, nome canónico das formações, data de validade
+inválida).
