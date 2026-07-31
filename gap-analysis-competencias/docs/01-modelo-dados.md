@@ -1,11 +1,13 @@
 # Modelo de dados — Gap Analysis de Competências
 
+> **v4 — ficheiro Excel corrigido pelo utilizador.** Comparado célula a
+> célula com a versão anterior: a maioria dos problemas de qualidade de
+> dados da secção 6 (v3) foi resolvida na origem. Detalhe do que mudou e
+> do que ainda falta na secção 6.
+
 > **v3 — fórmula de pontuação da LOB e questões de organização confirmadas
 > com o utilizador** (Núcleo não liga a Direção; `lobs_exigidos` é uma
-> contagem simples; regras de pontuação sem crédito parcial). Ficheiro
-> Excel re-verificado nesta versão — idêntico byte-a-byte ao da v2, os
-> problemas de qualidade de dados da secção 6 continuam por corrigir na
-> origem.
+> contagem simples; regras de pontuação sem crédito parcial).
 
 ## 1. O que o Excel realmente contém
 
@@ -20,9 +22,9 @@
 | `Certificações` | Certificações + que competências/níveis cada uma valida | 48 |
 | `Formações` | Formações + que competências/níveis cada uma desenvolve | 45 |
 | `LOBS` | Linhas de negócio: pontuação mínima + requisitos de competências (com pontos e nível mínimo) + requisitos de certificações | 134 |
-| `Colaboradores` | Ficha do colaborador: carreira/categoria/cargo/direção/núcleo/área, gestor, data de admissão | 198 |
+| `Colaboradores` | Ficha do colaborador: carreira/categoria/cargo/direção/núcleo/área, gestor (agora com `ID BUM` além do nome), data de admissão | 196 |
 | `Colaboradores&Competências` | Avaliação atual de cada colaborador por competência | 4997 |
-| `Colaboradores&Certificações` | Certificações obtidas por colaborador | 4 (amostra) |
+| `Colaboradores&Certificações` | Certificações obtidas por colaborador, agora com `Data Emissão` além da validade | 166 |
 | `Colaboradores&Lob recomendação` | LOBs recomendados a um colaborador (próprio/gestor/automático) | 4 (amostra) |
 
 ## 2. A descoberta principal: LOBs são o motor de gap real
@@ -232,9 +234,9 @@ colaborador_certificacao
   id                PK
   colaborador_id    FK -> colaboradores.id
   certificacao_id   FK -> certificacoes.id
-  data_obtencao     DATE (nullable) -- NOVO, o Excel só tinha validade
+  data_obtencao     DATE (nullable) -- vem de "Data Emissão" na v4 do Excel
   data_validade     DATE (nullable)
-  anexo_url         TEXT (nullable) -- NOVO, evidência
+  anexo_url         TEXT (nullable) -- NOVO, evidência (ainda não existe no Excel)
   created_at, updated_at
 
 colaborador_lob_recomendacao
@@ -360,34 +362,56 @@ Mantenho a recomendação da v1:
    `carreiras`, `cargos` — sigo essa convenção em vez de introduzir um
    `is_active` paralelo).
 
-## 6. Problemas de qualidade de dados encontrados (a tratar na importação)
+## 6. Problemas de qualidade de dados encontrados
 
-1. **`Colaboradores`, linhas 31–32**: `ID Colaborador = 160` (Miguel
-   Santana) está duplicado, com `Área` diferente em cada linha (DEV vs.
-   Other). Precisa de decisão de negócio antes de importar (qual a linha
-   correta, ou fundir).
-2. **Coluna "BUM" é o nome do gestor em texto livre**, não um ID. Confirmei
-   que todos os 16 valores de `BUM` correspondem a um nome existente na
-   própria lista de colaboradores, por isso dá para resolver
-   `manager_id` por join de nome na importação — mas a partir daí deve
-   passar a ser sempre FK (`colaboradores.manager_id`), nunca texto.
-3. **Folha `Formações`**: o cabeçalho da coluna B diz "Certificação" mas o
-   conteúdo é o nome da formação (erro de copy/paste no Excel). A coluna G
-   ("Formação") tem uma fórmula `VLOOKUP` partida a apontar para
-   `TAB_Certificação` em vez da tabela de formações, por isso devolve
-   `#N/A` em todas as linhas. Usar a coluna B como nome canónico da
-   formação e ignorar a coluna G na importação.
-4. **`Colaboradores&Certificações`**: uma `Data de validade` tem o valor
-   literal `31/06/2026`, que não é uma data válida (junho só tem 30 dias).
-   Precisa de correção na origem.
-5. **Núcleo não liga a Direção** (confirmado com o utilizador — são eixos
+### Corrigidos na v4 (confirmado por diff célula a célula contra a v3)
+
+1. ~~`Colaboradores`, linhas 31–32: `ID Colaborador = 160` duplicado~~ —
+   **resolvido**. A folha `Colaboradores` passou de 197 para 196 linhas,
+   todos os IDs agora são únicos.
+2. ~~Coluna "BUM" é o nome do gestor em texto livre~~ — **resolvido**. A
+   folha agora tem `ID BUM` (numérico) além de `BUM` (nome), pelo que
+   `colaboradores.manager_id` passa a ser uma FK direta importada da
+   origem, sem depender de join por nome. Uma exceção: ver ponto 4 abaixo.
+3. ~~Folha `Formações`: cabeçalho errado + VLOOKUP partido~~ —
+   **resolvido**. Cabeçalho da coluna B corrigido para "Formação" e a
+   coluna G já devolve o nome correto em todas as 44 linhas (0 `#N/A`
+   remanescentes). Confirmei o mesmo padrão de correção no bloco 3 da
+   folha `LOBS` (LOB↔Certificação): os `ID Certificação` eram números
+   sequenciais sem sentido antes, agora são os códigos reais (ex.
+   `C_THR84`) com nome resolvido — 0 `#N/A` remanescentes.
+4. ~~`Colaboradores&Certificações`: data de validade inválida
+   (`31/06/2026`)~~ — **resolvido**, e a folha passou de 4 linhas de
+   amostra para 166 linhas reais, com uma coluna nova `Data Emissão` que
+   cobre exatamente a recomendação de "acrescentar `data_obtencao`" da v1.
+   Todas as 332 datas (emissão + validade) são strings válidas no formato
+   `dd.mm.yyyy` — a importação tem de as fazer parse como texto, não como
+   data nativa do Excel. Não há pares (colaborador, certificação)
+   duplicados.
+
+### Novo, encontrado na v4
+
+5. **Um `ID BUM` órfão**: o colaborador 343 (Ana Mateus, linha 61) tem
+   `ID BUM = 0` e `BUM = "Tiago Fortunato"`, mas não existe nenhum
+   colaborador com esse nome na folha `Colaboradores` — não vai ser
+   possível satisfazer `manager_id FK -> colaboradores.id` para esta linha
+   sem uma decisão de negócio: ou o Tiago Fortunato é adicionado como
+   colaborador (ex. inativo/ex-colaborador), ou este caso fica com
+   `manager_id = NULL` e o nome guardado só informativamente (precisaria
+   de uma coluna `manager_nome_livre`, o que reintroduz o problema nº2).
+   Diz-me como preferes tratar este caso antes da importação.
+
+### Ainda por resolver
+
+6. **Núcleo não liga a Direção** (confirmado com o utilizador — são eixos
    de classificação independentes, apesar de os nomes sugerirem hierarquia
    em alguns casos, ex. "AMS" / "AMS - HCM"). O esquema da secção 3 já
    reflete isto: `nucleos` não tem FK para `direcoes`.
-6. **Cobertura de dados parcial**: só 63 dos 196 colaboradores têm
-   avaliações de competências; certificações só estão preenchidas para 1
-   colaborador; recomendações de LOB só para 2. Não é um problema de
-   esquema — é expectável em dados de arranque — mas convém não assumir
+7. **Cobertura de dados parcial**: só 63 dos 196 colaboradores têm
+   avaliações de competências; recomendações de LOB só para 2 (a folha de
+   certificações já está bem mais completa agora, 166 linhas). Não é um
+   problema de esquema — é expectável em dados de arranque — mas convém
+   não assumir
    que a folha atual é o dataset completo.
 
 ## 7. Questões em aberto
