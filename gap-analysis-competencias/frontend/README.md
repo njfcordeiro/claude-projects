@@ -21,13 +21,43 @@ utilizador criado (`npm run seed:admin` no backend).
   `login`/`logout`/`user`), `ProtectedRoute` (bloqueia por autenticação e,
   opcionalmente, por papel — espelha o RBAC do backend).
 - `src/api/client.ts` — wrapper fino sobre `fetch`, injeta o JWT no header
-  `Authorization`.
-- `src/pages/` — `LoginPage` (funcional), `DashboardPage` e
-  `ColaboradoresPage` (placeholders — ver comentários nos ficheiros para o
-  que falta).
+  `Authorization`; `src/api/endpoints.ts` — chamadas tipadas por endpoint.
+- `src/components/layout/` — `ShellBar` (cabeçalho: logo, pesquisa global,
+  perfil) e `SideNav` (menu lateral, itens filtrados por papel).
+- `src/components/ui/` — sistema de design: `Card`, `Badge` (estado,
+  sempre ícone+texto), `Tag` (atributo neutro, ex. "Obrigatório"),
+  `DataTable` (pesquisa + ordenação client-side), `Modal`, `ProgressRing`,
+  `KpiTile`, `ReadinessBarChart`, `form.tsx` (`Field`/`Input`/`Select`/`Button`).
+- `src/components/gap/` — componentes partilhados entre a ficha do
+  colaborador e o detalhe de LOB (`NivelPill`, `SugestoesLista`,
+  `LobGapDetail`).
+- `src/pages/` — os 5 ecrãs: `DashboardPage`, `ColaboradoresListPage` +
+  `ColaboradorProfilePage`, `LobsListPage` + `LobDetailPage`,
+  `FormacoesPage`, `AdminPage`.
 - `src/types/api.ts` — tipos espelhando as respostas do backend,
   mantidos manualmente por agora (gerar a partir do Swagger é um próximo
   passo razoável quando a API crescer).
+
+## Visual — Fiori-like (Prompt 4)
+
+Ver `../docs/02-arquitetura-tecnica.md` secção 5 para a justificação
+completa (porquê Tailwind + tokens próprios em vez de
+`@ui5/webcomponents-react`, a fonte "72" e o porquê de cair em
+Arial/Segoe UI, e como as cores do gráfico do dashboard foram validadas
+com a skill de dataviz antes de serem usadas). Resumo:
+
+- `tailwind.config.js` — paleta `fiori-*` e a pilha de tipografia.
+- `src/index.css` — `.fiori-table` (tabela densa) e o resto via classes
+  utilitárias Tailwind diretamente nos componentes.
+- Ícones: `lucide-react` (linha fina, look consistente com os ícones do
+  Fiori sem depender da biblioteca de componentes oficial).
+
+**Validado num browser real** (Playwright) para os 5 ecrãs: fluxo
+completo login → dashboard → ficha do colaborador (com detalhe de LOB
+expandido) → lista de colaboradores → LOBs (lista + detalhe) → formações
+→ administração (lista, mudança de papel, criar utilizador) → RBAC no
+frontend (EMPLOYEE redirecionado ao tentar `/admin` diretamente pelo
+URL). Screenshots capturados durante essa sessão, não commitados.
 
 ## Scripts
 

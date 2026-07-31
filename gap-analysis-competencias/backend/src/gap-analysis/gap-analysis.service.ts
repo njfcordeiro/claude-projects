@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { PapelUtilizador } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ColaboradoresService } from '../colaboradores/colaboradores.service';
 import { AuthenticatedUser } from '../auth/jwt-payload.interface';
@@ -6,13 +7,16 @@ import { calcularGapLob, ordenarCertificacoes, ordenarFormacoes } from './gap-an
 import {
   CertificacaoCandidata,
   CertificacaoColaboradorInput,
+  DashboardResponse,
   FormacaoCandidata,
   PreparacaoCertificacao,
   RelatorioGapCargo,
   RelatorioGapLob,
   RequisitoCertificacaoInput,
   RequisitoCompetenciaInput,
+  ResumoColaboradorDashboard,
   ResumoGapLob,
+  ResumoGrupoDashboard,
   SugestoesCompetencia,
 } from './gap-analysis.types';
 
@@ -87,9 +91,119 @@ export class GapAnalysisService {
     };
   }
 
+  /**
+   * Agregação para o dashboard (Prompt 4). Não é um endpoint pessoal — é
+   * gestão de equipa/organização, por isso EMPLOYEE não tem acesso (usa
+   * antes a sua ficha + `/gap-analysis/colaboradores/:id/cargo`).
+   * MANAGER só vê a sua equipa direta; ADMIN_RH/VIEWER vê todos.
+   *
+   * Todas as queries são feitas em lote (não há N+1 por colaborador) —
+   * importante porque isto corre sobre a organização inteira, não um
+   * colaborador de cada vez.
+   */
+  async obterDashboard(user: AuthenticatedUser): Promise<DashboardResponse> {
+    if (user.role === PapelUtilizador.EMPLOYEE) {
+      throw new ForbiddenException('O dashboard é uma vista de equipa/organização — usa a tua ficha pessoal.');
+    }
+
+    const where =
+      user.role === PapelUtilizador.MANAGER
+        ? { managerId: user.colaboradorId ?? -1, cargoId: { not: null } }
+        : { cargoId: { not: null } };
+
+    const colaboradores = await this.prisma.colaborador.findMany({
+      where,
+      select: {
+        id: true,
+        nome: true,
+        cargoId: true,
+        direcao: { select: { nome: true } },
+        area: { select: { nome: true } },
+      },
+    });
+
+    if (colaboradores.length === 0) {
+      return { totalColaboradores: 0, prontidaoMediaGeral: 0, colaboradoresEmRisco: 0, porDirecao: [], colaboradores: [] };
+    }
+
+    const ids = colaboradores.map((c) => c.id);
+    const [niveisPorColaborador, certsPorColaborador, cargosPorId, todasAsLobs] = await Promise.all([
+      this.buscarNiveisAtuaisEmLote(ids),
+      this.buscarCertificacoesEmLote(ids),
+      this.buscarCargosPorId(),
+      this.prisma.lob.findMany({
+        include: {
+          requisitosCompetencia: { include: { competencia: true } },
+          requisitosCertificacao: { include: { certificacao: true } },
+        },
+      }),
+    ]);
+
+    const resumos: ResumoColaboradorDashboard[] = colaboradores.map((c) => {
+      const cargo = cargosPorId.get(c.cargoId!);
+      const niveisAtuais = niveisPorColaborador.get(c.id) ?? new Map();
+      const certsColaborador = certsPorColaborador.get(c.id) ?? new Map();
+
+      const lobsResultados = todasAsLobs.map((lob) => {
+        const requisitosCompetencia = this.mapearRequisitosCompetencia(lob.requisitosCompetencia);
+        const requisitosCertificacao = this.mapearRequisitosCertificacao(lob.requisitosCertificacao);
+        return calcularGapLob(lob, requisitosCompetencia, requisitosCertificacao, niveisAtuais, certsColaborador);
+      });
+
+      const lobsAtingidos = lobsResultados.filter((r) => r.atingido).length;
+      const lobsExigidos = cargo?.lobsExigidos ?? 0;
+      const prontidaoMedia = lobsResultados.length
+        ? Math.round(lobsResultados.reduce((soma, r) => soma + r.prontidaoPercentual, 0) / lobsResultados.length)
+        : 0;
+
+      return {
+        colaboradorId: c.id,
+        nome: c.nome,
+        direcaoNome: c.direcao?.nome ?? null,
+        areaNome: c.area?.nome ?? null,
+        cargoId: c.cargoId!,
+        cargoNome: cargo?.nome ?? c.cargoId!,
+        lobsExigidos,
+        lobsAtingidos,
+        gap: Math.max(0, lobsExigidos - lobsAtingidos),
+        prontidaoMedia,
+      };
+    });
+
+    const porDirecao = this.agruparPorCampo(resumos, (r) => r.direcaoNome ?? 'Sem direção');
+
+    return {
+      totalColaboradores: resumos.length,
+      prontidaoMediaGeral: Math.round(resumos.reduce((soma, r) => soma + r.prontidaoMedia, 0) / resumos.length),
+      colaboradoresEmRisco: resumos.filter((r) => r.gap > 0).length,
+      porDirecao,
+      colaboradores: resumos.sort((a, b) => a.prontidaoMedia - b.prontidaoMedia),
+    };
+  }
+
   // -----------------------------------------------------------------
   // Privados
   // -----------------------------------------------------------------
+
+  private agruparPorCampo(
+    resumos: ResumoColaboradorDashboard[],
+    chave: (r: ResumoColaboradorDashboard) => string,
+  ): ResumoGrupoDashboard[] {
+    const grupos = new Map<string, ResumoColaboradorDashboard[]>();
+    for (const r of resumos) {
+      const k = chave(r);
+      if (!grupos.has(k)) grupos.set(k, []);
+      grupos.get(k)!.push(r);
+    }
+    return Array.from(grupos.entries())
+      .map(([grupo, itens]) => ({
+        grupo,
+        totalColaboradores: itens.length,
+        prontidaoMedia: Math.round(itens.reduce((soma, i) => soma + i.prontidaoMedia, 0) / itens.length),
+        emRisco: itens.filter((i) => i.gap > 0).length,
+      }))
+      .sort((a, b) => a.prontidaoMedia - b.prontidaoMedia);
+  }
 
   private async avaliarLobParaColaborador(
     lob: Awaited<ReturnType<GapAnalysisService['buscarLobComRequisitos']>>,
@@ -221,5 +335,40 @@ export class GapAnalysisService {
   private async buscarCertificacoesColaborador(colaboradorId: number): Promise<Map<string, CertificacaoColaboradorInput>> {
     const registos = await this.prisma.colaboradorCertificacao.findMany({ where: { colaboradorId } });
     return new Map(registos.map((r) => [r.certificacaoId, { dataValidade: r.dataValidade, dataObtencao: r.dataObtencao }]));
+  }
+
+  /** Versão em lote de buscarNiveisAtuais — uma query para N colaboradores, não N queries. */
+  private async buscarNiveisAtuaisEmLote(colaboradorIds: number[]): Promise<Map<number, Map<number, number>>> {
+    const linhas = await this.prisma.$queryRaw<(ColaboradorCompetenciaAtualRow & { colaborador_id: number })[]>`
+      SELECT colaborador_id, competencia_id, nivel_id
+      FROM colaborador_competencia_atual
+      WHERE colaborador_id = ANY(${colaboradorIds})
+    `;
+    const porColaborador = new Map<number, Map<number, number>>();
+    for (const l of linhas) {
+      if (!porColaborador.has(l.colaborador_id)) porColaborador.set(l.colaborador_id, new Map());
+      porColaborador.get(l.colaborador_id)!.set(l.competencia_id, l.nivel_id);
+    }
+    return porColaborador;
+  }
+
+  /** Versão em lote de buscarCertificacoesColaborador. */
+  private async buscarCertificacoesEmLote(
+    colaboradorIds: number[],
+  ): Promise<Map<number, Map<string, CertificacaoColaboradorInput>>> {
+    const registos = await this.prisma.colaboradorCertificacao.findMany({
+      where: { colaboradorId: { in: colaboradorIds } },
+    });
+    const porColaborador = new Map<number, Map<string, CertificacaoColaboradorInput>>();
+    for (const r of registos) {
+      if (!porColaborador.has(r.colaboradorId)) porColaborador.set(r.colaboradorId, new Map());
+      porColaborador.get(r.colaboradorId)!.set(r.certificacaoId, { dataValidade: r.dataValidade, dataObtencao: r.dataObtencao });
+    }
+    return porColaborador;
+  }
+
+  private async buscarCargosPorId(): Promise<Map<string, { nome: string; lobsExigidos: number | null }>> {
+    const cargos = await this.prisma.cargo.findMany({ select: { id: true, nome: true, lobsExigidos: true } });
+    return new Map(cargos.map((c) => [c.id, { nome: c.nome, lobsExigidos: c.lobsExigidos }]));
   }
 }

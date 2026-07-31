@@ -1,25 +1,17 @@
-import { Link, Outlet } from 'react-router-dom';
-import { useAuth } from './auth/useAuth';
+import { Outlet } from 'react-router-dom';
+import { ShellBar } from './components/layout/ShellBar';
+import { SideNav } from './components/layout/SideNav';
 
 export function AppLayout() {
-  const { user, logout } = useAuth();
-
   return (
-    <div className="app-layout">
-      <header className="app-header">
-        <nav>
-          <Link to="/">Dashboard</Link>
-          {(user?.role === 'ADMIN_RH' || user?.role === 'VIEWER') && (
-            <Link to="/colaboradores">Colaboradores</Link>
-          )}
-        </nav>
-        <button type="button" onClick={logout}>
-          Sair
-        </button>
-      </header>
-      <main>
-        <Outlet />
-      </main>
+    <div className="flex h-screen flex-col">
+      <ShellBar />
+      <div className="flex flex-1 overflow-hidden">
+        <SideNav />
+        <main className="flex-1 overflow-y-auto p-6">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }

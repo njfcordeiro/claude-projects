@@ -1,0 +1,166 @@
+import { FormEvent, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Plus } from 'lucide-react';
+import { endpoints } from '../api/endpoints';
+import { ApiError } from '../api/client';
+import { PapelUtilizador, UsuarioResumo } from '../types/api';
+import { Card } from '../components/ui/Card';
+import { DataTable } from '../components/ui/DataTable';
+import { Badge } from '../components/ui/Badge';
+import { Modal } from '../components/ui/Modal';
+import { Button, Field, Input, Select } from '../components/ui/form';
+
+const PAPEIS: PapelUtilizador[] = ['ADMIN_RH', 'MANAGER', 'EMPLOYEE', 'VIEWER'];
+
+function papelBadgeStatus(role: PapelUtilizador) {
+  return role === 'ADMIN_RH' ? 'info' : role === 'VIEWER' ? 'neutral' : 'success';
+}
+
+/** Gestão de utilizadores/permissões — ADMIN_RH only (backend RolesGuard reforça isto). */
+export function AdminPage() {
+  const queryClient = useQueryClient();
+  const { data, isLoading, error } = useQuery({ queryKey: ['users'], queryFn: endpoints.users });
+  const [modalAberto, setModalAberto] = useState(false);
+
+  const atualizarPapel = useMutation({
+    mutationFn: ({ id, role }: { id: number; role: PapelUtilizador }) => endpoints.updateUser(id, { role }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+  });
+
+  const alternarAtivo = useMutation({
+    mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) => endpoints.updateUser(id, { isActive }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+  });
+
+  if (isLoading) return <p className="text-sm text-fiori-text-secondary">A carregar…</p>;
+  if (error) return <p className="text-sm text-fiori-error">Não foi possível carregar os utilizadores.</p>;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-fiori-text">Administração</h1>
+          <p className="text-sm text-fiori-text-secondary">Gestão de utilizadores e permissões.</p>
+        </div>
+        <Button onClick={() => setModalAberto(true)}>
+          <span className="flex items-center gap-1.5">
+            <Plus size={15} /> Criar utilizador
+          </span>
+        </Button>
+      </div>
+
+      <Card>
+        <DataTable
+          data={data ?? []}
+          getRowKey={(u) => u.id}
+          searchPlaceholder="Pesquisar por email…"
+          columns={[
+            { key: 'email', header: 'Email', render: (u) => u.email, sortValue: (u) => u.email },
+            {
+              key: 'colaborador',
+              header: 'Colaborador ligado',
+              render: (u) => u.colaborador?.nome ?? '—',
+            },
+            {
+              key: 'role',
+              header: 'Papel',
+              render: (u) => (
+                <Select
+                  value={u.role}
+                  onChange={(e) => atualizarPapel.mutate({ id: u.id, role: e.target.value as PapelUtilizador })}
+                  onClick={(e) => e.stopPropagation()}
+                  className="!w-auto"
+                >
+                  {PAPEIS.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </Select>
+              ),
+              searchValue: (u) => u.role,
+            },
+            {
+              key: 'estado',
+              header: 'Estado',
+              render: (u) => (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    alternarAtivo.mutate({ id: u.id, isActive: !u.isActive });
+                  }}
+                >
+                  {u.isActive ? <Badge status="success">Ativo</Badge> : <Badge status="neutral">Inativo</Badge>}
+                </button>
+              ),
+            },
+            {
+              key: 'ultimoLogin',
+              header: 'Último login',
+              render: (u) => (u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString('pt-PT') : 'Nunca'),
+            },
+          ]}
+        />
+      </Card>
+
+      {modalAberto && <CriarUtilizadorModal onClose={() => setModalAberto(false)} />}
+    </div>
+  );
+}
+
+function CriarUtilizadorModal({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [role, setRole] = useState<PapelUtilizador>('EMPLOYEE');
+  const [erro, setErro] = useState<string | null>(null);
+
+  const criar = useMutation({
+    mutationFn: () => endpoints.createUser({ email, password, role }),
+    onSuccess: (novo: UsuarioResumo) => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      onClose();
+      // eslint-disable-next-line no-console
+      console.info('Utilizador criado:', novo.email);
+    },
+    onError: (err) => setErro(err instanceof ApiError ? err.message : 'Não foi possível criar o utilizador.'),
+  });
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setErro(null);
+    criar.mutate();
+  }
+
+  return (
+    <Modal title="Criar utilizador" onClose={onClose}>
+      <form onSubmit={handleSubmit}>
+        <Field label="Email">
+          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
+        </Field>
+        <Field label="Password (mínimo 8 caracteres)">
+          <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required />
+        </Field>
+        <Field label="Papel">
+          <Select value={role} onChange={(e) => setRole(e.target.value as PapelUtilizador)}>
+            {PAPEIS.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        {erro && <p className="mb-3 text-sm text-fiori-error">{erro}</p>}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={criar.isPending}>
+            {criar.isPending ? 'A criar…' : 'Criar'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}

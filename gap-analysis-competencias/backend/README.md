@@ -95,6 +95,31 @@ sugestões, o efeito de uma certificação expirada a bloquear a LOB mesmo
 com as competências todas cumpridas, e o rollup por cargo (`lobsAtingidos`
 a passar de 0 para 1 depois de completar os requisitos em falta).
 
+## Catálogo, administração e dashboard (Prompt 4)
+
+Adicionados para dar dados reais aos ecrãs do frontend — nada disto é
+mock/hardcoded no lado do cliente:
+
+```bash
+GET  /lobs                 GET /lobs/:id            # autenticado, sem restrição de papel
+GET  /formacoes             GET /formacoes/:id        # idem
+GET  /users                 POST /users                # ADMIN_RH only
+PATCH /users/:id                                       # ADMIN_RH only (role, isActive)
+GET  /gap-analysis/dashboard                           # ADMIN_RH/VIEWER veem tudo, MANAGER só a equipa; EMPLOYEE sem acesso (403)
+```
+
+`gap-analysis/dashboard` agrega a organização inteira sem N+1: os níveis
+de competência e certificações de todos os colaboradores em causa são
+lidos em **1 query cada** (`ANY($1::int[])` / `IN (...)`, não uma por
+colaborador), com os LOBs e cargos também pré-carregados uma única vez —
+ver `buscarNiveisAtuaisEmLote`/`buscarCertificacoesEmLote` em
+`gap-analysis.service.ts`.
+
+**Testado end-to-end**: dashboard como ADMIN_RH (organização inteira,
+agrupado por direção) e como MANAGER (só o subordinado direto), bloqueio
+403 para EMPLOYEE, criação de utilizador + mudança de papel com
+confirmação em `audit_log.changed_by`.
+
 ### Dependência conhecida (não resolvida nesta entrega)
 
 `npm audit` acusa vulnerabilidades moderadas/altas (DoS) em `multer`/`qs`,

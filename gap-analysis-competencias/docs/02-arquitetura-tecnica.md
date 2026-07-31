@@ -219,34 +219,94 @@ a quem a fez, sem cada service ter de se lembrar de o fazer.
 - **Vite + React 18 + TypeScript**: arranque rápido, sem a complexidade de
   SSR que este caso de uso (app interna atrás de login, sem necessidade de
   SEO) não precisa — por isso Vite em vez de Next.js.
-- **React Router v6**: rotas protegidas por papel.
+- **React Router v7**: rotas protegidas por papel (`ProtectedRoute` aceita
+  `allowedRoles`, espelhando o `@Roles(...)` do backend rota a rota).
 - **TanStack Query**: cache/estado de dados do servidor (evita gerir
   loading/erro/refetch à mão em cada página).
-- **Cliente API**: wrapper fino sobre `fetch`, injeta o JWT no header
-  `Authorization: Bearer <token>`.
+- **Cliente API**: wrapper fino sobre `fetch` (`api/client.ts`), injeta o
+  JWT no header `Authorization: Bearer <token>`; `api/endpoints.ts`
+  centraliza os caminhos tipados de cada chamada.
 - **Estado de autenticação**: `AuthContext` guarda o JWT descodificado
   (role, colaboradorId) e o token; persistido em `localStorage` — trade-off
   igual ao do 4.1 (mais simples que cookies `httpOnly`, mas suscetível a
   XSS; aceitável para uma ferramenta interna, a revisitar se o risco
   justificar).
 
+### Visual — Fiori-like (Prompt 4)
+
+**Decisão**: Tailwind CSS com tokens inspirados no SAP Fiori Design System
+(tema Horizon), em vez de importar `@ui5/webcomponents-react` (os
+componentes Fiori oficiais). Uma biblioteca de componentes SAP real dá
+fidelidade visual maior, mas é uma integração muito mais pesada (API
+própria, bundle maior, curva de aprendizagge) para validar bem numa
+única entrega — o utilizador aceitou explicitamente esta alternativa
+("Fiori-like com Tailwind"). Fica documentado como opção a reconsiderar
+se a fidelidade visual ao Fiori real se tornar um requisito rígido.
+
+- **Paleta** (`tailwind.config.js`, prefixo `fiori-`): shell bar azul-marinho
+  escuro (`#354A5F`), azul de marca `#0070F2`, fundo de página `#F5F6F7`,
+  cores de estado reservadas (sucesso `#107E3E`, aviso `#E76500`, erro
+  `#BB0000`) — valores documentados como aproximação ao tema Horizon do
+  Fiori, não um pacote oficial redistribuído.
+- **Tipografia**: pilha `"72", "72full", Arial, "Segoe UI", sans-serif`.
+  "72" é a fonte proprietária da SAP — sem licença/CDN público para a
+  distribuir aqui, por isso fica declarada primeiro (cai em Arial/Segoe UI
+  na prática, exatamente o fallback pedido).
+- **Cores de gráfico**: validadas com a skill de dataviz
+  (`scripts/validate_palette.js`) antes de escrever qualquer componente —
+  o gráfico do dashboard usa um único tom de magnitude (azul de marca),
+  não uma paleta categórica, porque compara UMA métrica (prontidão média)
+  entre grupos; as cores de estado (sucesso/aviso/erro) usadas nos
+  `Badge`/barras "em risco" vêm sempre com ícone + texto, nunca só cor —
+  o validador confirmou que essas cores falham o teste de adjacência
+  categórica sozinhas (como esperado — não se destinam a esse uso).
+
 ```
 frontend/src/
 ├── main.tsx
-├── App.tsx                    # define as rotas
+├── App.tsx                       # rotas
+├── AppLayout.tsx                 # ShellBar + SideNav + <Outlet/>
 ├── api/
-│   └── client.ts               # wrapper fetch + injeção do JWT
+│   ├── client.ts                  # wrapper fetch + injeção do JWT
+│   └── endpoints.ts                # chamadas tipadas por endpoint
 ├── auth/
 │   ├── AuthContext.tsx
-│   ├── ProtectedRoute.tsx      # bloqueia por autenticação e/ou papel
+│   ├── ProtectedRoute.tsx          # bloqueia por autenticação e/ou papel
 │   └── useAuth.ts
-├── pages/
-│   ├── LoginPage.tsx
-│   ├── DashboardPage.tsx       # placeholder — próximo passo: gráfico de gap
-│   └── ColaboradoresPage.tsx   # placeholder — lista via API
-└── types/
-    └── api.ts                  # tipos partilhados com os DTOs do backend
+├── components/
+│   ├── layout/ShellBar.tsx         # cabeçalho: logo, pesquisa global, perfil
+│   ├── layout/SideNav.tsx          # menu lateral, itens filtrados por papel
+│   ├── ui/                         # Card, Badge, Tag, DataTable, Modal,
+│   │                                # ProgressRing, KpiTile, ReadinessBarChart, form.tsx
+│   └── gap/                        # NivelPill, SugestoesLista, LobGapDetail
+│                                    # (partilhados entre ficha do colaborador
+│                                    # e o detalhe de LOB)
+├── pages/                          # os 5 ecrãs — ver lista abaixo
+└── types/api.ts                    # tipos espelhando os DTOs do backend
 ```
+
+### Os 5 ecrãs
+
+1. **Dashboard** (`/`) — `gap-analysis/dashboard`: KPIs, gráfico de
+   prontidão média por direção, tabela de colaboradores. ADMIN_RH/VIEWER
+   veem a organização; MANAGER só a sua equipa direta (o backend já filtra
+   — o frontend não recebe dados que não devia ver).
+2. **Ficha do colaborador** (`/colaboradores/:id`) — anel de prontidão para
+   o cargo, lista de LOBs, e ao selecionar uma, o detalhe completo
+   (competências por nível atual/exigido, certificações com validade, e
+   sugestões de formação/certificação para cada lacuna — reutiliza
+   `gap-analysis.service.ts` sem alterações).
+3. **Gestão de LOBs** (`/lobs`, `/lobs/:id`) — lista e detalhe dos
+   requisitos de competência/certificação de cada LOB. Só leitura nesta
+   entrega (ver secção 8).
+4. **Catálogo de formações** (`/formacoes`) — nome, área, duração,
+   competências desenvolvidas.
+5. **Administração** (`/admin`, só ADMIN_RH) — lista de utilizadores,
+   mudança de papel inline, ativar/desativar, criar utilizador (modal).
+
+Screenshots capturados durante a validação (não commitados, só para
+conferência nesta sessão) confirmaram visualmente o layout em todos os 5
+ecrãs antes de dar a entrega como concluída.
 
 ## 6. Execução local
 
@@ -310,18 +370,26 @@ passos abaixo).
 
 ## 8. Próximos passos
 
-1. Implementar os módulos de catálogo (`cargos`, `competencias`,
-   `certificacoes`, `formacoes`, `lobs`) seguindo o padrão de
-   `colaboradores/`.
+1. **CRUD de catálogo**: `lobs/` e `formacoes/` só têm leitura (GET) nesta
+   entrega — dá para "gerir" no sentido de consultar requisitos, mas
+   criar/editar LOBs, requisitos ou formações ainda não tem endpoint nem
+   UI. `cargos/`, `competencias/`, `certificacoes/` continuam sem módulo
+   dedicado (têm dados, mas só acessíveis indiretamente via `/lobs`).
 2. Persistir snapshots do motor de gap: `POST /gap-analysis/runs` que
    grava `gap_analysis_runs` / `gap_analysis_lob_results` /
    `gap_analysis_cargo_results`, reutilizando `gap-analysis.logic.ts` — as
-   tabelas já existem, só falta o endpoint de escrita (os dois endpoints
-   atuais são só leitura/cálculo em tempo real).
-3. Testes automatizados: o backend já tem Jest (24 testes na lógica pura
-   do motor de gap); faltam testes ao `gap-analysis.service.ts` e
-   `colaboradores.service.ts` com Prisma mockado, e testes e2e HTTP contra
-   uma BD de teste. Frontend continua sem testes (Vitest + Testing
-   Library).
+   tabelas já existem, só falta o endpoint de escrita (os endpoints atuais
+   são só leitura/cálculo em tempo real, incluindo o dashboard — recalcula
+   a organização inteira a cada pedido, aceitável para o tamanho de dados
+   atual mas vale a pena rever se crescer muito).
+3. Testes automatizados: o backend tem Jest (24 testes na lógica pura do
+   motor de gap); faltam testes aos services com Prisma mockado e testes
+   e2e HTTP contra uma BD de teste. Frontend continua sem testes (Vitest +
+   Testing Library) — a validação desta entrega foi manual, via Playwright
+   contra os servidores reais, não testes automatizados no repositório.
 4. Refresh token + revogação (ver 4.1) antes de sair de piloto interno.
 5. CI/CD (GitHub Actions) depois de existirem testes a correr.
+6. Fidelidade visual: se o "Fiori-like com Tailwind" da secção 5 não for
+   suficiente, `@ui5/webcomponents-react` (componentes Fiori oficiais) é o
+   caminho para fidelidade real — troca maior do que a feita aqui, por
+   isso não foi o ponto de partida.

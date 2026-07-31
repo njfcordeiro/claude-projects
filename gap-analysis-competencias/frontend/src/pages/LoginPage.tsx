@@ -1,7 +1,9 @@
 import { FormEvent, useState } from 'react';
 import { Navigate } from 'react-router-dom';
+import { AlertCircle, Target } from 'lucide-react';
 import { useAuth } from '../auth/useAuth';
 import { ApiError } from '../api/client';
+import { Button, Field, Input } from '../components/ui/form';
 
 export function LoginPage() {
   const { user, login } = useAuth();
@@ -26,21 +28,34 @@ export function LoginPage() {
   }
 
   return (
-    <div className="login-page">
-      <form onSubmit={handleSubmit} className="login-form">
-        <h1>Gap Analysis de Competências</h1>
-        <label>
-          Email
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
-        </label>
-        <label>
-          Password
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-        </label>
-        {error && <p className="error">{error}</p>}
-        <button type="submit" disabled={submitting}>
+    <div className="flex min-h-screen items-center justify-center bg-fiori-shell">
+      <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-md bg-fiori-surface p-8 shadow-lg">
+        <div className="mb-6 flex items-center gap-2">
+          <span className="flex h-9 w-9 items-center justify-center rounded bg-fiori-primary text-white">
+            <Target size={20} />
+          </span>
+          <div>
+            <h1 className="text-base font-semibold text-fiori-text">Gap Analysis</h1>
+            <p className="text-xs text-fiori-text-secondary">de Competências</p>
+          </div>
+        </div>
+
+        <Field label="Email">
+          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
+        </Field>
+        <Field label="Password">
+          <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        </Field>
+
+        {error && (
+          <p className="mb-3 flex items-center gap-1.5 text-sm text-fiori-error">
+            <AlertCircle size={14} /> {error}
+          </p>
+        )}
+
+        <Button type="submit" disabled={submitting}>
           {submitting ? 'A entrar…' : 'Entrar'}
-        </button>
+        </Button>
       </form>
     </div>
   );

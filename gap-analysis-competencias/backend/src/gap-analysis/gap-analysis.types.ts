@@ -133,3 +133,31 @@ export interface RelatorioGapCargo {
   gap: number;
   lobs: ResumoGapLob[];
 }
+
+export interface ResumoColaboradorDashboard {
+  colaboradorId: number;
+  nome: string;
+  direcaoNome: string | null;
+  areaNome: string | null;
+  cargoId: string;
+  cargoNome: string;
+  lobsExigidos: number;
+  lobsAtingidos: number;
+  gap: number;
+  prontidaoMedia: number;
+}
+
+export interface ResumoGrupoDashboard {
+  grupo: string;
+  totalColaboradores: number;
+  prontidaoMedia: number;
+  emRisco: number;
+}
+
+export interface DashboardResponse {
+  totalColaboradores: number;
+  prontidaoMediaGeral: number;
+  colaboradoresEmRisco: number;
+  porDirecao: ResumoGrupoDashboard[];
+  colaboradores: ResumoColaboradorDashboard[];
+}
