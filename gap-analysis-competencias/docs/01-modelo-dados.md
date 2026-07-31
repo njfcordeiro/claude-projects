@@ -1,5 +1,11 @@
 # Modelo de dados — Gap Analysis de Competências
 
+> **v5 — todos os problemas de qualidade de dados conhecidos resolvidos.**
+> A única diferença face à v4 foi limpar o `ID BUM` órfão do colaborador
+> 343. Com isto, a secção 6 já não tem nenhum item bloqueante em aberto —
+> só a questão 6.7 sobre cobertura parcial dos dados de arranque, que não
+> é um problema de esquema. O modelo está pronto para o schema Prisma/SQL.
+
 > **v4 — ficheiro Excel corrigido pelo utilizador.** Comparado célula a
 > célula com a versão anterior: a maioria dos problemas de qualidade de
 > dados da secção 6 (v3) foi resolvida na origem. Detalhe do que mudou e
@@ -389,17 +395,14 @@ Mantenho a recomendação da v1:
    data nativa do Excel. Não há pares (colaborador, certificação)
    duplicados.
 
-### Novo, encontrado na v4
+### Corrigido na v5
 
-5. **Um `ID BUM` órfão**: o colaborador 343 (Ana Mateus, linha 61) tem
-   `ID BUM = 0` e `BUM = "Tiago Fortunato"`, mas não existe nenhum
-   colaborador com esse nome na folha `Colaboradores` — não vai ser
-   possível satisfazer `manager_id FK -> colaboradores.id` para esta linha
-   sem uma decisão de negócio: ou o Tiago Fortunato é adicionado como
-   colaborador (ex. inativo/ex-colaborador), ou este caso fica com
-   `manager_id = NULL` e o nome guardado só informativamente (precisaria
-   de uma coluna `manager_nome_livre`, o que reintroduz o problema nº2).
-   Diz-me como preferes tratar este caso antes da importação.
+5. ~~Um `ID BUM` órfão (colaborador 343, Ana Mateus → "Tiago Fortunato",
+   inexistente na folha)~~ — **resolvido**. Único diff entre a v4 e a v5:
+   `ID BUM` e `BUM` do colaborador 343 foram limpos para vazio. Fica sem
+   gestor referenciado (`manager_id = NULL`), o que satisfaz a FK
+   `manager_id -> colaboradores.id` sem precisar de coluna de texto livre
+   nem de criar um colaborador fictício.
 
 ### Ainda por resolver
 
