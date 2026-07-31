@@ -1,0 +1,24 @@
+{
+  "name": "gap-analysis-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Schema Prisma/PostgreSQL e scripts de importação para a app de Gap Analysis de Competências",
+  "scripts": {
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
+    "prisma:studio": "prisma studio",
+    "import:excel": "ts-node scripts/import-excel.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
+    "prisma": "^5.20.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4"
+  }
+}

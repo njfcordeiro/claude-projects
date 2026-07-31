@@ -1,0 +1,530 @@
+// Schema Prisma — Gap Analysis de Competências
+//
+// Corresponde 1:1 à secção 3 ("Esquema relacional") de
+// ../../docs/01-modelo-dados.md (v5). Qualquer alteração ao modelo deve
+// ser feita primeiro nesse documento e só depois aqui.
+//
+// Duas liberdades de implementação, não mudanças de modelo:
+// 1. Tabelas de catálogo sem created_at/updated_at explícitos no doc
+//    recebem-nos aqui na mesma (prática standard, consistente com a
+//    secção 5 do doc: "todas as tabelas mutáveis têm created_at/updated_at").
+// 2. `audit_log`, os triggers genéricos e a view `colaborador_competencia_atual`
+//    (secção 5) não são representáveis em Prisma model — vêm na migração
+//    SQL (ver prisma/migrations/..._init/migration.sql).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------
+
+enum PapelUtilizador {
+  ADMIN_RH
+  MANAGER
+  EMPLOYEE
+  VIEWER
+
+  @@map("papel_utilizador")
+}
+
+enum OrigemAvaliacao {
+  SELF
+  MANAGER
+  FORMAL
+  AVALIACAO_360 @map("360")
+  // Valor acrescentado (não estava na v5 do doc) para o import inicial do
+  // Excel: a folha Colaboradores&Competências só guarda o nível atual, sem
+  // data nem avaliador, por isso não é honesto rotular essas linhas como
+  // SELF/MANAGER/FORMAL — ver docs/01-modelo-dados.md secção 5.1 e o
+  // comentário em scripts/import-excel.ts.
+  IMPORTADO_EXCEL @map("importado_excel")
+
+  @@map("origem_avaliacao")
+}
+
+enum AmbitoAnalise {
+  EMPRESA
+  DIRECAO
+  AREA
+  CARGO
+  COLABORADOR
+
+  @@map("ambito_analise")
+}
+
+enum EstadoAnalise {
+  DRAFT     @map("draft")
+  COMPLETED @map("completed")
+
+  @@map("estado_analise")
+}
+
+enum OperacaoAuditoria {
+  INSERT
+  UPDATE
+  DELETE
+
+  @@map("operacao_auditoria")
+}
+
+// ---------------------------------------------------------------------
+// Organização
+// ---------------------------------------------------------------------
+
+model Direcao {
+  id        Int      @id
+  nome      String   @unique
+  relevante Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  colaboradores  Colaborador[]
+  gapAnalysisRuns GapAnalysisRun[]
+
+  @@map("direcoes")
+}
+
+model Area {
+  id        Int      @id
+  nome      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  competencias  Competencia[]
+  lobs          Lob[]
+  formacoes     Formacao[]
+  colaboradores Colaborador[]
+
+  @@map("areas")
+}
+
+model Nucleo {
+  // (*) sem FK a Direcao — confirmado com o utilizador, ver doc secção 6.6
+  id        Int      @id
+  nome      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  colaboradores Colaborador[]
+
+  @@map("nucleos")
+}
+
+model Carreira {
+  id        String   @id // código, ex. "ARC"
+  nome      String
+  relevante Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  cargos        Cargo[]
+  colaboradores Colaborador[]
+
+  @@map("carreiras")
+}
+
+model Categoria {
+  id        String   @id // código, ex. "PLE"
+  nome      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  cargos        Cargo[]
+  colaboradores Colaborador[]
+
+  @@map("categorias")
+}
+
+model Cargo {
+  id                    String   @id // código, ex. "ARC_PLE"
+  nome                  String
+  carreiraId            String   @map("carreira_id")
+  categoriaId           String   @map("categoria_id")
+  anosExperienciaMinimo Int?     @map("anos_experiencia_minimo")
+  lobsExigidos          Int?     @map("lobs_exigidos") // contagem simples, não lista de LOBs
+  relevante             Boolean  @default(false)
+  relevanteCarreira     Boolean  @default(false) @map("relevante_carreira")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  carreira  Carreira  @relation(fields: [carreiraId], references: [id])
+  categoria Categoria @relation(fields: [categoriaId], references: [id])
+
+  colaboradores          Colaborador[]
+  gapAnalysisRuns        GapAnalysisRun[]
+  gapAnalysisCargoResults GapAnalysisCargoResult[]
+
+  progressoesOrigem  CargoProgressao[] @relation("CargoOrigem")
+  progressoesDestino CargoProgressao[] @relation("CargoDestino")
+
+  @@map("cargos")
+}
+
+// "Próximo Cargo" no Excel tinha valores tipo "MAN_ASS|ARC_ASS" (mais que
+// um cargo seguinte possível) — bridge em vez de FK simples.
+model CargoProgressao {
+  cargoId         String @map("cargo_id")
+  proximoCargoId  String @map("proximo_cargo_id")
+
+  cargo        Cargo @relation("CargoOrigem", fields: [cargoId], references: [id])
+  proximoCargo Cargo @relation("CargoDestino", fields: [proximoCargoId], references: [id])
+
+  @@id([cargoId, proximoCargoId])
+  @@map("cargo_progressao")
+}
+
+// Escala de proficiência única, 0-5, partilhada por toda a app.
+model Nivel {
+  id        Int    @id
+  nome      String @unique
+  descricao String
+
+  certificacaoRequisitos CertificacaoRequisitoCompetencia[]
+  formacaoRequisitos     FormacaoRequisitoCompetencia[]
+  lobRequisitos          LobRequisitoCompetencia[]
+  colaboradorCompetencias ColaboradorCompetencia[]
+
+  @@map("niveis")
+}
+
+// ---------------------------------------------------------------------
+// Catálogo de competências / certificações / formações
+// ---------------------------------------------------------------------
+
+model Competencia {
+  id        Int      @id
+  nome      String
+  areaId    Int      @map("area_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  area Area @relation(fields: [areaId], references: [id])
+
+  certificacaoRequisitos CertificacaoRequisitoCompetencia[]
+  formacaoRequisitos     FormacaoRequisitoCompetencia[]
+  lobRequisitos          LobRequisitoCompetencia[]
+  colaboradorCompetencias ColaboradorCompetencia[]
+
+  @@unique([nome])
+  @@map("competencias")
+}
+
+model Certificacao {
+  id        String   @id // código, ex. "C_ABAPD"
+  nome      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  requisitosCompetencia CertificacaoRequisitoCompetencia[]
+  lobRequisitos         LobRequisitoCertificacao[]
+  colaboradorCertificacoes ColaboradorCertificacao[]
+
+  @@map("certificacoes")
+}
+
+// Que competências/níveis uma certificação valida (nem todas as
+// certificações do Excel têm isto preenchido ainda).
+model CertificacaoRequisitoCompetencia {
+  id              Int    @id @default(autoincrement())
+  certificacaoId  String @map("certificacao_id")
+  competenciaId   Int    @map("competencia_id")
+  nivelId         Int    @map("nivel_id")
+
+  certificacao Certificacao @relation(fields: [certificacaoId], references: [id])
+  competencia  Competencia  @relation(fields: [competenciaId], references: [id])
+  nivel        Nivel        @relation(fields: [nivelId], references: [id])
+
+  @@unique([certificacaoId, competenciaId])
+  @@map("certificacao_requisito_competencia")
+}
+
+model Formacao {
+  id        Int      @id
+  nome      String
+  areaId    Int      @map("area_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  area Area @relation(fields: [areaId], references: [id])
+
+  requisitosCompetencia FormacaoRequisitoCompetencia[]
+
+  @@map("formacoes")
+}
+
+model FormacaoRequisitoCompetencia {
+  id            Int @id @default(autoincrement())
+  formacaoId    Int @map("formacao_id")
+  competenciaId Int @map("competencia_id")
+  nivelId       Int @map("nivel_id")
+
+  formacao    Formacao    @relation(fields: [formacaoId], references: [id])
+  competencia Competencia @relation(fields: [competenciaId], references: [id])
+  nivel       Nivel       @relation(fields: [nivelId], references: [id])
+
+  @@unique([formacaoId, competenciaId])
+  @@map("formacao_requisito_competencia")
+}
+
+// ---------------------------------------------------------------------
+// LOBs — o motor de gap real (ver doc secção 2)
+// ---------------------------------------------------------------------
+
+model Lob {
+  id            Int      @id
+  nome          String
+  areaId        Int      @map("area_id")
+  pontosMinimos Int      @map("pontos_minimos")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  area Area @relation(fields: [areaId], references: [id])
+
+  requisitosCompetencia  LobRequisitoCompetencia[]
+  requisitosCertificacao LobRequisitoCertificacao[]
+  recomendacoes          ColaboradorLobRecomendacao[]
+  gapAnalysisLobResults  GapAnalysisLobResult[]
+
+  @@map("lobs")
+}
+
+model LobRequisitoCompetencia {
+  id            Int     @id @default(autoincrement())
+  lobId         Int     @map("lob_id")
+  competenciaId Int     @map("competencia_id")
+  obrigatorio   Boolean
+  pontos        Int
+  nivelMinimoId Int     @map("nivel_minimo_id")
+
+  lob         Lob         @relation(fields: [lobId], references: [id])
+  competencia Competencia @relation(fields: [competenciaId], references: [id])
+  nivelMinimo Nivel       @relation(fields: [nivelMinimoId], references: [id])
+
+  @@unique([lobId, competenciaId])
+  @@map("lob_requisito_competencia")
+}
+
+model LobRequisitoCertificacao {
+  id             Int     @id @default(autoincrement())
+  lobId          Int     @map("lob_id")
+  certificacaoId String  @map("certificacao_id")
+  obrigatorio    Boolean
+
+  lob          Lob          @relation(fields: [lobId], references: [id])
+  certificacao Certificacao @relation(fields: [certificacaoId], references: [id])
+
+  @@unique([lobId, certificacaoId])
+  @@map("lob_requisito_certificacao")
+}
+
+// ---------------------------------------------------------------------
+// Pessoas
+// ---------------------------------------------------------------------
+
+model User {
+  id            Int             @id @default(autoincrement())
+  email         String          @unique
+  passwordHash  String          @map("password_hash")
+  role          PapelUtilizador
+  colaboradorId Int?            @unique @map("colaborador_id")
+  isActive      Boolean         @default(true) @map("is_active")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+  lastLoginAt   DateTime?       @map("last_login_at")
+
+  colaborador Colaborador? @relation(fields: [colaboradorId], references: [id])
+
+  avaliacoesFeitas ColaboradorCompetencia[] @relation("Avaliador")
+  gapAnalysisRuns  GapAnalysisRun[]
+  auditLogs        AuditLog[]
+
+  @@map("users")
+}
+
+model Colaborador {
+  id             Int       @id // igual ao "ID Colaborador" do Excel
+  nome           String
+  carreiraId     String?   @map("carreira_id")
+  categoriaId    String?   @map("categoria_id")
+  cargoId        String?   @map("cargo_id")
+  direcaoId      Int?      @map("direcao_id")
+  nucleoId       Int?      @map("nucleo_id")
+  areaId         Int?      @map("area_id")
+  managerId      Int?      @map("manager_id")
+  eBum           Boolean   @default(false) @map("e_bum")
+  dataAdmissao   DateTime? @map("data_admissao") @db.Date
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  createdBy      Int?      @map("created_by")
+  updatedBy      Int?      @map("updated_by")
+
+  carreira  Carreira?  @relation(fields: [carreiraId], references: [id])
+  categoria Categoria? @relation(fields: [categoriaId], references: [id])
+  cargo     Cargo?     @relation(fields: [cargoId], references: [id])
+  direcao   Direcao?   @relation(fields: [direcaoId], references: [id])
+  nucleo    Nucleo?    @relation(fields: [nucleoId], references: [id])
+  area      Area?      @relation(fields: [areaId], references: [id])
+
+  gestor       Colaborador?  @relation("Gestao", fields: [managerId], references: [id])
+  subordinados Colaborador[] @relation("Gestao")
+
+  user User?
+
+  competencias    ColaboradorCompetencia[]
+  certificacoes   ColaboradorCertificacao[]
+  lobRecomendacoes ColaboradorLobRecomendacao[]
+
+  gapAnalysisRunsScope    GapAnalysisRun[]
+  gapAnalysisLobResults   GapAnalysisLobResult[]
+  gapAnalysisCargoResults GapAnalysisCargoResult[]
+
+  @@map("colaboradores")
+}
+
+// ---------------------------------------------------------------------
+// Avaliações (bridges, com histórico — ver doc secção 5)
+// ---------------------------------------------------------------------
+
+// Append-only: uma reavaliação nunca faz UPDATE, cria uma linha nova.
+// "Nível atual" = avaliação mais recente por (colaborador, competência),
+// resolvido pela view colaborador_competencia_atual (ver migration.sql),
+// nunca por mutação desta tabela.
+model ColaboradorCompetencia {
+  id             Int              @id @default(autoincrement())
+  colaboradorId  Int              @map("colaborador_id")
+  competenciaId  Int              @map("competencia_id")
+  nivelId        Int              @map("nivel_id")
+  dataAvaliacao  DateTime         @map("data_avaliacao") @db.Date
+  avaliadoPor    Int?             @map("avaliado_por")
+  origem         OrigemAvaliacao
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  colaborador Colaborador @relation(fields: [colaboradorId], references: [id])
+  competencia Competencia @relation(fields: [competenciaId], references: [id])
+  nivel       Nivel       @relation(fields: [nivelId], references: [id])
+  avaliador   User?       @relation("Avaliador", fields: [avaliadoPor], references: [id])
+
+  @@index([colaboradorId, competenciaId, dataAvaliacao])
+  @@map("colaborador_competencia")
+}
+
+model ColaboradorCertificacao {
+  id             Int       @id @default(autoincrement())
+  colaboradorId  Int       @map("colaborador_id")
+  certificacaoId String    @map("certificacao_id")
+  dataObtencao   DateTime? @map("data_obtencao") @db.Date
+  dataValidade   DateTime? @map("data_validade") @db.Date
+  anexoUrl       String?   @map("anexo_url")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  colaborador  Colaborador  @relation(fields: [colaboradorId], references: [id])
+  certificacao Certificacao @relation(fields: [certificacaoId], references: [id])
+
+  @@unique([colaboradorId, certificacaoId])
+  @@map("colaborador_certificacao")
+}
+
+model ColaboradorLobRecomendacao {
+  id            Int      @id @default(autoincrement())
+  colaboradorId Int      @map("colaborador_id")
+  lobId         Int      @map("lob_id")
+  proprio       Boolean  @default(false)
+  bud           Boolean  @default(false)
+  auto          Boolean  @default(false)
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  colaborador Colaborador @relation(fields: [colaboradorId], references: [id])
+  lob         Lob         @relation(fields: [lobId], references: [id])
+
+  @@unique([colaboradorId, lobId])
+  @@map("colaborador_lob_recomendacao")
+}
+
+// ---------------------------------------------------------------------
+// Snapshots de gap analysis (não existem no Excel — necessários para
+// reporting histórico e para não recalcular tudo em tempo real)
+// ---------------------------------------------------------------------
+
+model GapAnalysisRun {
+  id                  Int           @id @default(autoincrement())
+  scopeType           AmbitoAnalise @map("scope_type")
+  scopeDirecaoId      Int?          @map("scope_direcao_id")
+  scopeCargoId        String?       @map("scope_cargo_id")
+  scopeColaboradorId  Int?          @map("scope_colaborador_id")
+  runDate             DateTime      @default(now()) @map("run_date")
+  createdBy           Int           @map("created_by")
+  status              EstadoAnalise @default(DRAFT)
+
+  scopeDirecao     Direcao?     @relation(fields: [scopeDirecaoId], references: [id])
+  scopeCargo       Cargo?       @relation(fields: [scopeCargoId], references: [id])
+  scopeColaborador Colaborador? @relation(fields: [scopeColaboradorId], references: [id])
+  criadoPor        User         @relation(fields: [createdBy], references: [id])
+
+  lobResults   GapAnalysisLobResult[]
+  cargoResults GapAnalysisCargoResult[]
+
+  @@map("gap_analysis_runs")
+}
+
+model GapAnalysisLobResult {
+  id                  Int     @id @default(autoincrement())
+  runId               Int     @map("run_id")
+  colaboradorId       Int     @map("colaborador_id")
+  lobId               Int     @map("lob_id")
+  pontosObtidos       Int     @map("pontos_obtidos")
+  pontosMinimos       Int     @map("pontos_minimos") // congelado no momento do snapshot
+  atingido            Boolean
+  obrigatoriosEmFalta Int     @map("obrigatorios_em_falta")
+
+  run         GapAnalysisRun @relation(fields: [runId], references: [id])
+  colaborador Colaborador    @relation(fields: [colaboradorId], references: [id])
+  lob         Lob            @relation(fields: [lobId], references: [id])
+
+  @@index([runId, colaboradorId])
+  @@map("gap_analysis_lob_results")
+}
+
+model GapAnalysisCargoResult {
+  id             Int @id @default(autoincrement())
+  runId          Int @map("run_id")
+  colaboradorId  Int @map("colaborador_id")
+  cargoId        String @map("cargo_id")
+  lobsExigidos   Int @map("lobs_exigidos")
+  lobsAtingidos  Int @map("lobs_atingidos")
+  gap            Int // lobs_exigidos - lobs_atingidos
+
+  run         GapAnalysisRun @relation(fields: [runId], references: [id])
+  colaborador Colaborador    @relation(fields: [colaboradorId], references: [id])
+  cargo       Cargo          @relation(fields: [cargoId], references: [id])
+
+  @@index([runId, colaboradorId])
+  @@map("gap_analysis_cargo_results")
+}
+
+// ---------------------------------------------------------------------
+// Auditoria técnica genérica
+// ---------------------------------------------------------------------
+
+model AuditLog {
+  id        BigInt            @id @default(autoincrement())
+  tableName String            @map("table_name")
+  recordId  String            @map("record_id")
+  operation OperacaoAuditoria
+  oldData   Json?             @map("old_data")
+  newData   Json?             @map("new_data")
+  changedBy Int?              @map("changed_by")
+  changedAt DateTime          @default(now()) @map("changed_at")
+
+  autor User? @relation(fields: [changedBy], references: [id])
+
+  @@index([tableName, recordId])
+  @@map("audit_log")
+}

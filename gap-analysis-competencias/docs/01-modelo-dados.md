@@ -1,5 +1,15 @@
 # Modelo de dados — Gap Analysis de Competências
 
+> **v6 — schema Prisma/PostgreSQL e script de importação implementados e
+> validados** contra uma base de dados Postgres local e o Excel real (ver
+> `../backend/`). A migração aplica-se sem erros, o trigger de auditoria e
+> a view `colaborador_competencia_atual` foram testados manualmente, e o
+> import populou 195 colaboradores, 4996 avaliações de competência, 165
+> certificações de colaborador, 97 competências, 47 certificações, 24 LOBs
+> e 10 cargos sem falhas de integridade referencial. Duas novas questões
+> de qualidade de dados encontradas ao escrever o import — secção 6.
+> Detalhe da implementação em `../backend/README.md`.
+
 > **v5 — todos os problemas de qualidade de dados conhecidos resolvidos.**
 > A única diferença face à v4 foi limpar o `ID BUM` órfão do colaborador
 > 343. Com isto, a secção 6 já não tem nenhum item bloqueante em aberto —
@@ -233,7 +243,10 @@ colaborador_competencia
   nivel_id          FK -> niveis.id
   data_avaliacao    DATE          -- NOVO face ao Excel
   avaliado_por      FK -> users.id (nullable) -- NOVO
-  origem            ENUM('self','manager','formal','360') -- NOVO
+  origem            ENUM('self','manager','formal','360','importado_excel') -- NOVO
+                     -- 'importado_excel': acrescentado na v6 para o import
+                     -- inicial, que não sabe se foi autoavaliação, gestor,
+                     -- etc. — só sabe o nível. Ver backend/README.md.
   created_at
 
 colaborador_certificacao
@@ -404,13 +417,35 @@ Mantenho a recomendação da v1:
    `manager_id -> colaboradores.id` sem precisar de coluna de texto livre
    nem de criar um colaborador fictício.
 
+### Encontrado ao escrever o script de importação (v6)
+
+6. **`Certificações`, colunas A/B vs D/E desalinhadas**: a folha tem duas
+   cópias da lista de certificações que deveriam ser idênticas mas
+   divergem em 35 das 47 linhas a partir da linha 14 (deslizamento de uma
+   linha entre os dois blocos, provavelmente uma linha inserida/apagada
+   num bloco sem replicar no outro). As linhas de requisito
+   certificação→competência→nível usam a coluna D para identificar a
+   certificação; se seguida literalmente, ligaria 7 dos 8 requisitos
+   preenchidos à certificação **errada**. O script de importação
+   (`backend/scripts/import-excel.ts`) usa a coluna A (a lista estável)
+   como identidade da certificação em todos os casos — **por favor
+   confirma que esta leitura está correta** antes de considerar
+   `certificacao_requisito_competencia` definitivo. Detalhe em
+   `backend/README.md`.
+7. **`LOBS`, requisitos de competência maioritariamente incompletos**: 79
+   das 105 linhas que ligam uma competência a uma LOB não têm
+   `Pontos`/`Nível` preenchidos. O import ignora-as em vez de inventar um
+   valor por omissão (26 de 105 requisitos ficaram importados). Enquanto
+   isto não for completado na origem, o motor de pontuação da secção 2 só
+   é calculável para uma pequena parte das LOBs.
+
 ### Ainda por resolver
 
-6. **Núcleo não liga a Direção** (confirmado com o utilizador — são eixos
+8. **Núcleo não liga a Direção** (confirmado com o utilizador — são eixos
    de classificação independentes, apesar de os nomes sugerirem hierarquia
    em alguns casos, ex. "AMS" / "AMS - HCM"). O esquema da secção 3 já
    reflete isto: `nucleos` não tem FK para `direcoes`.
-7. **Cobertura de dados parcial**: só 63 dos 196 colaboradores têm
+9. **Cobertura de dados parcial**: só 63 dos 196 colaboradores têm
    avaliações de competências; recomendações de LOB só para 2 (a folha de
    certificações já está bem mais completa agora, 166 linhas). Não é um
    problema de esquema — é expectável em dados de arranque — mas convém
