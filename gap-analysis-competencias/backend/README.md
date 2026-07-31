@@ -20,6 +20,23 @@ do Prisma: `postgresql://user:password@host:5432/database?schema=public`.
 Documentação interativa da API em `http://localhost:3000/api/docs`
 (Swagger, gerado a partir dos decorators — ver `src/main.ts`).
 
+## Testes
+
+```bash
+npm test          # Jest — atualmente cobre a lógica pura do motor de gap
+npm run test:cov  # com relatório de cobertura
+```
+
+24 testes em `src/gap-analysis/gap-analysis.logic.spec.ts`, sem BD (a
+lógica de negócio do motor de comparação é pura, sem Prisma/Nest — ver
+`docs/02-arquitetura-tecnica.md` secção 2). Cobrem: nível exato/acima/
+abaixo do exigido, competência nunca avaliada, certificação em falta,
+sem validade (não expira), válida, e expirada; obrigatório em falta
+bloqueia a LOB mesmo com pontos suficientes (competência e certificação);
+prontidão capada a 100%; LOB sem requisitos; e toda a lógica de ordenação
+de sugestões (cobre-a-lacuna vs. progresso parcial, desempate por
+duração/nome).
+
 ## Estrutura
 
 - `prisma/schema.prisma` — esquema relacional completo (corresponde 1:1 à
@@ -58,6 +75,25 @@ Documentação interativa da API em `http://localhost:3000/api/docs`
   seguinte). **Testado end-to-end**: login como ADMIN_RH → `PATCH
   /colaboradores/:id` → `audit_log.changed_by` fica corretamente
   preenchido com o id do utilizador.
+
+## Motor de gap analysis (implementado nesta entrega)
+
+Ver `docs/02-arquitetura-tecnica.md` secção 2 ("O motor de comparação")
+para o desenho completo. Dois endpoints, RBAC igual ao de
+`/colaboradores/:id`:
+
+```bash
+GET /gap-analysis/colaboradores/:colaboradorId/lobs/:lobId
+GET /gap-analysis/colaboradores/:colaboradorId/cargo
+```
+
+**Testado end-to-end** contra Postgres local com um cenário construído à
+mão (LOB com 2 requisitos de competência — um obrigatório, um não — e uma
+certificação obrigatória, formações/certificações candidatas para
+sugestão): confirmei manualmente pontuação, `atingido`, ordenação das
+sugestões, o efeito de uma certificação expirada a bloquear a LOB mesmo
+com as competências todas cumpridas, e o rollup por cargo (`lobsAtingidos`
+a passar de 0 para 1 depois de completar os requisitos em falta).
 
 ### Dependência conhecida (não resolvida nesta entrega)
 

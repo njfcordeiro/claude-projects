@@ -246,11 +246,16 @@ model CertificacaoRequisitoCompetencia {
 }
 
 model Formacao {
-  id        Int      @id
-  nome      String
-  areaId    Int      @map("area_id")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id            Int      @id
+  nome          String
+  areaId        Int      @map("area_id")
+  // NOVO (Prompt 3): não existe no Excel de origem — nullable de propósito,
+  // para não quebrar as formações já importadas. Usado para desempatar
+  // sugestões de formação no motor de gap (ver gap-analysis.logic.ts) —
+  // sem isto não há como ordenar por "duração" como pedido.
+  duracaoHoras  Int?     @map("duracao_horas")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
   area Area @relation(fields: [areaId], references: [id])
 

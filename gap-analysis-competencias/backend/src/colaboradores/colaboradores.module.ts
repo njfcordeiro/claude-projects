@@ -5,5 +5,6 @@ import { ColaboradoresService } from './colaboradores.service';
 @Module({
   controllers: [ColaboradoresController],
   providers: [ColaboradoresService],
+  exports: [ColaboradoresService],
 })
 export class ColaboradoresModule {}

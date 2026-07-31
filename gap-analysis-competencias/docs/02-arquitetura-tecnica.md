@@ -60,20 +60,81 @@ backend/src/
 │   ├── colaboradores.module.ts
 │   ├── colaboradores.controller.ts
 │   └── colaboradores.service.ts   # RBAC fino: gestor só vê a sua equipa
-├── cargos/ competencias/ certificacoes/ formacoes/ lobs/
-│   └── ...                   # módulos de catálogo (CRUD ADMIN_RH,
-│                              # leitura para os restantes papéis) — por
-│                              # implementar; estrutura já preparada
-└── gap-analysis/
-    └── ...                   # cálculo da fórmula da secção 2 do modelo de
-                               # dados + gap_analysis_runs/results — por
-                               # implementar
+├── gap-analysis/                  # motor de comparação (Prompt 3)
+│   ├── gap-analysis.module.ts
+│   ├── gap-analysis.controller.ts
+│   ├── gap-analysis.service.ts    # busca dados via Prisma, chama a lógica pura
+│   ├── gap-analysis.logic.ts      # funções puras — fórmula da secção 2,
+│   │                              # sem Prisma/Nest, testadas exaustivamente
+│   ├── gap-analysis.logic.spec.ts # 24 testes Jest
+│   └── gap-analysis.types.ts
+└── cargos/ competencias/ certificacoes/ formacoes/ lobs/
+    └── ...                   # módulos de catálogo (CRUD ADMIN_RH,
+                               # leitura para os restantes papéis) — por
+                               # implementar; estrutura já preparada
 ```
 
-Esta primeira entrega inclui `auth/`, `prisma/` e `colaboradores/`
-funcionais, a demonstrar o padrão de autenticação + RBAC de ponta a ponta;
-os restantes módulos ficam com o mesmo padrão a replicar (ver secção 7,
-próximos passos).
+Esta entrega inclui `auth/`, `prisma/`, `colaboradores/` e `gap-analysis/`
+funcionais; os módulos de catálogo (`cargos/`, `competencias/`, etc.)
+ficam com o mesmo padrão a replicar (ver secção 8, próximos passos).
+
+### O motor de comparação (`gap-analysis/`)
+
+Implementa literalmente a fórmula da secção 2 de `01-modelo-dados.md`:
+dado um colaborador e uma LOB, compara competências (por nível, sem
+crédito parcial) e certificações obrigatórias (com verificação de
+validade) contra o que o colaborador possui. Dividido em duas camadas:
+
+- **`gap-analysis.logic.ts`** — funções puras (`calcularGapLob`,
+  `ordenarFormacoes`, `ordenarCertificacoes`), sem nenhuma dependência de
+  Prisma ou NestJS. É aqui que vive toda a regra de negócio, e é o que
+  está exaustivamente coberto por testes (24 casos, incluindo os
+  cantos mais importantes: obrigatório em falta bloqueia mesmo com
+  pontos suficientes, certificação expirada não conta, prontidão capada
+  a 100%).
+- **`gap-analysis.service.ts`** — busca os dados reais (requisitos da
+  LOB, nível atual do colaborador via a view
+  `colaborador_competencia_atual`, certificações do colaborador) e
+  entrega-os à camada pura. Reutiliza
+  `ColaboradoresService.obterComVerificacaoDeAcesso` para o mesmo RBAC
+  fino já usado em `/colaboradores/:id` — um gestor só vê a sua equipa, um
+  colaborador só se vê a si.
+
+Dois endpoints:
+
+- `GET /gap-analysis/colaboradores/:colaboradorId/lobs/:lobId` —
+  relatório completo para uma LOB: por competência e por certificação,
+  nível/validade atual vs. exigido, se está cumprido, e (só para os não
+  cumpridos) sugestões ordenadas de formações/certificações do catálogo
+  que fecham essa lacuna. Pontuação total, `prontidaoPercentual` e
+  `atingido`.
+- `GET /gap-analysis/colaboradores/:colaboradorId/cargo` — resumo por
+  cargo: corre a mesma avaliação contra todas as LOBs do catálogo (não há
+  uma lista fixa de LOBs por cargo — `cargos.lobs_exigidos` é só uma
+  contagem, ver `01-modelo-dados.md` secção 6.8) e compara quantas foram
+  atingidas com o que o cargo exige.
+
+**Sugestões, "relevância" e "duração"**: para cada competência em falta,
+`ordenarFormacoes`/`ordenarCertificacoes` ordenam os candidatos do
+catálogo assim: primeiro os que fecham a lacuna (nível oferecido ≥
+exigido) antes dos que não fecham; entre os que fecham, o mais próximo do
+necessário primeiro (não sugerir uma formação de nível 5 para uma lacuna
+de nível 2 se houver uma de nível 2); entre os que não fecham, o de maior
+progresso primeiro; desempate por duração mais curta (só formações — as
+certificações não têm duração no catálogo, desempatam por nome). Um
+candidato que representa um nível igual ou inferior ao que o colaborador
+já tem é filtrado (não é uma sugestão útil). Para uma certificação em
+falta, como o requisito é a própria certificação (não há "alternativas"),
+o relatório sugere antes as competências que essa certificação valida
+(via `certificacao_requisito_competencia`) com as suas próprias formações
+recomendadas — uma "preparação indireta" fundamentada no catálogo real,
+não inventada.
+
+**Por fazer (fora do âmbito desta entrega)**: persistir snapshots em
+`gap_analysis_runs`/`gap_analysis_lob_results`/`gap_analysis_cargo_results`
+(as tabelas já existem no schema desde o Prompt 1, pensadas exatamente
+para isto) — os dois endpoints atuais calculam sempre em tempo real, sem
+gravar histórico. Ver secção 8.
 
 ### Validação e documentação da API
 
@@ -252,10 +313,15 @@ passos abaixo).
 1. Implementar os módulos de catálogo (`cargos`, `competencias`,
    `certificacoes`, `formacoes`, `lobs`) seguindo o padrão de
    `colaboradores/`.
-2. Implementar `gap-analysis/`: endpoint que aplica a fórmula da secção 2
-   de `01-modelo-dados.md` e grava `gap_analysis_runs` /
-   `gap_analysis_lob_results` / `gap_analysis_cargo_results`.
-3. Testes automatizados (Jest no backend, Vitest + Testing Library no
-   frontend) — ainda não existem nesta entrega.
+2. Persistir snapshots do motor de gap: `POST /gap-analysis/runs` que
+   grava `gap_analysis_runs` / `gap_analysis_lob_results` /
+   `gap_analysis_cargo_results`, reutilizando `gap-analysis.logic.ts` — as
+   tabelas já existem, só falta o endpoint de escrita (os dois endpoints
+   atuais são só leitura/cálculo em tempo real).
+3. Testes automatizados: o backend já tem Jest (24 testes na lógica pura
+   do motor de gap); faltam testes ao `gap-analysis.service.ts` e
+   `colaboradores.service.ts` com Prisma mockado, e testes e2e HTTP contra
+   uma BD de teste. Frontend continua sem testes (Vitest + Testing
+   Library).
 4. Refresh token + revogação (ver 4.1) antes de sair de piloto interno.
 5. CI/CD (GitHub Actions) depois de existirem testes a correr.
