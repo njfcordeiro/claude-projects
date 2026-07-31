@@ -1,5 +1,16 @@
 # Modelo de dados — Gap Analysis de Competências
 
+> **v7 — as duas questões de qualidade de dados da v6 foram corrigidas na
+> origem** e reconfirmadas por reimportação: `Certificações` A/B e D/E
+> ficaram idênticas em 100% das 47 linhas (0 diffs), e as 105 linhas de
+> requisito competência↔LOB em `LOBS` passaram a ter todas `Pontos`/`Nível`
+> preenchidos (0 incompletas, eram 79). Reimportei o ficheiro para a base
+> de dados local de validação: 105/105 requisitos de LOB e 8/8 requisitos
+> de certificação importados sem avisos. A secção 6 já não tem nenhum item
+> por resolver, exceto a cobertura parcial de dados de arranque (6.9, não é
+> um problema de esquema). O motor de pontuação da secção 2 está agora
+> calculável para todas as LOBs.
+
 > **v6 — schema Prisma/PostgreSQL e script de importação implementados e
 > validados** contra uma base de dados Postgres local e o Excel real (ver
 > `../backend/`). A migração aplica-se sem erros, o trigger de auditoria e
@@ -417,27 +428,20 @@ Mantenho a recomendação da v1:
    `manager_id -> colaboradores.id` sem precisar de coluna de texto livre
    nem de criar um colaborador fictício.
 
-### Encontrado ao escrever o script de importação (v6)
+### Corrigido na v7
 
-6. **`Certificações`, colunas A/B vs D/E desalinhadas**: a folha tem duas
-   cópias da lista de certificações que deveriam ser idênticas mas
-   divergem em 35 das 47 linhas a partir da linha 14 (deslizamento de uma
-   linha entre os dois blocos, provavelmente uma linha inserida/apagada
-   num bloco sem replicar no outro). As linhas de requisito
-   certificação→competência→nível usam a coluna D para identificar a
-   certificação; se seguida literalmente, ligaria 7 dos 8 requisitos
-   preenchidos à certificação **errada**. O script de importação
-   (`backend/scripts/import-excel.ts`) usa a coluna A (a lista estável)
-   como identidade da certificação em todos os casos — **por favor
-   confirma que esta leitura está correta** antes de considerar
-   `certificacao_requisito_competencia` definitivo. Detalhe em
-   `backend/README.md`.
-7. **`LOBS`, requisitos de competência maioritariamente incompletos**: 79
-   das 105 linhas que ligam uma competência a uma LOB não têm
-   `Pontos`/`Nível` preenchidos. O import ignora-as em vez de inventar um
-   valor por omissão (26 de 105 requisitos ficaram importados). Enquanto
-   isto não for completado na origem, o motor de pontuação da secção 2 só
-   é calculável para uma pequena parte das LOBs.
+6. ~~`Certificações`, colunas A/B vs D/E desalinhadas~~ — **resolvido**.
+   Reconfirmado por diff célula a célula: as duas cópias da lista de
+   certificações ficaram idênticas em 100% das 47 linhas. O script de
+   importação continua a usar a coluna A por robustez, mas já não há
+   divergência com a coluna D — os 8 requisitos de
+   `certificacao_requisito_competencia` importados são os mesmos com
+   qualquer uma das duas colunas agora.
+7. ~~`LOBS`, requisitos de competência maioritariamente incompletos~~ —
+   **resolvido**. As 105 linhas de requisito competência↔LOB têm agora
+   todas `Pontos`/`Nível` preenchidos (eram só 26 de 105). Reimportei o
+   ficheiro corrigido: 105/105 requisitos de LOB importados, sem avisos.
+   O motor de pontuação da secção 2 está calculável para todas as LOBs.
 
 ### Ainda por resolver
 

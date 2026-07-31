@@ -65,7 +65,7 @@ dos colaboradores. É idempotente para as tabelas de catálogo (usa
 reinseridas a cada corrida — corre num ambiente de teste, não diretamente
 em produção com dados já editados pela app.
 
-### Decisões tomadas ao escrever o script (a validar)
+### Decisões tomadas ao escrever o script
 
 1. **Fórmulas do Excel**: este workbook usa Tabelas do Excel com colunas
    derivadas por fórmula (ex.: `ID Cargo` = concatenação Carreira+
@@ -80,22 +80,14 @@ em produção com dados já editados pela app.
    `IMPORTADO_EXCEL`, e `data_avaliacao` = data da importação. Isto é uma
    pequena adição ao enum `OrigemAvaliacao` face à v5 do documento — ver
    comentário no `schema.prisma`.
-3. **`Certificações`, ambiguidade nova**: a folha tem duas cópias da lista
-   de certificações (colunas A/B e D/E) que deveriam ser idênticas mas
-   estão desalinhadas por um deslizamento de linha a partir da linha 14
-   (35 das 47 linhas divergem). As linhas de requisito
-   (certificação→competência→nível) usam a coluna D para identificar a
-   certificação — se seguíssemos D literalmente, 7 dos 8 requisitos
-   preenchidos ficariam ligados à certificação errada. O script usa a
-   coluna A (a lista estável, sem deslizamento) como identidade da
-   certificação em todos os casos. **Por favor confirma esta leitura** —
-   se a coluna D é que estava correta nalguma linha específica, os dados
-   importados de `certificacao_requisito_competencia` precisam de
-   correção manual.
-4. **`LOBS`, requisitos de competência incompletos**: 79 das 105 linhas de
-   requisito competência↔LOB não têm `Pontos`/`Nível` preenchidos na
-   origem. O script ignora-as (com aviso na consola) em vez de assumir um
-   valor por omissão — resultando em 26 requisitos importados de 105
-   possíveis. Isto significa que, para a maioria das LOBs, o motor de
-   pontuação (secção 2 do documento) só pode ser calculado parcialmente
-   até a folha `LOBS` ser completada.
+
+### Corrigido na origem (v7 do Excel)
+
+3. ~~`Certificações`, colunas A/B vs D/E desalinhadas~~ — **resolvido**.
+   As duas cópias da lista de certificações ficaram idênticas em 100% das
+   47 linhas. O script continua a usar a coluna A por robustez, mas já não
+   há divergência com a coluna D.
+4. ~~`LOBS`, requisitos de competência incompletos~~ — **resolvido**. As
+   105 linhas de requisito competência↔LOB têm agora todas `Pontos`/
+   `Nível` preenchidos (eram só 26 de 105). O motor de pontuação (secção 2
+   do documento) já é calculável para todas as LOBs.
