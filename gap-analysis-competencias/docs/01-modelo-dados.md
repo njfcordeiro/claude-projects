@@ -1,220 +1,245 @@
 # Modelo de dados — Gap Analysis de Competências
 
-> ⚠️ **Nota sobre o Excel**: mencionaste que já tens um modelo de dados em
-> Excel, mas não encontrei nenhum ficheiro anexado a esta sessão/repositório.
-> A proposta abaixo parte de uma estrutura de domínio típica para
-> skills/certification gap analysis em RH. Quando partilhares o Excel,
-> comparamos campo a campo e ajustamos nomes, enumerados e regras de negócio
-> que já tenhas definido.
+> **v2 — validado contra `Tabelas_criação_programa.xlsx`.** Substitui os
+> pressupostos genéricos da v1. A estrutura real tem um motor de pontuação
+> por **LOB (Line of Business)** que a v1 não previa — ver secção 4.
 
-## 1. Pressupostos assumidos
+## 1. O que o Excel realmente contém
 
-- Uma "função"/"cargo" tem um conjunto de competências exigidas, cada uma com
-  um nível mínimo desejado.
-- Um colaborador tem competências avaliadas ao longo do tempo (não só um
-  valor "atual" — interessa manter histórico de avaliações).
-- Certificações são tratadas como uma entidade distinta de competências
-  (têm entidade emissora, data de obtenção e podem expirar), mas podem estar
-  ligadas a uma competência que validam.
-- É preciso correr "análises de gap" pontuais (ex.: por departamento, por
-  colaborador, por função) e guardar o resultado como snapshot para
-  reporting histórico, não só calcular em tempo real.
-- Múltiplos utilizadores (RH, gestores, colaboradores) acedem em simultâneo
-  → precisa de controlo de acesso e de auditoria de quem alterou o quê.
+11 folhas, resumidas abaixo (nome da folha → o que modela):
 
-Se algum destes pressupostos não corresponder ao que tens no Excel, diz-me e
-ajusto o modelo.
+| Folha | Conteúdo | Linhas |
+|---|---|---|
+| `Direção&Área&Núcleo` | 3 listas de código independentes: Direção (divisão), Área (domínio funcional/tecnológico, ex. FI/DEV/HR/LO), Núcleo (equipa) | 27 |
+| `Carreira&Categoria&Cargo` | Carreira (trilho: Architect/Manager/Consultant), Categoria (senioridade: Trainee…Principal), e o cruzamento real: Cargo | 11 |
+| `Níveis` | Escala de proficiência única, 0–5, com descrição | 7 |
+| `Competências` | Catálogo de competências, cada uma associada a uma Área | 98 |
+| `Certificações` | Certificações + que competências/níveis cada uma valida | 48 |
+| `Formações` | Formações + que competências/níveis cada uma desenvolve | 45 |
+| `LOBS` | Linhas de negócio: pontuação mínima + requisitos de competências (com pontos e nível mínimo) + requisitos de certificações | 134 |
+| `Colaboradores` | Ficha do colaborador: carreira/categoria/cargo/direção/núcleo/área, gestor, data de admissão | 198 |
+| `Colaboradores&Competências` | Avaliação atual de cada colaborador por competência | 4997 |
+| `Colaboradores&Certificações` | Certificações obtidas por colaborador | 4 (amostra) |
+| `Colaboradores&Lob recomendação` | LOBs recomendados a um colaborador (próprio/gestor/automático) | 4 (amostra) |
 
-## 2. Entidades principais
+## 2. A descoberta principal: LOBs são o motor de gap real
 
-### Organização
-- **departments** — departamentos, com hierarquia opcional (`parent_department_id`).
-- **job_titles** — funções/cargos, associadas a um departamento.
+Não é o Cargo que define diretamente as competências exigidas. É o **LOB**
+(ex.: "Recruit to Hire", "Payroll", "Sourcing & Procurement"):
 
-### Catálogo de competências
-- **skill_categories** — agrupamento (ex.: Técnica, Comportamental, Idiomas).
-- **skills** — competências individuais.
-- **proficiency_scales** / **proficiency_levels** — escalas de proficiência
-  (ex.: 1–Iniciante … 5–Especialista), parametrizáveis em vez de fixas em
-  código.
-- **certifications** — certificações externas (entidade emissora, validade),
-  opcionalmente ligadas a uma skill.
+- Cada LOB tem um **`pontos_minimos`** (ex.: 70) para ser considerado
+  "atingido".
+- Cada LOB lista as competências que conta, cada uma com: `obrigatório`
+  (sim/não), `pontos` (peso) e `nível mínimo`.
+- Um colaborador "pontua" numa competência da LOB só se o seu nível atual
+  ≥ nível mínimo exigido; os pontos das competências que cumpre somam-se.
+- Uma LOB só está "atingida" se: (a) a soma de pontos ≥ `pontos_minimos`,
+  e (b) todas as competências marcadas `obrigatório` estão cumpridas, e
+  (c) todas as certificações marcadas `obrigatório` na LOB estão na posse
+  do colaborador.
+- O **Cargo** só entra depois: tem um campo `Lobs Exigidos` — um número
+  (ex.: 2, 3) de LOBs que um colaborador nesse cargo precisa de atingir
+  (não uma lista de LOBs específicas — fica em aberto quais).
 
-### Requisitos por função
-- **job_skill_requirements** — nível exigido de cada skill para cada função,
-  com versionamento temporal (`valid_from`/`valid_to`) para não perder
-  histórico quando os requisitos de uma função mudam.
+Isto é uma diferença estrutural importante face à v1 (que assumia
+`job_skill_requirements` diretas por cargo). O gap analysis certo é:
+**colaborador → LOB (via competências/certificações com pontos) → cargo
+(via contagem de LOBs atingidas)**.
 
-### Pessoas
-- **employees** — colaboradores.
-- **users** — contas de acesso à aplicação (RH admin, gestor, colaborador),
-  opcionalmente ligadas a um `employee`.
+## 3. Esquema relacional (revisto)
 
-### Avaliações (histórico nativo, não só auditoria)
-- **employee_skill_assessments** — tabela *append-only*: cada avaliação de
-  competência de um colaborador é uma nova linha (nunca se faz UPDATE). O
-  "nível atual" é a avaliação mais recente por (employee, skill) — resolvido
-  por view, não por um campo mutável. Isto dá histórico de evolução de
-  competências "de fábrica", sem depender só do log de auditoria genérico.
-- **employee_certifications** — certificações obtidas por colaborador,
-  com data de obtenção/expiração.
-
-### Análise de gap (snapshots)
-- **gap_analysis_runs** — cabeçalho de uma corrida de análise (âmbito, data,
-  autor).
-- **gap_analysis_results** — resultado detalhado por colaborador/skill,
-  guardado como snapshot (nível exigido, nível atual, gap, prioridade) para
-  permitir comparar evolução entre análises ao longo do tempo.
-
-### Desenvolvimento (opcional, mas natural extensão)
-- **training_courses** — catálogo de formações, ligadas a skills.
-- **employee_development_plans** — plano de ação para fechar gaps
-  identificados.
-
-### Auditoria
-- **audit_log** — log genérico (tabela, registo, operação, dados antigos/novos
-  em JSONB, autor, timestamp), alimentado por triggers nas tabelas sensíveis.
-
-## 3. Esquema relacional (tabelas, PKs/FKs)
+Mantenho os nomes em português, alinhados com as folhas de origem.
 
 ```
-departments
-  id                PK
-  name
-  parent_department_id  FK -> departments.id (nullable)
-  created_at, updated_at, created_by, updated_by
+-- Organização --------------------------------------------------
 
-job_titles
+direcoes
   id                PK
-  title
-  department_id     FK -> departments.id
-  level             (ex.: junior/pleno/senior, opcional)
-  is_active
-  created_at, updated_at, created_by, updated_by
+  nome
+  relevante         BOOLEAN
 
-skill_categories
+areas
   id                PK
-  name
-  description
+  nome              -- ex.: Data&AI, DEV, FI, HR, LO, N/A, Other
+                     -- domínio partilhado por competências, LOBs,
+                     -- formações e colaboradores
 
-skills
+nucleos
   id                PK
-  category_id       FK -> skill_categories.id
-  name
-  type              ENUM('technical','soft','language','certification_related')
-  description
-  is_active
-  created_at, updated_at, created_by, updated_by
+  nome
+  -- (*) sem FK a direcoes no Excel — ver questão em aberto 7.1
 
-proficiency_scales
+carreiras
+  id                PK  (código, ex. "ARC")
+  nome
+  relevante         BOOLEAN
+
+categorias
+  id                PK  (código, ex. "PLE")
+  nome              -- Trainee, Junior, Associate, Pleno, Senior, Principal
+
+cargos
+  id                PK  (código, ex. "ARC_PLE")
+  nome
+  carreira_id       FK -> carreiras.id
+  categoria_id      FK -> categorias.id
+  anos_experiencia_minimo  INT (nullable)
+  lobs_exigidos     INT (nullable) -- nº de LOBs a atingir, não uma lista
+  relevante         BOOLEAN
+  relevante_carreira BOOLEAN
+
+cargo_progressao   -- "Próximo Cargo" tinha valores tipo "MAN_ASS|ARC_ASS":
+                    -- mais que um cargo seguinte possível → bridge, não FK simples
+  cargo_id          FK -> cargos.id
+  proximo_cargo_id  FK -> cargos.id
+  PK (cargo_id, proximo_cargo_id)
+
+niveis              -- escala única 0-5, partilhada por toda a app
+  id                PK  (0..5)
+  nome              -- Inexistente, Familiarizado, Principiante,
+                     -- Proficiente, Especialista, Referência
+  descricao         TEXT
+
+-- Catálogo de competências / certificações / formações ---------
+
+competencias
   id                PK
-  name              (ex.: "Escala 1-5")
+  nome
+  area_id           FK -> areas.id
 
-proficiency_levels
+certificacoes
+  id                PK  (código, ex. "C_ABAPD")
+  nome
+
+certificacao_requisito_competencia
   id                PK
-  scale_id          FK -> proficiency_scales.id
-  level_value       INT   (ordem, ex.: 1..5)
-  label             (ex.: "Iniciante", "Avançado")
+  certificacao_id   FK -> certificacoes.id
+  competencia_id    FK -> competencias.id
+  nivel_id          FK -> niveis.id
+  -- que competências/níveis uma certificação valida (nem todas
+  -- as certificações do Excel têm isto preenchido ainda)
 
-certifications
+formacoes
   id                PK
-  name
-  issuing_body
-  related_skill_id  FK -> skills.id (nullable)
-  validity_months   INT (nullable = não expira)
-  description
+  nome
+  area_id           FK -> areas.id
 
-job_skill_requirements
+formacao_requisito_competencia
   id                PK
-  job_title_id      FK -> job_titles.id
-  skill_id          FK -> skills.id
-  required_level_id FK -> proficiency_levels.id
-  mandatory         BOOLEAN
-  weight            NUMERIC (nullable, para gap ponderado)
-  valid_from        DATE
-  valid_to          DATE (nullable = vigente)
-  UNIQUE (job_title_id, skill_id, valid_from)
+  formacao_id       FK -> formacoes.id
+  competencia_id    FK -> competencias.id
+  nivel_id          FK -> niveis.id
 
-users
+-- LOBs (motor de gap) --------------------------------------------
+
+lobs
+  id                PK
+  nome
+  area_id           FK -> areas.id
+  pontos_minimos    INT
+
+lob_requisito_competencia
+  id                PK
+  lob_id            FK -> lobs.id
+  competencia_id    FK -> competencias.id
+  obrigatorio       BOOLEAN
+  pontos            INT
+  nivel_minimo_id   FK -> niveis.id
+
+lob_requisito_certificacao
+  id                PK
+  lob_id            FK -> lobs.id
+  certificacao_id   FK -> certificacoes.id
+  obrigatorio       BOOLEAN
+
+-- Pessoas ---------------------------------------------------------
+
+users                -- contas de acesso à aplicação (não existe no Excel)
   id                PK
   email             UNIQUE
   password_hash
   role              ENUM('admin_rh','manager','employee','viewer')
-  employee_id       FK -> employees.id (nullable)
+  colaborador_id    FK -> colaboradores.id (nullable)
   is_active
-  last_login_at
-  created_at, updated_at
+  created_at, updated_at, last_login_at
 
-employees
-  id                PK
-  employee_code     UNIQUE
-  full_name
-  email
-  department_id     FK -> departments.id
-  job_title_id      FK -> job_titles.id
-  manager_id        FK -> employees.id (nullable, self-relation)
-  hire_date
-  status            ENUM('active','inactive','on_leave')
+colaboradores
+  id                PK   (numérico, igual ao "ID Colaborador" do Excel)
+  nome
+  carreira_id       FK -> carreiras.id   (nullable — nem todos têm)
+  categoria_id      FK -> categorias.id  (nullable)
+  cargo_id          FK -> cargos.id      (nullable)
+  direcao_id        FK -> direcoes.id    (nullable)
+  nucleo_id         FK -> nucleos.id     (nullable)
+  area_id           FK -> areas.id       (nullable)
+  manager_id        FK -> colaboradores.id (nullable, self-relation)
+  e_bum             BOOLEAN
+  data_admissao     DATE (nullable)
   created_at, updated_at, created_by, updated_by
 
-employee_skill_assessments   -- append-only, histórico nativo
+-- Avaliações (bridges, com histórico acrescentado — ver secção 5) --
+
+colaborador_competencia
   id                PK
-  employee_id       FK -> employees.id
-  skill_id          FK -> skills.id
-  level_id          FK -> proficiency_levels.id
-  assessment_date   DATE
-  assessed_by       FK -> users.id
-  source            ENUM('self','manager','formal_test','360')
-  notes
+  colaborador_id    FK -> colaboradores.id
+  competencia_id    FK -> competencias.id
+  nivel_id          FK -> niveis.id
+  data_avaliacao    DATE          -- NOVO face ao Excel
+  avaliado_por      FK -> users.id (nullable) -- NOVO
+  origem            ENUM('self','manager','formal','360') -- NOVO
   created_at
 
-employee_certifications
+colaborador_certificacao
   id                PK
-  employee_id       FK -> employees.id
-  certification_id  FK -> certifications.id
-  obtained_date
-  expiry_date       (nullable)
-  certificate_number
-  attachment_url
-  created_at, updated_at, created_by, updated_by
+  colaborador_id    FK -> colaboradores.id
+  certificacao_id   FK -> certificacoes.id
+  data_obtencao     DATE (nullable) -- NOVO, o Excel só tinha validade
+  data_validade     DATE (nullable)
+  anexo_url         TEXT (nullable) -- NOVO, evidência
+  created_at, updated_at
+
+colaborador_lob_recomendacao
+  id                PK
+  colaborador_id    FK -> colaboradores.id
+  lob_id            FK -> lobs.id
+  proprio           BOOLEAN  -- auto-indicação
+  bud               BOOLEAN  -- indicação do gestor/BUD
+  auto              BOOLEAN  -- sugestão automática do sistema (por gap)
+  created_at
+
+-- Snapshots de gap analysis (não existem no Excel, mas necessários
+-- para reporting histórico e para não recalcular tudo em tempo real) --
 
 gap_analysis_runs
   id                PK
-  name
-  scope_type        ENUM('company','department','job_title','employee')
-  scope_ref_id      (id da entidade conforme scope_type; ou colunas
-                     scope_department_id / scope_job_title_id explícitas
-                     se preferires FKs tipados em vez de referência genérica)
+  scope_type        ENUM('empresa','direcao','area','cargo','colaborador')
+  scope_direcao_id      FK -> direcoes.id (nullable)
+  scope_cargo_id        FK -> cargos.id (nullable)
+  scope_colaborador_id  FK -> colaboradores.id (nullable)
   run_date
   created_by        FK -> users.id
   status            ENUM('draft','completed')
 
-gap_analysis_results
+gap_analysis_lob_results   -- resultado por colaborador x LOB
   id                PK
   run_id            FK -> gap_analysis_runs.id
-  employee_id       FK -> employees.id
-  job_title_id      FK -> job_titles.id
-  skill_id          FK -> skills.id
-  required_level_id FK -> proficiency_levels.id (nullable)
-  current_level_id  FK -> proficiency_levels.id (nullable)
-  gap_value         INT   -- required - current
-  priority          ENUM('low','medium','high')
+  colaborador_id    FK -> colaboradores.id
+  lob_id            FK -> lobs.id
+  pontos_obtidos    INT
+  pontos_minimos    INT       -- congelado no momento do snapshot
+  atingido          BOOLEAN
+  obrigatorios_em_falta INT   -- contagem de obrigatórios não cumpridos
 
-training_courses
+gap_analysis_cargo_results  -- resultado por colaborador x cargo
   id                PK
-  name
-  provider
-  related_skill_id  FK -> skills.id (nullable)
-  duration_hours
+  run_id            FK -> gap_analysis_runs.id
+  colaborador_id    FK -> colaboradores.id
+  cargo_id          FK -> cargos.id
+  lobs_exigidos     INT
+  lobs_atingidos    INT
+  gap               INT       -- lobs_exigidos - lobs_atingidos
 
-employee_development_plans
-  id                PK
-  employee_id       FK -> employees.id
-  gap_result_id     FK -> gap_analysis_results.id (nullable)
-  course_id         FK -> training_courses.id (nullable)
-  status            ENUM('planned','in_progress','completed','cancelled')
-  target_date
-  completed_date
+-- Auditoria técnica genérica ---------------------------------------
 
 audit_log
   id                PK (bigserial)
@@ -227,131 +252,125 @@ audit_log
   changed_at        TIMESTAMPTZ
 ```
 
-Nota sobre `scope_ref_id` em `gap_analysis_runs`: uma referência genérica
-exige validação em aplicação (sem FK real). Se preferires integridade
-referencial estrita, troca por colunas nullable explícitas
-(`scope_department_id`, `scope_job_title_id`, `scope_employee_id`) — mais
-verboso mas com FKs verdadeiras.
-
 ## 4. Diagrama de relações
 
 ```mermaid
 erDiagram
-    departments ||--o{ job_titles : tem
-    departments ||--o{ employees : agrupa
-    job_titles ||--o{ employees : ocupa
-    employees ||--o{ employees : "gere (manager_id)"
-    users ||--o| employees : "conta de"
+    direcoes ||--o{ colaboradores : agrupa
+    areas ||--o{ colaboradores : classifica
+    nucleos ||--o{ colaboradores : agrupa
+    carreiras ||--o{ cargos : define
+    categorias ||--o{ cargos : define
+    cargos ||--o{ colaboradores : ocupa
+    cargos ||--o{ cargo_progressao : "cargo atual"
+    cargos ||--o{ cargo_progressao : "proximo cargo"
+    colaboradores ||--o{ colaboradores : "gere (manager_id)"
 
-    skill_categories ||--o{ skills : contem
-    proficiency_scales ||--o{ proficiency_levels : define
-    skills ||--o{ certifications : "valida (opcional)"
+    areas ||--o{ competencias : contem
+    areas ||--o{ lobs : contem
+    areas ||--o{ formacoes : contem
+    niveis ||--o{ colaborador_competencia : "nivel atual"
 
-    job_titles ||--o{ job_skill_requirements : exige
-    skills ||--o{ job_skill_requirements : "e exigida em"
-    proficiency_levels ||--o{ job_skill_requirements : "nivel exigido"
+    certificacoes ||--o{ certificacao_requisito_competencia : exige
+    competencias ||--o{ certificacao_requisito_competencia : "exigida em"
 
-    employees ||--o{ employee_skill_assessments : avaliado_em
-    skills ||--o{ employee_skill_assessments : avaliada
-    proficiency_levels ||--o{ employee_skill_assessments : "nivel obtido"
-    users ||--o{ employee_skill_assessments : avalia
+    formacoes ||--o{ formacao_requisito_competencia : desenvolve
+    competencias ||--o{ formacao_requisito_competencia : "desenvolvida em"
 
-    employees ||--o{ employee_certifications : possui
-    certifications ||--o{ employee_certifications : concedida
+    lobs ||--o{ lob_requisito_competencia : exige
+    competencias ||--o{ lob_requisito_competencia : "exigida em"
+    lobs ||--o{ lob_requisito_certificacao : exige
+    certificacoes ||--o{ lob_requisito_certificacao : "exigida em"
 
-    gap_analysis_runs ||--o{ gap_analysis_results : gera
-    employees ||--o{ gap_analysis_results : referencia
-    job_titles ||--o{ gap_analysis_results : referencia
-    skills ||--o{ gap_analysis_results : referencia
+    colaboradores ||--o{ colaborador_competencia : avaliado_em
+    competencias ||--o{ colaborador_competencia : avaliada
+    colaboradores ||--o{ colaborador_certificacao : possui
+    certificacoes ||--o{ colaborador_certificacao : concedida
+    colaboradores ||--o{ colaborador_lob_recomendacao : recomendado_para
+    lobs ||--o{ colaborador_lob_recomendacao : alvo
 
-    skills ||--o{ training_courses : "desenvolvida por"
-    employees ||--o{ employee_development_plans : tem
-    gap_analysis_results ||--o{ employee_development_plans : origina
-    training_courses ||--o{ employee_development_plans : usa
+    gap_analysis_runs ||--o{ gap_analysis_lob_results : gera
+    colaboradores ||--o{ gap_analysis_lob_results : referencia
+    lobs ||--o{ gap_analysis_lob_results : referencia
+    gap_analysis_runs ||--o{ gap_analysis_cargo_results : gera
+    colaboradores ||--o{ gap_analysis_cargo_results : referencia
+    cargos ||--o{ gap_analysis_cargo_results : referencia
 ```
 
-## 5. Histórico e auditoria
+## 5. Histórico e auditoria (ajustado ao Excel real)
 
-Três camadas complementares, cada uma para um problema diferente:
+O Excel guarda **apenas o estado atual** em `Colaboradores&Competências` e
+`Colaboradores&Certificações` — sem data de avaliação, sem quem avaliou.
+Mantenho a recomendação da v1:
 
-1. **Histórico de domínio como dados de primeira classe.**
-   `employee_skill_assessments` é *append-only*: uma reavaliação nunca
-   sobrescreve a anterior, cria-se uma nova linha. Isto dá "evolução de
-   competência ao longo do tempo" sem depender de auditoria técnica — é
-   informação que o RH quer consultar diretamente (ex.: gráfico de evolução
-   por colaborador).
+1. `colaborador_competencia` passa a ser **append-only** com `data_avaliacao`
+   + `avaliado_por` + `origem`. O "nível atual" é a avaliação mais recente
+   por (colaborador, competência) — resolvido por view, nunca por UPDATE.
+   Isto dá evolução de competência ao longo do tempo, que o Excel não tem
+   hoje mas que é natural pedir-se num gap analysis ("melhorou desde a
+   última avaliação?").
+2. `gap_analysis_lob_results` / `gap_analysis_cargo_results` congelam o
+   resultado do cálculo de pontos numa data — sem isto, não é possível
+   reconstruir "que LOBs estavam atingidas em março" depois de os
+   requisitos ou avaliações mudarem.
+3. `audit_log` genérico (trigger Postgres, JSONB old/new) nas tabelas
+   mutáveis (`colaboradores`, `cargos`, `lob_requisito_*`, `certificacoes`,
+   `users`), complementado por `created_at/updated_at/created_by/updated_by`.
+4. Sem hard deletes em entidades referenciadas por histórico — usar
+   `relevante`/`is_active` (o Excel já usa `relevante` em `direcoes`,
+   `carreiras`, `cargos` — sigo essa convenção em vez de introduzir um
+   `is_active` paralelo).
 
-2. **Snapshots de análise.** `gap_analysis_runs`/`gap_analysis_results`
-   congelam o resultado de uma análise numa data. Sem isto, "o gap era X em
-   janeiro" torna-se impossível de reconstruir depois de os requisitos ou
-   avaliações mudarem.
+## 6. Problemas de qualidade de dados encontrados (a tratar na importação)
 
-3. **Auditoria técnica genérica (`audit_log`).** Para tabelas onde há
-   UPDATE/DELETE reais (`employees`, `job_titles`, `job_skill_requirements`,
-   `skills`, `employee_certifications`, `users`), um trigger genérico em
-   Postgres grava old/new em JSONB a cada operação. Vantagens sobre criar
-   uma tabela `_history` por entidade:
-   - uma única função de trigger reutilizável (`audit_trigger_fn()`) aplicada
-     a todas as tabelas sensíveis;
-   - não obriga a manter esquemas duplicados sincronizados a cada migração;
-   - suporta pesquisa "quem alterou o quê" cross-table.
-
-   Custo: consultas tipo "todas as alterações à tabela X" exigem filtrar
-   `table_name` e fazer parse de JSONB — aceitável para auditoria (uso
-   pouco frequente, não está no caminho crítico de leitura da app).
-
-   Complementarmente, todas as tabelas mutáveis têm `created_at`,
-   `updated_at`, `created_by`, `updated_by` para o caso comum (quem criou/
-   alterou pela última vez), sem precisar de consultar o audit_log.
-
-4. **Sem hard deletes em entidades referenciadas por histórico**
-   (`employees`, `skills`, `job_titles`, `certifications`): usar
-   `is_active`/`status` em vez de `DELETE`, para não partir FKs de
-   `gap_analysis_results` ou `employee_skill_assessments` antigos.
-
-## 6. Stack técnica sugerida
-
-**Base de dados: PostgreSQL (14+)**
-- Integridade referencial forte com muitas FKs cruzadas (essencial aqui —
-  o modelo tem ~15 tabelas interligadas).
-- MVCC dá bom comportamento com múltiplos utilizadores a ler/escrever em
-  simultâneo sem bloqueios agressivos.
-- Triggers nativos tornam o `audit_log` genérico trivial de implementar.
-- JSONB para guardar old/new no audit log sem esquema rígido.
-- Managed hosting persistente e com backups prontos a usar (Neon, Supabase,
-  RDS, Azure Database for PostgreSQL) — cobre o requisito de "dados
-  persistentes" sem geres infraestrutura.
-
-**Backend: Node.js + TypeScript + NestJS + Prisma**
-- Prisma mapeia bem este tipo de esquema (muitas relações 1:N e self-relations
-  como `manager_id`), gera migrations versionadas a partir do `schema.prisma`,
-  e dá type-safety ponta a ponta.
-- NestJS estrutura por módulos (skills, employees, gap-analysis, auth) —
-  adequado a um domínio com este número de entidades e regras de acesso
-  (admin RH vs. gestor vs. colaborador).
-- Autenticação/autorização via JWT + guards de role, mapeando diretamente
-  para `users.role`.
-- Alternativa igualmente válida: **Python + FastAPI + SQLAlchemy/Alembic** —
-  escolhe esta se a equipa já for mais forte em Python ou se antecipares
-  muito processamento analítico/relatórios (pandas) sobre os resultados de
-  gap analysis.
-
-**Concorrência multi-utilizador**: como o estado vive todo no Postgres e o
-backend é stateless (API REST), múltiplas instâncias do backend podem correr
-atrás de um load balancer sem partilhar estado em memória — o Postgres é
-que garante consistência. Para muitas ligações simultâneas (ex.: deploy
-serverless), usar pooling (PgBouncer, ou Prisma Accelerate/Data Proxy).
+1. **`Colaboradores`, linhas 31–32**: `ID Colaborador = 160` (Miguel
+   Santana) está duplicado, com `Área` diferente em cada linha (DEV vs.
+   Other). Precisa de decisão de negócio antes de importar (qual a linha
+   correta, ou fundir).
+2. **Coluna "BUM" é o nome do gestor em texto livre**, não um ID. Confirmei
+   que todos os 16 valores de `BUM` correspondem a um nome existente na
+   própria lista de colaboradores, por isso dá para resolver
+   `manager_id` por join de nome na importação — mas a partir daí deve
+   passar a ser sempre FK (`colaboradores.manager_id`), nunca texto.
+3. **Folha `Formações`**: o cabeçalho da coluna B diz "Certificação" mas o
+   conteúdo é o nome da formação (erro de copy/paste no Excel). A coluna G
+   ("Formação") tem uma fórmula `VLOOKUP` partida a apontar para
+   `TAB_Certificação` em vez da tabela de formações, por isso devolve
+   `#N/A` em todas as linhas. Usar a coluna B como nome canónico da
+   formação e ignorar a coluna G na importação.
+4. **`Colaboradores&Certificações`**: uma `Data de validade` tem o valor
+   literal `31/06/2026`, que não é uma data válida (junho só tem 30 dias).
+   Precisa de correção na origem.
+5. **Núcleo não tem FK explícita para Direção** no Excel, apesar de os
+   nomes sugerirem hierarquia (ex.: Núcleos "AMS", "AMS - HCM",
+   "AMS - OUT", "AMS - SF" parecem sub-equipas da Direção "AMS"). Um
+   colaborador tem `direcao_id` e `nucleo_id` de forma independente, o que
+   permite combinações inconsistentes. Ver questão 7.1.
+6. **Cobertura de dados parcial**: só 63 dos 196 colaboradores têm
+   avaliações de competências; certificações só estão preenchidas para 1
+   colaborador; recomendações de LOB só para 2. Não é um problema de
+   esquema — é expectável em dados de arranque — mas convém não assumir
+   que a folha atual é o dataset completo.
 
 ## 7. Questões em aberto para validar contigo
 
-1. Podes partilhar o Excel para eu confirmar nomes de campos, enumerados
-   (ex.: escalas de proficiência que já usam) e se falta alguma entidade?
-2. Certificações têm fluxo de aprovação/validação por RH antes de contarem
-   como "obtidas", ou é registo direto?
-3. Um colaborador pode ocupar mais do que uma função em simultâneo, ou é
-   sempre 1 função por colaborador (como assumi em `employees.job_title_id`)?
-4. Precisas de suporte multi-empresa (multi-tenant) já nesta fase, ou é uma
-   instância por organização?
+1. **Núcleo pertence a uma Direção?** Se sim, adiciono
+   `nucleos.direcao_id FK`. Se não, confirmo que são eixos de classificação
+   independentes mesmo.
+2. **`cargos.lobs_exigidos` é só uma contagem** ("precisa de atingir 2
+   LOBs") **ou há LOBs específicas obrigatórias por cargo**? Se houver
+   específicas, preciso de uma tabela `cargo_lob_exigida` em vez de (ou
+   além de) um número solto.
+3. Confirmam a fórmula de pontuação da LOB que descrevi na secção 2 (soma
+   de pontos das competências cumpridas ≥ `pontos_minimos`, mais todos os
+   obrigatórios — competências e certificações — cumpridos)? É a leitura
+   que faço da estrutura `LOBS`, mas vale confirmar antes de a codificar.
+4. Certificações/formações têm fluxo de aprovação por RH antes de
+   contarem como válidas, ou é registo direto pelo colaborador/gestor?
+5. Precisas de suporte multi-empresa (multi-tenant) já nesta fase?
 
-Quando confirmares isto, avanço para o próximo passo (schema Prisma/SQL de
-migração inicial).
+Quando confirmares os pontos 1–3 (os que têm impacto direto no esquema),
+avanço para o schema Prisma/SQL de migração inicial, já com um script de
+importação do Excel para popular as tabelas de catálogo (Direção, Área,
+Núcleo, Carreira, Categoria, Cargo, Níveis, Competências, Certificações,
+Formações, LOBs) e os dados de `Colaboradores`.
