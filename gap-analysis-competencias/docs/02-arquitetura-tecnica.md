@@ -214,6 +214,112 @@ $1, true)` no início de cada pedido autenticado, usando o `userId` do JWT
 — assim toda a escrita feita através da API fica automaticamente atribuída
 a quem a fez, sem cada service ter de se lembrar de o fazer.
 
+### 4.5 Concorrência multi-utilizador (Prompt 5)
+
+Vários utilizadores (ex.: um `MANAGER` e um `ADMIN_RH`) podem abrir a ficha
+do mesmo colaborador ao mesmo tempo. Sem proteção, "o último a gravar
+ganha" apagaria silenciosamente a alteração de quem gravou primeiro. Duas
+tabelas passam a ser editáveis pela API nesta entrega
+(`colaboradores`, `colaborador_certificacao`) mais uma terceira que já era
+escrita mas em modo append-only (`colaborador_competencia`) — cada uma
+precisa de uma estratégia diferente, porque não têm o mesmo padrão de
+escrita:
+
+**a) Tabelas com UPDATE — locking otimista por coluna `version`**
+
+`colaboradores` e `colaborador_certificacao` ganharam uma coluna
+`version` (`Int`, default `0`). O cliente tem de enviar de volta a
+`version` que leu; a escrita é um `UPDATE ... WHERE id = $1 AND version =
+$2 SET ..., version = version + 1` (via `updateMany` do Prisma, que
+devolve uma contagem de linhas afetadas em vez de rebentar):
+
+```ts
+const resultado = await tx.colaborador.updateMany({
+  where: { id, version },
+  data: { ...alteracoes, version: { increment: 1 } },
+});
+if (resultado.count === 0) {
+  // outra escrita já mudou a version entretanto — vai buscar o estado
+  // atual e devolve 409 com ele, para o cliente decidir o que fazer
+}
+```
+
+Se `count === 0`, ninguém apagou nada — a condição `WHERE version = $2`
+simplesmente não encontrou a linha porque outra transação já a mudou
+primeiro (committada antes desta). Nesse caso o service busca o estado
+atual e responde `409 Conflict` com `{ message, current }`, nunca faz
+merge automático nem escolhe "quem ganha" — essa decisão fica para quem
+está a editar (ver frontend, secção 5).
+
+**b) Tabela append-only — conflito por `baseAssessmentId` + advisory lock**
+
+`colaborador_competencia` nunca é alterada por `UPDATE`/`DELETE` (histórico
+completo de avaliações; o "nível atual" é sempre a linha mais recente,
+resolvida pela view `colaborador_competencia_atual` — ver
+`01-modelo-dados.md`). Não há coluna `version` para bloquear porque não há
+UPDATE nenhum a fazer. Em vez disso, o cliente envia `baseAssessmentId`: o
+`id` da última avaliação que viu (ou `null`, se nunca houve nenhuma). O
+service compara esse id com o que está de facto na view no momento do
+INSERT, dentro da mesma transação:
+
+```ts
+await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`avaliacao:${colaboradorId}:${competenciaId}`}))`;
+const atual = (await tx.$queryRaw`SELECT id, ... FROM colaborador_competencia_atual WHERE ...`)[0] ?? null;
+if ((atual?.id ?? null) !== (dto.baseAssessmentId ?? null)) {
+  throw new ConflictException({ message: ..., current: atual });
+}
+// só agora faz o INSERT
+```
+
+O `pg_advisory_xact_lock` é necessário por uma razão subtil: um simples
+"SELECT para ver se já existe avaliação, depois INSERT" tem uma janela de
+corrida real quando a resposta ao SELECT é "não existe nada ainda" — duas
+transações concorrentes em READ COMMITTED podem **ambas** ver "não existe"
+e ambas inserir, porque não há nenhuma linha existente para um `UPDATE ...
+WHERE` bloquear (ao contrário do caso (a)). Isto foi apanhado a testar
+(secção seguinte), não adivinhado: sem o lock, duas primeiras-avaliações
+concorrentes para a mesma competência resultavam em dois `201`, quando só
+um devia passar e o outro devia ver `409`. O advisory lock é
+transacional (`_xact_`) — chave por `(colaboradorId, competenciaId)` via
+`hashtext(...)`, `pg_advisory_xact_lock` bloqueia a segunda transação até
+a primeira committar (ou fazer rollback), momento em que o `SELECT`
+seguinte já vê a linha inserida pela primeira e o conflito é detetado
+corretamente. Libertado automaticamente no fim da transação, sem unlock
+manual.
+
+**c) RBAC de escrita — `podeEditar`**
+
+As mesmas regras de leitura fina (secção 4.3) aplicam-se à escrita:
+`ADMIN_RH` edita qualquer colaborador; `MANAGER` só o colaborador cuja
+`manager_id` seja o seu próprio `colaboradorId`; `EMPLOYEE`/`VIEWER` não
+podem escrever avaliações/certificações de terceiros (fica fora do âmbito
+desta entrega dar ao `EMPLOYEE` autoavaliação via API, embora o schema já
+suporte `origem = SELF` — ver secção 8). Verificado em
+`ColaboradoresService.podeEditar(id, user)`, chamado no início de todos os
+métodos de escrita antes de qualquer lógica de locking.
+
+**d) Endpoints novos**
+
+```bash
+PATCH /colaboradores/:id                                          # requer `version` no body
+POST  /colaboradores/:id/competencias                             # requer `baseAssessmentId` (ou null)
+PUT   /colaboradores/:id/certificacoes/:certificacaoId             # requer `version` (upsert: cria se não existir)
+GET   /colaboradores/:id/competencias/:competenciaId/ultima-avaliacao   # "peek" — estado atual antes de editar
+GET   /colaboradores/:id/certificacoes/:certificacaoId                 # idem, para certificação
+```
+
+Os dois endpoints `GET ".../ultima-avaliacao"` e `GET ".../certificacoes/:id"`
+existem só para o frontend ler o estado mais recente **no momento em que
+o formulário de edição abre** — nunca reaproveitar dados já em cache
+(vindos do relatório de gap analysis, por exemplo) como base do
+`version`/`baseAssessmentId`, porque isso alargaria a janela entre "o que
+eu vi" e "o que vou gravar por cima", tornando conflitos reais mais
+prováveis de passar despercebidos.
+
+**e) Testado**: `backend/scripts/test-concurrency.mjs` (`npm run
+test:concurrency`) — script idempotente e auto-seeding, ver
+`backend/README.md`, secção "Concorrência".
+
 ## 5. Frontend — React
 
 - **Vite + React 18 + TypeScript**: arranque rápido, sem a complexidade de
@@ -295,7 +401,16 @@ frontend/src/
    o cargo, lista de LOBs, e ao selecionar uma, o detalhe completo
    (competências por nível atual/exigido, certificações com validade, e
    sugestões de formação/certificação para cada lacuna — reutiliza
-   `gap-analysis.service.ts` sem alterações).
+   `gap-analysis.service.ts` sem alterações). **Prompt 5**: `ADMIN_RH` e
+   `MANAGER` (só na sua equipa) veem um ícone de lápis por competência/
+   certificação, que abre `AvaliarCompetenciaModal`/`EditarCertificacaoModal`
+   — ambos leem sempre o estado atual do servidor ao abrir (nunca
+   reaproveitam o relatório em cache) e, se o backend devolver `409` porque
+   outra pessoa gravou entretanto, mostram o valor atual do servidor com um
+   botão "Atualizar e tentar novamente" em vez de sobrescrever às cegas ou
+   falhar silenciosamente (ver `docs/02-arquitetura-tecnica.md` secção
+   4.5). Ao gravar com sucesso, invalidam as queries do relatório de gap
+   (`gap-lob`, `gap-cargo`) para refletir o novo estado sem refresh manual.
 3. **Gestão de LOBs** (`/lobs`, `/lobs/:id`) — lista e detalhe dos
    requisitos de competência/certificação de cada LOB. Só leitura nesta
    entrega (ver secção 8).

@@ -4,6 +4,8 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    /** Corpo completo da resposta de erro — em conflitos 409 (locking otimista) traz `current`, o estado atual no servidor. */
+    public body?: unknown,
   ) {
     super(message);
   }
@@ -23,12 +25,21 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   const res = await fetch(`${API_URL}${path}`, { ...options, headers });
 
+  // Um handler do Nest que devolve `null`/`undefined` (ex.: "sem
+  // avaliação ainda") manda um corpo HTTP genuinemente vazio (Content-Length: 0),
+  // não a string "null" — res.json() rebenta nesse caso. Ler sempre como
+  // texto primeiro e só fazer parse se houver alguma coisa evita um
+  // SyntaxError não tratado que ficava a promise pendente para sempre do
+  // lado de quem chamou (foi assim que apanhei isto — ver
+  // docs/02-arquitetura-tecnica.md secção 4.5).
+  const texto = await res.text();
+
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new ApiError(res.status, body.message ?? `Erro ${res.status}`);
+    const body = texto ? JSON.parse(texto) : {};
+    throw new ApiError(res.status, body.message ?? `Erro ${res.status}`, body);
   }
-  if (res.status === 204) return undefined as T;
-  return res.json();
+  if (!texto) return null as T;
+  return JSON.parse(texto) as T;
 }
 
 export const api = {
@@ -37,4 +48,6 @@ export const api = {
     request<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined }),
   patch: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined }),
+  put: <T>(path: string, body?: unknown) =>
+    request<T>(path, { method: 'PUT', body: body ? JSON.stringify(body) : undefined }),
 };

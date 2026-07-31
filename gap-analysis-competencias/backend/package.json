@@ -14,6 +14,7 @@
     "prisma:studio": "prisma studio",
     "import:excel": "ts-node scripts/import-excel.ts",
     "seed:admin": "ts-node scripts/seed-admin.ts",
+    "test:concurrency": "node scripts/test-concurrency.mjs",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage"

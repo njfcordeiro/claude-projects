@@ -120,6 +120,54 @@ agrupado por direção) e como MANAGER (só o subordinado direto), bloqueio
 403 para EMPLOYEE, criação de utilizador + mudança de papel com
 confirmação em `audit_log.changed_by`.
 
+## Escrita concorrente e auditoria (Prompt 5)
+
+Ver `docs/02-arquitetura-tecnica.md` secção 4.5 para o desenho completo
+(locking otimista por `version`, `baseAssessmentId` para a tabela
+append-only, advisory lock para a corrida na primeira avaliação). Resumo
+dos endpoints novos:
+
+```bash
+PATCH /colaboradores/:id                                          # body inclui `version`
+POST  /colaboradores/:id/competencias                             # body inclui `baseAssessmentId`
+PUT   /colaboradores/:id/certificacoes/:certificacaoId             # body inclui `version`; cria ou atualiza
+GET   /colaboradores/:id/competencias/:competenciaId/ultima-avaliacao
+GET   /colaboradores/:id/certificacoes/:certificacaoId
+```
+
+Todos passam por `ColaboradoresService.podeEditar` (mesma regra de
+`ADMIN_RH`/`MANAGER` da leitura fina, secção 4.3 do doc de arquitetura) e
+por `PrismaService.runAsUser`, pelo que ficam atribuídos em
+`audit_log.changed_by`. Duas novas migrações cobrem isto:
+`add_optimistic_locking_version` (coluna `version` em `colaboradores` e
+`colaborador_certificacao`) e
+`audit_trigger_colaborador_competencia_certificacao` (trigger de auditoria
+nas duas tabelas — `colaborador_certificacao` com CRUD completo,
+`colaborador_competencia` só `INSERT`, por ser append-only).
+
+**Testado**: dois scripts, propósitos diferentes.
+
+- `npm run test:concurrency` (`scripts/test-concurrency.mjs`) — script
+  idempotente e auto-seeding (cria/reutiliza colaboradores/competência/
+  certificação de teste com ids `900001+`; aceita `--reset`). Dispara
+  pedidos verdadeiramente concorrentes via `Promise.all` contra a API real
+  a correr localmente e confirma: (1) duas escritas simultâneas à mesma
+  certificação → exatamente um `200` e um `409`; (2) duas primeiras
+  avaliações simultâneas da mesma competência → exatamente um `201` e um
+  `409` (este teste apanhou a corrida real do advisory lock, secção 4.5b —
+  sem o lock, os dois pedidos passavam); (3) duas escritas simultâneas ao
+  mesmo colaborador → um `200`/um `409`; (4) `MANAGER` bloqueado (`403`) a
+  editar um colaborador fora da sua equipa. Corrido 3× seguidas sem
+  falhas.
+- Validação de UI (Playwright, não commitado): fluxo completo num browser
+  real — abrir a ficha, avaliar uma competência, editar uma certificação,
+  e um cenário de conflito determinístico (abre o modal, injeta uma
+  escrita concorrente diretamente via API a simular "outra pessoa",
+  submete pelo formulário já aberto e confirma que a UI mostra o aviso de
+  conflito com o valor do servidor em vez de rebentar ou sobrescrever;
+  confirma também que "Atualizar e tentar novamente" recarrega o estado e
+  permite gravar a seguir). Zero erros de consola.
+
 ### Dependência conhecida (não resolvida nesta entrega)
 
 `npm audit` acusa vulnerabilidades moderadas/altas (DoS) em `multer`/`qs`,

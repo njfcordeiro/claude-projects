@@ -24,6 +24,47 @@ export interface ColaboradorResumo {
   nucleoId: number | null;
   areaId: number | null;
   managerId: number | null;
+  /** Locking otimista — ver docs/02-arquitetura-tecnica.md secção 4.5. */
+  version: number;
+}
+
+// --- Escrita com locking otimista (Prompt 5) ------------------------------
+
+export interface UltimaAvaliacao {
+  id: number;
+  nivel_id: number;
+  data_avaliacao: string;
+  origem: string;
+}
+
+export interface CertificacaoAtual {
+  id: number;
+  colaboradorId: number;
+  certificacaoId: string;
+  dataObtencao: string | null;
+  dataValidade: string | null;
+  anexoUrl: string | null;
+  version: number;
+}
+
+export interface CreateAvaliacaoInput {
+  competenciaId: number;
+  nivelId: number;
+  baseAssessmentId: number | null;
+  origem?: 'MANAGER' | 'FORMAL' | 'AVALIACAO_360';
+}
+
+export interface UpsertCertificacaoInput {
+  dataObtencao?: string;
+  dataValidade?: string;
+  anexoUrl?: string;
+  version?: number;
+}
+
+/** Corpo de uma resposta 409 — ver ApiError.body em api/client.ts. */
+export interface ConflitoResponse<T> {
+  message: string;
+  current: T | null;
 }
 
 // --- Motor de gap (backend/src/gap-analysis/gap-analysis.types.ts) -------

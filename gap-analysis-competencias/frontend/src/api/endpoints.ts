@@ -1,6 +1,8 @@
 import { api } from './client';
 import {
+  CertificacaoAtual,
   ColaboradorResumo,
+  CreateAvaliacaoInput,
   DashboardResponse,
   FormacaoResumo,
   LobDetalhe,
@@ -9,6 +11,8 @@ import {
   PapelUtilizador,
   RelatorioGapCargo,
   RelatorioGapLob,
+  UltimaAvaliacao,
+  UpsertCertificacaoInput,
   UsuarioResumo,
 } from '../types/api';
 
@@ -17,6 +21,16 @@ export const endpoints = {
 
   colaboradores: () => api.get<ColaboradorResumo[]>('/colaboradores'),
   colaborador: (id: number) => api.get<ColaboradorResumo>(`/colaboradores/${id}`),
+
+  // Escrita com locking otimista (Prompt 5) — ver docs/02-arquitetura-tecnica.md secção 4.5.
+  ultimaAvaliacao: (colaboradorId: number, competenciaId: number) =>
+    api.get<UltimaAvaliacao | null>(`/colaboradores/${colaboradorId}/competencias/${competenciaId}/ultima-avaliacao`),
+  criarAvaliacao: (colaboradorId: number, dto: CreateAvaliacaoInput) =>
+    api.post(`/colaboradores/${colaboradorId}/competencias`, dto),
+  certificacaoAtual: (colaboradorId: number, certificacaoId: string) =>
+    api.get<CertificacaoAtual | null>(`/colaboradores/${colaboradorId}/certificacoes/${certificacaoId}`),
+  upsertCertificacao: (colaboradorId: number, certificacaoId: string, dto: UpsertCertificacaoInput) =>
+    api.put(`/colaboradores/${colaboradorId}/certificacoes/${certificacaoId}`, dto),
 
   dashboard: () => api.get<DashboardResponse>('/gap-analysis/dashboard'),
   gapCargo: (colaboradorId: number) => api.get<RelatorioGapCargo>(`/gap-analysis/colaboradores/${colaboradorId}/cargo`),

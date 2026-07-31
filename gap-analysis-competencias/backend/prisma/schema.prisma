@@ -369,6 +369,13 @@ model Colaborador {
   updatedAt      DateTime  @updatedAt @map("updated_at")
   createdBy      Int?      @map("created_by")
   updatedBy      Int?      @map("updated_by")
+  // Locking otimista (NOVO): incrementado a cada UPDATE. Um pedido de
+  // escrita tem de enviar a versão que leu; se já não bater certo com a
+  // versão atual, a escrita é rejeitada com 409 em vez de sobrescrever
+  // silenciosamente a alteração de outro utilizador — ver
+  // ColaboradoresService.atualizarComLock e
+  // docs/02-arquitetura-tecnica.md secção 4.5.
+  version        Int       @default(0)
 
   carreira  Carreira?  @relation(fields: [carreiraId], references: [id])
   categoria Categoria? @relation(fields: [categoriaId], references: [id])
@@ -429,6 +436,8 @@ model ColaboradorCertificacao {
   anexoUrl       String?   @map("anexo_url")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
+  // Locking otimista (NOVO) — ver nota em Colaborador.version.
+  version        Int       @default(0)
 
   colaborador  Colaborador  @relation(fields: [colaboradorId], references: [id])
   certificacao Certificacao @relation(fields: [certificacaoId], references: [id])

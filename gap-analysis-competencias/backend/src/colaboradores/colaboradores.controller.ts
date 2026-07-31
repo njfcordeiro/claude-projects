@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { PapelUtilizador } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -8,6 +8,8 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { AuthenticatedUser } from '../auth/jwt-payload.interface';
 import { ColaboradoresService } from './colaboradores.service';
 import { UpdateColaboradorDto } from './dto/update-colaborador.dto';
+import { CreateAvaliacaoDto } from './dto/create-avaliacao.dto';
+import { UpsertCertificacaoDto } from './dto/upsert-certificacao.dto';
 
 @ApiTags('colaboradores')
 @ApiBearerAuth()
@@ -42,5 +44,46 @@ export class ColaboradoresController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.atualizar(id, dto, user);
+  }
+
+  // Sem @Roles aqui de propósito, igual ao GET :id — ADMIN_RH edita
+  // qualquer um, MANAGER só a sua equipa; a distinção vive no service
+  // (podeEditar), EMPLOYEE/VIEWER acabam sempre em 403 lá dentro.
+  @Post(':id/competencias')
+  criarAvaliacao(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateAvaliacaoDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.criarAvaliacao(id, dto, user);
+  }
+
+  @Put(':id/certificacoes/:certificacaoId')
+  upsertCertificacao(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('certificacaoId') certificacaoId: string,
+    @Body() dto: UpsertCertificacaoDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.upsertCertificacao(id, certificacaoId, dto, user);
+  }
+
+  /** Leitura fresca imediatamente antes de abrir o formulário "avaliar competência" — ver comentário no service. */
+  @Get(':id/competencias/:competenciaId/ultima-avaliacao')
+  obterUltimaAvaliacao(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('competenciaId', ParseIntPipe) competenciaId: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.obterUltimaAvaliacao(id, competenciaId, user);
+  }
+
+  @Get(':id/certificacoes/:certificacaoId')
+  obterCertificacaoAtual(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('certificacaoId') certificacaoId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.obterCertificacaoAtual(id, certificacaoId, user);
   }
 }

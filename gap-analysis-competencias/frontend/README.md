@@ -22,6 +22,12 @@ utilizador criado (`npm run seed:admin` no backend).
   opcionalmente, por papel — espelha o RBAC do backend).
 - `src/api/client.ts` — wrapper fino sobre `fetch`, injeta o JWT no header
   `Authorization`; `src/api/endpoints.ts` — chamadas tipadas por endpoint.
+  Lê sempre a resposta como texto antes de fazer `JSON.parse` (só se não
+  estiver vazia) — um handler do Nest que devolve `null` manda um corpo
+  HTTP genuinamente vazio (`Content-Length: 0`), e `res.json()` direto
+  rebenta nesse caso (apanhado durante a validação do Prompt 5: um modal
+  ficava preso em "A carregar…" para sempre, com uma promise rejeitada
+  sem handler).
 - `src/components/layout/` — `ShellBar` (cabeçalho: logo, pesquisa global,
   perfil) e `SideNav` (menu lateral, itens filtrados por papel).
 - `src/components/ui/` — sistema de design: `Card`, `Badge` (estado,
@@ -30,7 +36,11 @@ utilizador criado (`npm run seed:admin` no backend).
   `KpiTile`, `ReadinessBarChart`, `form.tsx` (`Field`/`Input`/`Select`/`Button`).
 - `src/components/gap/` — componentes partilhados entre a ficha do
   colaborador e o detalhe de LOB (`NivelPill`, `SugestoesLista`,
-  `LobGapDetail`).
+  `LobGapDetail`), mais os modais de escrita do Prompt 5
+  (`AvaliarCompetenciaModal`, `EditarCertificacaoModal`) — ambos leem o
+  estado atual do servidor ao abrir e tratam `409` (conflito de
+  concorrência) mostrando o valor atual em vez de sobrescrever às cegas;
+  ver `../docs/02-arquitetura-tecnica.md` secção 4.5.
 - `src/pages/` — os 5 ecrãs: `DashboardPage`, `ColaboradoresListPage` +
   `ColaboradorProfilePage`, `LobsListPage` + `LobDetailPage`,
   `FormacoesPage`, `AdminPage`.
