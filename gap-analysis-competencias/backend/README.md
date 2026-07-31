@@ -1,19 +1,24 @@
 # Backend — Gap Analysis de Competências
 
-Schema Prisma/PostgreSQL e script de importação do Excel de origem,
-implementando o modelo documentado em
-[`../docs/01-modelo-dados.md`](../docs/01-modelo-dados.md).
+API NestJS + schema Prisma/PostgreSQL, implementando o modelo documentado
+em [`../docs/01-modelo-dados.md`](../docs/01-modelo-dados.md) e a
+arquitetura descrita em
+[`../docs/02-arquitetura-tecnica.md`](../docs/02-arquitetura-tecnica.md).
 
 ## Setup
 
 ```bash
 npm install
-cp .env.example .env   # ajusta DATABASE_URL e EXCEL_SOURCE_PATH
+cp .env.example .env   # ajusta DATABASE_URL, JWT_SECRET, etc.
 npx prisma migrate deploy   # aplica as migrações a uma BD Postgres vazia
+npm run seed:admin          # cria o primeiro utilizador ADMIN_RH (usa ADMIN_EMAIL/ADMIN_PASSWORD do .env)
+npm run start:dev           # arranca a API em modo watch — http://localhost:3000
 ```
 
-Requer PostgreSQL 14+. `DATABASE_URL` segue o formato standard do Prisma:
-`postgresql://user:password@host:5432/database?schema=public`.
+Requer PostgreSQL 14+ e Node 20+. `DATABASE_URL` segue o formato standard
+do Prisma: `postgresql://user:password@host:5432/database?schema=public`.
+Documentação interativa da API em `http://localhost:3000/api/docs`
+(Swagger, gerado a partir dos decorators — ver `src/main.ts`).
 
 ## Estrutura
 
@@ -31,6 +36,39 @@ Requer PostgreSQL 14+. `DATABASE_URL` segue o formato standard do Prisma:
     (tabela append-only), sem depender de UPDATE.
 - `scripts/import-excel.ts` — lê o Excel de origem e popula a BD via
   Prisma Client, pela ordem de dependências do esquema.
+- `scripts/seed-admin.ts` — cria/atualiza o primeiro utilizador `ADMIN_RH`
+  (não há self-registo nesta app).
+- `src/` — API NestJS. Ver
+  [`../docs/02-arquitetura-tecnica.md`](../docs/02-arquitetura-tecnica.md)
+  secção 2 para a estrutura completa de módulos (implementados e
+  planeados) e secção 4 para o desenho de autenticação/autorização.
+
+## Autenticação e RBAC (implementado nesta entrega)
+
+- `POST /auth/login` — email + password → JWT (8h). `GET /auth/me` —
+  perfil do utilizador autenticado.
+- `RolesGuard` + `@Roles(...)` — bloqueia por papel à entrada do
+  controller (grosseiro). Ver `colaboradores.controller.ts`.
+- Restrição fina (ex.: um `MANAGER` só vê a sua equipa direta, um
+  `EMPLOYEE` só se vê a si) fica no service, não no guard — ver
+  `colaboradores.service.ts` e a justificação na secção 4.3 do doc de
+  arquitetura.
+- `PrismaService.runAsUser(userId, fn)` — usar em toda a escrita que deve
+  ficar atribuída ao utilizador autenticado no `audit_log` (ver secção
+  seguinte). **Testado end-to-end**: login como ADMIN_RH → `PATCH
+  /colaboradores/:id` → `audit_log.changed_by` fica corretamente
+  preenchido com o id do utilizador.
+
+### Dependência conhecida (não resolvida nesta entrega)
+
+`npm audit` acusa vulnerabilidades moderadas/altas (DoS) em `multer`/`qs`,
+transitivas de `@nestjs/platform-express@10`. A correção exige subir para
+`@nestjs/platform-express@11` (breaking change, não validado nesta
+entrega). Não há endpoints de upload de ficheiros nesta versão, o que
+reduz a exposição prática; ainda assim, planear a migração para Nest 11
+antes de expor a API fora de uma rede interna/VPN. (A vulnerabilidade
+crítica original, via `bcrypt`→`node-gyp`→`tar`, já foi eliminada trocando
+`bcrypt` nativo por `bcryptjs`, puro JS.)
 
 ## `audit_log.changed_by`
 
