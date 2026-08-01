@@ -3,11 +3,14 @@ import { Prisma } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from '../auth/jwt-payload.interface';
+import { AutoCriacaoService } from './auto-criacao.service';
 import { CATALOGO_REGISTRY, CatalogoCampoDef, CatalogoTabelaDef, encontrarTabela } from './catalogo.registry';
 
 export interface ResumoImportacao {
   criados: number;
   atualizados: number;
+  /** Auto-criação de registos relacionados em falta (LOB/Formação/Competência/...) — ver AutoCriacaoService. Nunca bloqueia a linha. */
+  avisos: string[];
   erros: string[];
 }
 
@@ -21,7 +24,10 @@ export interface ResumoImportacao {
  */
 @Injectable()
 export class CatalogoService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly autoCriacao: AutoCriacaoService,
+  ) {}
 
   meta() {
     return CATALOGO_REGISTRY.map(({ delegate: _delegate, ...resto }) => resto);
@@ -120,7 +126,7 @@ export class CatalogoService {
       if (idx !== -1) indicePorCampo.set(c.key, idx);
     }
 
-    const resumo: ResumoImportacao = { criados: 0, atualizados: 0, erros: [] };
+    const resumo: ResumoImportacao = { criados: 0, atualizados: 0, avisos: [], erros: [] };
 
     for (let r = 2; r <= sheet.rowCount; r++) {
       const linha = sheet.getRow(r);
@@ -136,7 +142,7 @@ export class CatalogoService {
         }
         if (Object.values(bruto).every((v) => v === null || v === undefined || v === '')) continue;
 
-        const data = this.validarEcoagir(def, bruto, true);
+        const data = await this.validarEcoagirImport(def, bruto, user, resumo.avisos);
         const where = this.construirWhereIdentidade(def, data);
 
         const existe = await (this.prisma as any)[def.delegate].findFirst({ where });
@@ -194,6 +200,41 @@ export class CatalogoService {
       }
 
       resultado[c.key] = this.coagirValor(c, bruto);
+    }
+    return resultado;
+  }
+
+  /**
+   * Como `validarEcoagir`, mas para import: campos de relação são
+   * resolvidos por id OU por nome (via `AutoCriacaoService`), criando o
+   * registo relacionado automaticamente quando ainda não existe — ver
+   * REGRA DE DEPENDÊNCIAS AUTOMÁTICA pedida pelo utilizador. Nunca bloqueia
+   * a linha por uma relação em falta quando a tabela relacionada suporta
+   * criação automática.
+   */
+  private async validarEcoagirImport(
+    def: CatalogoTabelaDef,
+    dados: Record<string, unknown>,
+    user: AuthenticatedUser,
+    avisos: string[],
+  ): Promise<Record<string, unknown>> {
+    const resultado: Record<string, unknown> = {};
+    for (const c of def.campos) {
+      const bruto = dados[c.key];
+      const presente = bruto !== undefined && bruto !== null && bruto !== '';
+
+      if (!presente) {
+        if (c.obrigatorio) {
+          throw new BadRequestException(`Campo obrigatório em falta: "${c.label}" (${c.key}).`);
+        }
+        continue;
+      }
+
+      if (c.tipo === 'relation' && c.relatedTable) {
+        resultado[c.key] = await this.autoCriacao.resolver(c.relatedTable, bruto as string | number, user, avisos);
+      } else {
+        resultado[c.key] = this.coagirValor(c, bruto);
+      }
     }
     return resultado;
   }

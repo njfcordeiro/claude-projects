@@ -9,6 +9,8 @@ import { LobsModule } from './lobs/lobs.module';
 import { FormacoesModule } from './formacoes/formacoes.module';
 import { UsersModule } from './users/users.module';
 import { CatalogoModule } from './catalogo/catalogo.module';
+import { AtribuicoesModule } from './atribuicoes/atribuicoes.module';
+import { PdiModule } from './pdi/pdi.module';
 
 @Module({
   imports: [
@@ -21,6 +23,8 @@ import { CatalogoModule } from './catalogo/catalogo.module';
     FormacoesModule,
     UsersModule,
     CatalogoModule,
+    AtribuicoesModule,
+    PdiModule,
     HealthModule,
   ],
 })

@@ -1,5 +1,23 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Put,
+  Query,
+  Res,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { PapelUtilizador } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -11,6 +29,8 @@ import { CreateColaboradorDto } from './dto/create-colaborador.dto';
 import { UpdateColaboradorDto } from './dto/update-colaborador.dto';
 import { CreateAvaliacaoDto } from './dto/create-avaliacao.dto';
 import { UpsertCertificacaoDto } from './dto/upsert-certificacao.dto';
+
+const LIMITE_FICHEIRO_BYTES = 10 * 1024 * 1024;
 
 @ApiTags('colaboradores')
 @ApiBearerAuth()
@@ -34,6 +54,28 @@ export class ColaboradoresController {
   @Post()
   criar(@Body() dto: CreateColaboradorDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.criar(dto, user);
+  }
+
+  // Declaradas antes de ":id" de propósito — senão o router tentava
+  // interpretar "export"/"import" como um id numérico.
+  @Roles(PapelUtilizador.ADMIN_RH, PapelUtilizador.VIEWER)
+  @Get('export')
+  async exportar(@Res() res: Response) {
+    const buffer = await this.service.exportar();
+    res
+      .set({
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': 'attachment; filename="colaboradores.xlsx"',
+      })
+      .send(buffer);
+  }
+
+  @Roles(PapelUtilizador.ADMIN_RH)
+  @Post('import')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: LIMITE_FICHEIRO_BYTES } }))
+  importar(@UploadedFile() file: Express.Multer.File | undefined, @CurrentUser() user: AuthenticatedUser) {
+    if (!file) throw new BadRequestException('Nenhum ficheiro enviado (campo "file").');
+    return this.service.importar(file.buffer, user);
   }
 
   // Sem @Roles aqui de propósito — a restrição fina (gestor só vê a sua

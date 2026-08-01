@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { endpoints } from '../api/endpoints';
 import { Card } from '../components/ui/Card';
 import { DataTable } from '../components/ui/DataTable';
+import { PrintButton } from '../components/ui/PrintButton';
 import { Select } from '../components/ui/form';
 import { CatalogoRegisto } from '../types/api';
 
@@ -32,11 +33,16 @@ export function CandidatosPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold text-fiori-text">Candidatos a carreira</h1>
-        <p className="text-sm text-fiori-text-secondary">
-          Colaboradores fora da carreira escolhida, ordenados por proximidade ao cargo de entrada mais acessível.
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-fiori-text">Candidatos a carreira</h1>
+          <p className="text-sm text-fiori-text-secondary">
+            Colaboradores fora da carreira escolhida, ordenados por proximidade ao cargo de entrada mais acessível.
+          </p>
+        </div>
+        <div className="no-print">
+          <PrintButton label="Imprimir" />
+        </div>
       </div>
 
       <Card>

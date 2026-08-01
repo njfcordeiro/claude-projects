@@ -1,7 +1,9 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { OrigemAvaliacao, PapelUtilizador, Prisma } from '@prisma/client';
+import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from '../auth/jwt-payload.interface';
+import { AutoCriacaoService } from '../catalogo/auto-criacao.service';
 import { CreateColaboradorDto } from './dto/create-colaborador.dto';
 import { UpdateColaboradorDto } from './dto/update-colaborador.dto';
 import { CreateAvaliacaoDto } from './dto/create-avaliacao.dto';
@@ -20,6 +22,28 @@ const SELECT_RESUMO = {
   version: true,
 } as const;
 
+/** Colunas do round-trip de Excel — ver `exportar`/`importar` mais abaixo. */
+const COLUNAS_IMPORT_EXPORT = [
+  'id',
+  'nome',
+  'cargoId',
+  'direcaoId',
+  'nucleoId',
+  'areaId',
+  'carreiraId',
+  'categoriaId',
+  'managerId',
+  'eBum',
+  'dataAdmissao',
+] as const;
+
+export interface ResumoImportacaoColaboradores {
+  criados: number;
+  atualizados: number;
+  avisos: string[];
+  erros: string[];
+}
+
 /** Linha da view colaborador_competencia_atual (docs/01-modelo-dados.md secção 5.1). */
 interface UltimaAvaliacaoRow {
   id: number;
@@ -30,7 +54,10 @@ interface UltimaAvaliacaoRow {
 
 @Injectable()
 export class ColaboradoresService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly autoCriacao: AutoCriacaoService,
+  ) {}
 
   /** Lista completa — só ADMIN_RH/VIEWER chegam aqui (bloqueado pelo RolesGuard no controller). */
   async listar(skip = 0, take = 1000) {
@@ -71,6 +98,173 @@ export class ColaboradoresService {
     }
   }
 
+  /** Exporta todos os colaboradores para .xlsx — ver round-trip de import abaixo. */
+  async exportar(): Promise<Buffer> {
+    const linhas = await this.prisma.colaborador.findMany({
+      select: {
+        id: true,
+        nome: true,
+        cargoId: true,
+        direcaoId: true,
+        nucleoId: true,
+        areaId: true,
+        carreiraId: true,
+        categoriaId: true,
+        managerId: true,
+        eBum: true,
+        dataAdmissao: true,
+      },
+      orderBy: { id: 'asc' },
+    });
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('colaboradores');
+    sheet.addRow(COLUNAS_IMPORT_EXPORT);
+    for (const l of linhas) {
+      sheet.addRow([
+        l.id,
+        l.nome,
+        l.cargoId,
+        l.direcaoId,
+        l.nucleoId,
+        l.areaId,
+        l.carreiraId,
+        l.categoriaId,
+        l.managerId,
+        l.eBum,
+        l.dataAdmissao ? l.dataAdmissao.toISOString().slice(0, 10) : null,
+      ]);
+    }
+    return Buffer.from(await workbook.xlsx.writeBuffer());
+  }
+
+  /**
+   * Round-trip de Excel para Colaboradores: atualiza por `id` (cria se não
+   * existir). Campos de relação (Direção/Área/Núcleo/Carreira/Categoria)
+   * podem vir por id OU por nome — se o nome não existir ainda, é criado
+   * automaticamente (ver `AutoCriacaoService`). `cargoId` e `managerId` têm
+   * de já existir (não criamos cargos nem colaboradores "fantasma" só a
+   * partir de um nome numa célula) — linha com erro fica só nessa linha,
+   * não bloqueia o ficheiro inteiro.
+   */
+  async importar(buffer: Buffer, user: AuthenticatedUser): Promise<ResumoImportacaoColaboradores> {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+    const sheet = workbook.worksheets[0];
+    if (!sheet) throw new BadRequestException('Ficheiro sem folhas.');
+
+    const cabecalho = (sheet.getRow(1).values as unknown[]).map((v) => (v == null ? null : String(v).trim()));
+    const indicePorCampo = new Map<string, number>();
+    for (const chave of COLUNAS_IMPORT_EXPORT) {
+      const idx = cabecalho.findIndex((h) => h === chave);
+      if (idx !== -1) indicePorCampo.set(chave, idx);
+    }
+
+    const resumo: ResumoImportacaoColaboradores = { criados: 0, atualizados: 0, avisos: [], erros: [] };
+
+    for (let r = 2; r <= sheet.rowCount; r++) {
+      const linha = sheet.getRow(r);
+      if (linha.values == null || (Array.isArray(linha.values) && linha.values.length === 0)) continue;
+
+      try {
+        const bruto: Record<string, unknown> = {};
+        for (const chave of COLUNAS_IMPORT_EXPORT) {
+          const idx = indicePorCampo.get(chave);
+          if (idx === undefined) continue;
+          const celula = linha.getCell(idx).value;
+          bruto[chave] = celula && typeof celula === 'object' && 'result' in celula ? (celula as any).result : celula;
+        }
+        if (Object.values(bruto).every((v) => v === null || v === undefined || v === '')) continue;
+
+        const data = await this.mapearLinhaImport(bruto, user, resumo.avisos);
+
+        const existe = await this.prisma.colaborador.findUnique({ where: { id: data.id as number } });
+        await this.prisma.runAsUser(user.sub, (tx) =>
+          existe
+            ? tx.colaborador.update({ where: { id: data.id as number }, data: { ...data, id: undefined } })
+            : tx.colaborador.create({ data: data as Prisma.ColaboradorCreateInput }),
+        );
+        if (existe) resumo.atualizados++;
+        else resumo.criados++;
+      } catch (err) {
+        const mensagem = err instanceof Error ? err.message : 'Erro desconhecido.';
+        resumo.erros.push(`Linha ${r}: ${mensagem}`);
+      }
+    }
+
+    return resumo;
+  }
+
+  private async mapearLinhaImport(
+    bruto: Record<string, unknown>,
+    user: AuthenticatedUser,
+    avisos: string[],
+  ): Promise<Record<string, unknown>> {
+    if (bruto.id === undefined || bruto.id === null || bruto.id === '') {
+      throw new Error('Campo obrigatório em falta: "id".');
+    }
+    if (bruto.nome === undefined || bruto.nome === null || bruto.nome === '') {
+      throw new Error('Campo obrigatório em falta: "nome".');
+    }
+
+    const data: Record<string, unknown> = { id: Number(bruto.id), nome: String(bruto.nome).trim() };
+
+    const relacoesAutoCriaveis: [string, string][] = [
+      ['direcaoId', 'direcoes'],
+      ['areaId', 'areas'],
+      ['nucleoId', 'nucleos'],
+      ['carreiraId', 'carreiras'],
+      ['categoriaId', 'categorias'],
+    ];
+    for (const [campo, tabela] of relacoesAutoCriaveis) {
+      const valor = bruto[campo];
+      if (valor === undefined || valor === null || valor === '') continue;
+      data[campo] = await this.autoCriacao.resolver(tabela, valor as string | number, user, avisos);
+    }
+
+    if (bruto.cargoId !== undefined && bruto.cargoId !== null && bruto.cargoId !== '') {
+      data.cargoId = await this.resolverCargo(bruto.cargoId);
+    }
+
+    if (bruto.managerId !== undefined && bruto.managerId !== null && bruto.managerId !== '') {
+      data.managerId = await this.resolverManager(bruto.managerId);
+    }
+
+    if (bruto.eBum !== undefined && bruto.eBum !== null && bruto.eBum !== '') {
+      const texto = String(bruto.eBum).trim().toLowerCase();
+      data.eBum = texto === 'true' || texto === '1' || texto === 'sim' || texto === 'x';
+    }
+
+    if (bruto.dataAdmissao !== undefined && bruto.dataAdmissao !== null && bruto.dataAdmissao !== '') {
+      const data_ = bruto.dataAdmissao instanceof Date ? bruto.dataAdmissao : new Date(String(bruto.dataAdmissao));
+      if (Number.isNaN(data_.getTime())) throw new Error(`Data de admissão inválida: "${bruto.dataAdmissao}".`);
+      data.dataAdmissao = data_;
+    }
+
+    return data;
+  }
+
+  private async resolverCargo(valor: unknown): Promise<string> {
+    const texto = String(valor).trim();
+    const porId = await this.prisma.cargo.findUnique({ where: { id: texto } });
+    if (porId) return porId.id;
+    const porNome = await this.prisma.cargo.findFirst({ where: { nome: texto } });
+    if (porNome) return porNome.id;
+    throw new Error(`Cargo "${texto}" não encontrado — cria o cargo primeiro em Gestão de Dados (não é criado automaticamente).`);
+  }
+
+  private async resolverManager(valor: unknown): Promise<number> {
+    const comoNumero = typeof valor === 'number' ? valor : /^-?\d+$/.test(String(valor).trim()) ? Number(valor) : null;
+    if (comoNumero !== null) {
+      const porId = await this.prisma.colaborador.findUnique({ where: { id: comoNumero } });
+      if (porId) return porId.id;
+    }
+    const texto = String(valor).trim();
+    const porNome = await this.prisma.colaborador.findFirst({ where: { nome: texto } });
+    if (porNome) return porNome.id;
+    throw new Error(`Gestor "${texto}" não encontrado — o gestor tem de já existir como colaborador.`);
+  }
+
   async meuPerfil(user: AuthenticatedUser) {
     if (user.colaboradorId === null) {
       throw new NotFoundException('Esta conta não está associada a um colaborador.');
@@ -105,7 +299,8 @@ export class ColaboradoresService {
    * EMPLOYEE e VIEWER nunca escrevem — "Colaborador só vê os seus
    * próprios dados" é literal, não inclui autoavaliação nesta entrega.
    */
-  private async podeEditar(id: number, user: AuthenticatedUser): Promise<void> {
+  /** Público de propósito — reutilizado pelo PdiService para o mesmo RBAC de escrita (ver docs/02-arquitetura-tecnica.md secção 4.5). */
+  async podeEditar(id: number, user: AuthenticatedUser): Promise<void> {
     if (user.role === PapelUtilizador.ADMIN_RH) return;
 
     if (user.role === PapelUtilizador.MANAGER) {

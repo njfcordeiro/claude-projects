@@ -171,6 +171,22 @@ export interface ResumoColaboradorDashboard {
   lobsAtingidos: number;
   gap: number;
   prontidaoMedia: number;
+  dataAdmissao: string | null;
+}
+
+export interface CompetenciaCritica {
+  competenciaId: number;
+  competenciaNome: string;
+  colaboradoresEmFalta: number;
+}
+
+export interface ColaboradorEmRisco {
+  colaboradorId: number;
+  nome: string;
+  cargoNome: string;
+  prontidaoMedia: number;
+  anosNoCargoAtual: number;
+  motivo: string;
 }
 
 export interface ResumoGrupoDashboard {
@@ -189,6 +205,9 @@ export interface DashboardResponse {
   porNucleo: ResumoGrupoDashboard[];
   porCargo: ResumoGrupoDashboard[];
   colaboradores: ResumoColaboradorDashboard[];
+  insights: string[];
+  competenciasCriticas: CompetenciaCritica[];
+  colaboradoresEmRiscoFuga: ColaboradorEmRisco[];
 }
 
 export interface CandidatosCarreiraResponse {
@@ -225,7 +244,91 @@ export type CatalogoRegisto = Record<string, string | number | boolean | null>;
 export interface ResumoImportacao {
   criados: number;
   atualizados: number;
+  avisos: string[];
   erros: string[];
+}
+
+// --- Assistente de atribuição em massa (backend/src/atribuicoes) ---------
+
+export interface AtribuirCompetenciaInput {
+  colaboradorIds: number[];
+  competenciaId: number;
+  nivelId: number;
+  dataAvaliacao?: string;
+}
+
+export interface AtribuirCertificacaoInput {
+  colaboradorIds: number[];
+  certificacaoId: string;
+  dataObtencao?: string;
+  dataValidade?: string;
+}
+
+export interface ResumoAtribuicao {
+  processados: number;
+  criados: number;
+  atualizados: number;
+  erros: string[];
+}
+
+// --- PDI (backend/src/pdi) -------------------------------------------------
+
+export type EstadoPdi = 'PENDENTE' | 'EM_CURSO' | 'CONCLUIDO';
+export type OrigemPdi = 'AUTOMATICO' | 'MANUAL';
+
+export interface PdiItem {
+  id: number;
+  colaboradorId: number;
+  competenciaId: number | null;
+  certificacaoId: string | null;
+  formacaoId: number | null;
+  descricao: string;
+  estado: EstadoPdi;
+  origem: OrigemPdi;
+  notas: string | null;
+  createdAt: string;
+  updatedAt: string;
+  competencia: { nome: string } | null;
+  certificacao: { nome: string } | null;
+  formacao: { nome: string; duracaoHoras: number | null } | null;
+}
+
+export interface GerarPdiResponse {
+  criados: number;
+  itens: PdiItem[];
+}
+
+export interface UpdatePdiItemInput {
+  estado?: EstadoPdi;
+  notas?: string;
+}
+
+// --- Skill Matrix (backend/src/gap-analysis) ------------------------------
+
+export type DimensaoSkillMatrix = 'lob' | 'competencia';
+
+export interface SkillMatrixColuna {
+  id: number;
+  nome: string;
+}
+
+export interface SkillMatrixLinha {
+  colaboradorId: number;
+  nome: string;
+  valores: Record<string, number>;
+}
+
+export interface SkillMatrixResponse {
+  dimensao: DimensaoSkillMatrix;
+  colunas: SkillMatrixColuna[];
+  linhas: SkillMatrixLinha[];
+}
+
+export interface FiltrosOrganizacionais {
+  direcaoId?: number;
+  areaId?: number;
+  nucleoId?: number;
+  cargoId?: string;
 }
 
 // --- Catálogo (backend/src/lobs, backend/src/formacoes) -------------------

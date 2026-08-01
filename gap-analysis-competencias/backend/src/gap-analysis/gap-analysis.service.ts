@@ -8,7 +8,11 @@ import {
   CandidatosCarreiraResponse,
   CertificacaoCandidata,
   CertificacaoColaboradorInput,
+  ColaboradorEmRisco,
+  CompetenciaCritica,
   DashboardResponse,
+  DimensaoSkillMatrix,
+  FiltrosOrganizacionais,
   FormacaoCandidata,
   PreparacaoCertificacao,
   RelatorioGapCargo,
@@ -18,8 +22,13 @@ import {
   ResumoColaboradorDashboard,
   ResumoGapLob,
   ResumoGrupoDashboard,
+  SkillMatrixResponse,
   SugestoesCompetencia,
 } from './gap-analysis.types';
+
+const LIMIAR_PRONTIDAO_RISCO_FUGA = 85;
+const ANOS_MINIMOS_RISCO_FUGA = 2;
+const MS_POR_ANO = 1000 * 60 * 60 * 24 * 365.25;
 
 /** Linha da view colaborador_competencia_atual (docs/01-modelo-dados.md secção 5.1). */
 interface ColaboradorCompetenciaAtualRow {
@@ -112,7 +121,7 @@ export class GapAnalysisService {
         ? { managerId: user.colaboradorId ?? -1, cargoId: { not: null } }
         : { cargoId: { not: null } };
 
-    const resumos = await this.calcularResumos(where);
+    const { resumos, competenciasCriticas } = await this.calcularResumos(where);
 
     if (resumos.length === 0) {
       return {
@@ -124,19 +133,101 @@ export class GapAnalysisService {
         porNucleo: [],
         porCargo: [],
         colaboradores: [],
+        insights: [],
+        competenciasCriticas: [],
+        colaboradoresEmRiscoFuga: [],
       };
     }
+
+    const porDirecao = this.agruparPorCampo(resumos, (r) => r.direcaoNome ?? 'Sem direção');
+    const porArea = this.agruparPorCampo(resumos, (r) => r.areaNome ?? 'Sem área');
+    const porNucleo = this.agruparPorCampo(resumos, (r) => r.nucleoNome ?? 'Sem núcleo');
+    const porCargo = this.agruparPorCampo(resumos, (r) => r.cargoNome);
+    const colaboradoresEmRiscoFuga = await this.calcularRiscoFuga(resumos);
 
     return {
       totalColaboradores: resumos.length,
       prontidaoMediaGeral: Math.round(resumos.reduce((soma, r) => soma + r.prontidaoMedia, 0) / resumos.length),
       colaboradoresEmRisco: resumos.filter((r) => r.gap > 0).length,
-      porDirecao: this.agruparPorCampo(resumos, (r) => r.direcaoNome ?? 'Sem direção'),
-      porArea: this.agruparPorCampo(resumos, (r) => r.areaNome ?? 'Sem área'),
-      porNucleo: this.agruparPorCampo(resumos, (r) => r.nucleoNome ?? 'Sem núcleo'),
-      porCargo: this.agruparPorCampo(resumos, (r) => r.cargoNome),
+      porDirecao,
+      porArea,
+      porNucleo,
+      porCargo,
       colaboradores: [...resumos].sort((a, b) => a.prontidaoMedia - b.prontidaoMedia),
+      insights: this.gerarInsights(resumos, porDirecao, porArea, competenciasCriticas, colaboradoresEmRiscoFuga),
+      competenciasCriticas,
+      colaboradoresEmRiscoFuga,
     };
+  }
+
+  /** Grelha colaboradores × LOBs (ou × competências) para o ecrã Skill Matrix — mesmo RBAC do dashboard. */
+  async obterSkillMatrix(
+    dimensao: DimensaoSkillMatrix,
+    filtros: FiltrosOrganizacionais,
+    user: AuthenticatedUser,
+  ): Promise<SkillMatrixResponse> {
+    if (user.role === PapelUtilizador.EMPLOYEE) {
+      throw new ForbiddenException('A skill matrix é uma vista de equipa/organização — usa a tua ficha pessoal.');
+    }
+
+    const where: Prisma.ColaboradorWhereInput = {
+      cargoId: { not: null },
+      ...(user.role === PapelUtilizador.MANAGER ? { managerId: user.colaboradorId ?? -1 } : {}),
+      ...(filtros.direcaoId ? { direcaoId: filtros.direcaoId } : {}),
+      ...(filtros.areaId ? { areaId: filtros.areaId } : {}),
+      ...(filtros.nucleoId ? { nucleoId: filtros.nucleoId } : {}),
+      ...(filtros.cargoId ? { cargoId: filtros.cargoId } : {}),
+    };
+
+    const colaboradores = await this.prisma.colaborador.findMany({ where, select: { id: true, nome: true }, orderBy: { nome: 'asc' } });
+    if (colaboradores.length === 0) return { dimensao, colunas: [], linhas: [] };
+    const ids = colaboradores.map((c) => c.id);
+
+    if (dimensao === 'lob') {
+      const [niveisPorColaborador, certsPorColaborador, todasAsLobs] = await Promise.all([
+        this.buscarNiveisAtuaisEmLote(ids),
+        this.buscarCertificacoesEmLote(ids),
+        this.prisma.lob.findMany({
+          include: {
+            requisitosCompetencia: { include: { competencia: true } },
+            requisitosCertificacao: { include: { certificacao: true } },
+          },
+          orderBy: { nome: 'asc' },
+        }),
+      ]);
+
+      const colunas = todasAsLobs.map((l) => ({ id: l.id, nome: l.nome }));
+      const linhas = colaboradores.map((c) => {
+        const niveisAtuais = niveisPorColaborador.get(c.id) ?? new Map();
+        const certsColaborador = certsPorColaborador.get(c.id) ?? new Map();
+        const valores: Record<string, number> = {};
+        for (const lob of todasAsLobs) {
+          const requisitosCompetencia = this.mapearRequisitosCompetencia(lob.requisitosCompetencia);
+          const requisitosCertificacao = this.mapearRequisitosCertificacao(lob.requisitosCertificacao);
+          const resultado = calcularGapLob(lob, requisitosCompetencia, requisitosCertificacao, niveisAtuais, certsColaborador);
+          valores[String(lob.id)] = resultado.prontidaoPercentual;
+        }
+        return { colaboradorId: c.id, nome: c.nome, valores };
+      });
+
+      return { dimensao, colunas, linhas };
+    }
+
+    const [niveisPorColaborador, competencias] = await Promise.all([
+      this.buscarNiveisAtuaisEmLote(ids),
+      this.prisma.competencia.findMany({ orderBy: { nome: 'asc' } }),
+    ]);
+    const colunas = competencias.map((c) => ({ id: c.id, nome: c.nome }));
+    const linhas = colaboradores.map((c) => {
+      const niveisAtuais = niveisPorColaborador.get(c.id) ?? new Map();
+      const valores: Record<string, number> = {};
+      for (const comp of competencias) {
+        valores[String(comp.id)] = niveisAtuais.get(comp.id) ?? 0;
+      }
+      return { colaboradorId: c.id, nome: c.nome, valores };
+    });
+
+    return { dimensao, colunas, linhas };
   }
 
   /**
@@ -170,7 +261,7 @@ export class GapAnalysisService {
         ? { managerId: user.colaboradorId ?? -1, cargoId: { not: null }, carreiraId: { not: carreiraId } }
         : { cargoId: { not: null }, carreiraId: { not: carreiraId } };
 
-    const resumos = await this.calcularResumos(where);
+    const { resumos } = await this.calcularResumos(where);
 
     const candidatos = resumos
       .map((r) => ({ ...r, lobsExigidos: lobsExigidosEntrada, gap: Math.max(0, lobsExigidosEntrada - r.lobsAtingidos) }))
@@ -193,7 +284,9 @@ export class GapAnalysisService {
    * ver nota em `sugerirCandidatosCarreira` sobre porque isto não depende
    * do cargo-alvo.
    */
-  private async calcularResumos(where: Prisma.ColaboradorWhereInput): Promise<ResumoColaboradorDashboard[]> {
+  private async calcularResumos(
+    where: Prisma.ColaboradorWhereInput,
+  ): Promise<{ resumos: ResumoColaboradorDashboard[]; competenciasCriticas: CompetenciaCritica[] }> {
     const colaboradores = await this.prisma.colaborador.findMany({
       where,
       select: {
@@ -201,13 +294,14 @@ export class GapAnalysisService {
         nome: true,
         cargoId: true,
         carreiraId: true,
+        dataAdmissao: true,
         direcao: { select: { nome: true } },
         area: { select: { nome: true } },
         nucleo: { select: { nome: true } },
       },
     });
 
-    if (colaboradores.length === 0) return [];
+    if (colaboradores.length === 0) return { resumos: [], competenciasCriticas: [] };
 
     const ids = colaboradores.map((c) => c.id);
     const [niveisPorColaborador, certsPorColaborador, cargosPorId, todasAsLobs] = await Promise.all([
@@ -222,7 +316,10 @@ export class GapAnalysisService {
       }),
     ]);
 
-    return colaboradores.map((c) => {
+    /** Tally de competências obrigatórias em falta em toda a população — alimenta "competências mais críticas" no dashboard. */
+    const tallyCriticas = new Map<number, { nome: string; count: number }>();
+
+    const resumos = colaboradores.map((c) => {
       const cargo = cargosPorId.get(c.cargoId!);
       const niveisAtuais = niveisPorColaborador.get(c.id) ?? new Map();
       const certsColaborador = certsPorColaborador.get(c.id) ?? new Map();
@@ -230,7 +327,16 @@ export class GapAnalysisService {
       const lobsResultados = todasAsLobs.map((lob) => {
         const requisitosCompetencia = this.mapearRequisitosCompetencia(lob.requisitosCompetencia);
         const requisitosCertificacao = this.mapearRequisitosCertificacao(lob.requisitosCertificacao);
-        return calcularGapLob(lob, requisitosCompetencia, requisitosCertificacao, niveisAtuais, certsColaborador);
+        const resultado = calcularGapLob(lob, requisitosCompetencia, requisitosCertificacao, niveisAtuais, certsColaborador);
+
+        for (const comp of resultado.competencias) {
+          if (comp.cumprido || !comp.obrigatorio) continue;
+          const atual = tallyCriticas.get(comp.competenciaId) ?? { nome: comp.competenciaNome, count: 0 };
+          atual.count++;
+          tallyCriticas.set(comp.competenciaId, atual);
+        }
+
+        return resultado;
       });
 
       const lobsAtingidos = lobsResultados.filter((r) => r.atingido).length;
@@ -252,8 +358,88 @@ export class GapAnalysisService {
         lobsAtingidos,
         gap: Math.max(0, lobsExigidos - lobsAtingidos),
         prontidaoMedia,
+        dataAdmissao: c.dataAdmissao ? c.dataAdmissao.toISOString().slice(0, 10) : null,
       };
     });
+
+    const competenciasCriticas = Array.from(tallyCriticas.entries())
+      .map(([competenciaId, v]) => ({ competenciaId, competenciaNome: v.nome, colaboradoresEmFalta: v.count }))
+      .sort((a, b) => b.colaboradoresEmFalta - a.colaboradoresEmFalta)
+      .slice(0, 5);
+
+    return { resumos, competenciasCriticas };
+  }
+
+  /**
+   * Heurística de risco de fuga de talento (não há dados de rotatividade
+   * no modelo, por isso isto é um proxy explícito, não um facto medido):
+   * alta prontidão (>= 85%) + pelo menos 2 anos no cargo atual + o cargo
+   * atual não tem nenhuma progressão de carreira definida (`cargo_progressao`)
+   * — ou seja, alguém já pronto, há tempo, sem próximo passo visível.
+   */
+  private async calcularRiscoFuga(resumos: ResumoColaboradorDashboard[]): Promise<ColaboradorEmRisco[]> {
+    const candidatos = resumos.filter((r) => r.prontidaoMedia >= LIMIAR_PRONTIDAO_RISCO_FUGA && r.dataAdmissao !== null);
+    if (candidatos.length === 0) return [];
+
+    const cargosComProgressao = new Set(
+      (await this.prisma.cargoProgressao.findMany({ select: { cargoId: true }, distinct: ['cargoId'] })).map((c) => c.cargoId),
+    );
+
+    const agora = Date.now();
+    const risco: ColaboradorEmRisco[] = [];
+    for (const r of candidatos) {
+      const anos = (agora - new Date(r.dataAdmissao!).getTime()) / MS_POR_ANO;
+      if (anos < ANOS_MINIMOS_RISCO_FUGA) continue;
+      if (cargosComProgressao.has(r.cargoId)) continue;
+
+      const anosArredondados = Math.round(anos * 10) / 10;
+      risco.push({
+        colaboradorId: r.colaboradorId,
+        nome: r.nome,
+        cargoNome: r.cargoNome,
+        prontidaoMedia: r.prontidaoMedia,
+        anosNoCargoAtual: anosArredondados,
+        motivo: `Prontidão alta (${r.prontidaoMedia}%) há ${anosArredondados} anos no cargo, sem progressão de carreira definida a partir de "${r.cargoNome}".`,
+      });
+    }
+
+    return risco.sort((a, b) => b.prontidaoMedia - a.prontidaoMedia);
+  }
+
+  /** Frases de insight geradas a partir dos agregados já calculados — nunca inventa números, só lê o que já foi computado. */
+  private gerarInsights(
+    resumos: ResumoColaboradorDashboard[],
+    porDirecao: ResumoGrupoDashboard[],
+    porArea: ResumoGrupoDashboard[],
+    competenciasCriticas: CompetenciaCritica[],
+    emRisco: ColaboradorEmRisco[],
+  ): string[] {
+    const insights: string[] = [];
+
+    const prontos = resumos.filter((r) => r.gap === 0).length;
+    insights.push(
+      `${prontos} de ${resumos.length} colaboradores (${Math.round((prontos / resumos.length) * 100)}%) já atingem todas as LOBs exigidas pelo respetivo cargo.`,
+    );
+
+    if (porDirecao.length > 1) {
+      const pior = porDirecao[0];
+      insights.push(`A direção com maior gap médio é "${pior.grupo}" (prontidão média de ${pior.prontidaoMedia}%, ${pior.emRisco} em risco).`);
+    }
+    if (porArea.length > 1) {
+      const pior = porArea[0];
+      insights.push(`A área com maior gap médio é "${pior.grupo}" (prontidão média de ${pior.prontidaoMedia}%).`);
+    }
+
+    if (competenciasCriticas.length > 0) {
+      const top = competenciasCriticas[0];
+      insights.push(`A competência mais crítica em falta é "${top.competenciaNome}" — obrigatória e em falta em ${top.colaboradoresEmFalta} colaborador${top.colaboradoresEmFalta === 1 ? '' : 'es'}.`);
+    }
+
+    if (emRisco.length > 0) {
+      insights.push(`${emRisco.length} colaborador${emRisco.length === 1 ? '' : 'es'} identificado${emRisco.length === 1 ? '' : 's'} em risco de fuga de talento — alta prontidão sem progressão de carreira definida.`);
+    }
+
+    return insights;
   }
 
   // -----------------------------------------------------------------

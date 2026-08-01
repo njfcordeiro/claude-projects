@@ -27,3 +27,28 @@
     @apply bg-fiori-primary-bg;
   }
 }
+
+/**
+ * Impressão/PDF (pedido do utilizador: "botões de impressão... em todas as
+ * funcionalidades"): esconde navegação/ações e liberta o layout de altura
+ * fixa (a shell normal é h-screen + overflow-y-auto, que corta o conteúdo
+ * ao ecrã — em impressão isso teria de caber numa página só).
+ */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .app-shell,
+  .app-body,
+  .app-main {
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+  body {
+    background: #fff;
+  }
+  .print-break-avoid {
+    break-inside: avoid;
+  }
+}

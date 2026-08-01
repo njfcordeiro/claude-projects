@@ -1,14 +1,16 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Plus, Trash2 } from 'lucide-react';
+import { Download, Plus, Trash2, Upload } from 'lucide-react';
 import { endpoints } from '../api/endpoints';
 import { ApiError } from '../api/client';
-import { ColaboradorResumo } from '../types/api';
+import { ColaboradorResumo, ResumoImportacao } from '../types/api';
 import { Card } from '../components/ui/Card';
 import { DataTable } from '../components/ui/DataTable';
 import { Modal } from '../components/ui/Modal';
+import { PrintButton } from '../components/ui/PrintButton';
 import { Button, Field, Input, Select } from '../components/ui/form';
+import { UploadReportModal } from '../components/catalogo/UploadReportModal';
 
 /** Restrito a ADMIN_RH/VIEWER (RolesGuard do backend em GET /colaboradores). */
 export function ColaboradoresListPage() {
@@ -17,12 +19,30 @@ export function ColaboradoresListPage() {
   const [searchParams] = useSearchParams();
   const { data, isLoading, error } = useQuery({ queryKey: ['colaboradores'], queryFn: endpoints.colaboradores });
   const [modalAberto, setModalAberto] = useState(false);
+  const [relatorioImportacao, setRelatorioImportacao] = useState<ResumoImportacao | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const eliminar = useMutation({
     mutationFn: (id: number) => endpoints.eliminarColaborador(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['colaboradores'] }),
     onError: (err) => window.alert(err instanceof ApiError ? err.message : 'Não foi possível eliminar.'),
   });
+
+  const importar = useMutation({
+    mutationFn: (file: File) => endpoints.colaboradoresImportar(file),
+    onSuccess: (resumo) => {
+      queryClient.invalidateQueries({ queryKey: ['colaboradores'] });
+      setRelatorioImportacao(resumo);
+    },
+    onError: (err) =>
+      setRelatorioImportacao({ criados: 0, atualizados: 0, avisos: [], erros: [err instanceof ApiError ? err.message : 'Não foi possível importar o ficheiro.'] }),
+  });
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) importar.mutate(file);
+  }
 
   if (isLoading) return <p className="text-sm text-fiori-text-secondary">A carregar…</p>;
   if (error) return <p className="text-sm text-fiori-error">Não foi possível carregar os colaboradores.</p>;
@@ -31,11 +51,25 @@ export function ColaboradoresListPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-fiori-text">Colaboradores</h1>
-        <Button onClick={() => setModalAberto(true)}>
-          <span className="flex items-center gap-1.5">
-            <Plus size={15} /> Novo colaborador
-          </span>
-        </Button>
+        <div className="flex gap-2 no-print">
+          <PrintButton label="Imprimir" />
+          <Button variant="secondary" onClick={() => endpoints.colaboradoresExportar()}>
+            <span className="flex items-center gap-1.5">
+              <Download size={14} /> Download
+            </span>
+          </Button>
+          <Button variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={importar.isPending}>
+            <span className="flex items-center gap-1.5">
+              <Upload size={14} /> {importar.isPending ? 'A importar…' : 'Upload'}
+            </span>
+          </Button>
+          <input ref={fileInputRef} type="file" accept=".xlsx" className="hidden" onChange={handleFileChange} />
+          <Button onClick={() => setModalAberto(true)}>
+            <span className="flex items-center gap-1.5">
+              <Plus size={15} /> Novo colaborador
+            </span>
+          </Button>
+        </div>
       </div>
       <Card>
         <DataTable
@@ -58,7 +92,7 @@ export function ColaboradoresListPage() {
                     e.stopPropagation();
                     if (window.confirm(`Eliminar ${c.nome}?`)) eliminar.mutate(c.id);
                   }}
-                  className="text-fiori-text-secondary hover:text-fiori-error"
+                  className="no-print text-fiori-text-secondary hover:text-fiori-error"
                   aria-label="Eliminar"
                 >
                   <Trash2 size={15} />
@@ -70,6 +104,7 @@ export function ColaboradoresListPage() {
       </Card>
 
       {modalAberto && <CriarColaboradorModal onClose={() => setModalAberto(false)} />}
+      {relatorioImportacao && <UploadReportModal resumo={relatorioImportacao} onClose={() => setRelatorioImportacao(null)} />}
     </div>
   );
 }

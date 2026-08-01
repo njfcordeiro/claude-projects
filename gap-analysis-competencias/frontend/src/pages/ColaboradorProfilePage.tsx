@@ -5,7 +5,10 @@ import { endpoints } from '../api/endpoints';
 import { Card } from '../components/ui/Card';
 import { ProgressRing } from '../components/ui/ProgressRing';
 import { Badge } from '../components/ui/Badge';
+import { PrintButton } from '../components/ui/PrintButton';
 import { LobGapDetail } from '../components/gap/LobGapDetail';
+import { PerfilRadarChart } from '../components/gap/PerfilRadarChart';
+import { PdiSection } from '../components/pdi/PdiSection';
 
 /**
  * Ficha do colaborador: competências/certificações e % de prontidão para
@@ -45,7 +48,13 @@ export function ColaboradorProfilePage() {
 
   return (
     <div className="space-y-6">
-      <Card>
+      <Card
+        action={
+          <div className="no-print">
+            <PrintButton label="Imprimir ficha" />
+          </div>
+        }
+      >
         <div className="flex flex-wrap items-center gap-6">
           {gap && <ProgressRing percentual={prontidaoMedia} label="Prontidão para o cargo" />}
           <div>
@@ -68,6 +77,12 @@ export function ColaboradorProfilePage() {
           </p>
         )}
       </Card>
+
+      {gap && gap.lobs.length >= 3 && (
+        <Card title="Perfil atual vs. exigido">
+          <PerfilRadarChart lobs={gap.lobs} />
+        </Card>
+      )}
 
       {gap && gap.lobs.length > 0 && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -101,6 +116,8 @@ export function ColaboradorProfilePage() {
           </Card>
         </div>
       )}
+
+      <PdiSection colaboradorId={colaboradorId} />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { AlertTriangle, Lightbulb } from 'lucide-react';
 import { endpoints } from '../api/endpoints';
 import { useAuth } from '../auth/useAuth';
 import { Card } from '../components/ui/Card';
@@ -8,6 +9,7 @@ import { KpiTile } from '../components/ui/KpiTile';
 import { ReadinessBarChart } from '../components/ui/ReadinessBarChart';
 import { DataTable } from '../components/ui/DataTable';
 import { Badge } from '../components/ui/Badge';
+import { PrintButton } from '../components/ui/PrintButton';
 import { DashboardResponse } from '../types/api';
 
 const DIMENSOES: { chave: keyof Pick<DashboardResponse, 'porDirecao' | 'porArea' | 'porNucleo' | 'porCargo'>; label: string }[] = [
@@ -30,11 +32,16 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-fiori-text">Dashboard</h1>
-        <p className="text-sm text-fiori-text-secondary">
-          {user?.role === 'MANAGER' ? 'Prontidão da tua equipa direta para os respetivos cargos.' : 'Prontidão de toda a organização para os respetivos cargos.'}
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-fiori-text">Dashboard</h1>
+          <p className="text-sm text-fiori-text-secondary">
+            {user?.role === 'MANAGER' ? 'Prontidão da tua equipa direta para os respetivos cargos.' : 'Prontidão de toda a organização para os respetivos cargos.'}
+          </p>
+        </div>
+        <div className="no-print">
+          <PrintButton label="Imprimir" />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -51,6 +58,48 @@ export function DashboardPage() {
           hint="Colaboradores sem as LOBs exigidas pelo cargo atingidas"
         />
       </div>
+
+      {data.insights.length > 0 && (
+        <Card title="Insights automáticos">
+          <ul className="space-y-2">
+            {data.insights.map((texto, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm text-fiori-text">
+                <Lightbulb size={15} className="mt-0.5 shrink-0 text-fiori-primary" />
+                {texto}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      {data.colaboradoresEmRiscoFuga.length > 0 && (
+        <Card title="Risco de Fuga de Talento">
+          <p className="mb-3 text-xs text-fiori-text-secondary">
+            Heurística: alta prontidão, há vários anos no mesmo cargo, sem progressão de carreira definida — não é um facto medido, é um sinal para investigar.
+          </p>
+          <div className="space-y-2">
+            {data.colaboradoresEmRiscoFuga.map((r) => (
+              <button
+                key={r.colaboradorId}
+                type="button"
+                onClick={() => navigate(`/colaboradores/${r.colaboradorId}`)}
+                className="flex w-full items-start justify-between gap-3 rounded border border-fiori-warning/40 bg-fiori-warning-bg px-3 py-2 text-left"
+              >
+                <span className="flex items-start gap-2">
+                  <AlertTriangle size={15} className="mt-0.5 shrink-0 text-fiori-warning" />
+                  <span>
+                    <span className="block text-sm font-medium text-fiori-text">
+                      {r.nome} <span className="font-normal text-fiori-text-secondary">· {r.cargoNome}</span>
+                    </span>
+                    <span className="block text-xs text-fiori-text-secondary">{r.motivo}</span>
+                  </span>
+                </span>
+                <Badge status="warning">{r.prontidaoMedia}%</Badge>
+              </button>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <Card
         title={`Prontidão média por ${DIMENSOES.find((d) => d.chave === dimensao)!.label.toLowerCase()}`}

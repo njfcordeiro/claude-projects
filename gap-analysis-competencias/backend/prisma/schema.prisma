@@ -74,6 +74,21 @@ enum OperacaoAuditoria {
   @@map("operacao_auditoria")
 }
 
+enum EstadoPdi {
+  PENDENTE
+  EM_CURSO
+  CONCLUIDO
+
+  @@map("estado_pdi")
+}
+
+enum OrigemPdi {
+  AUTOMATICO
+  MANUAL
+
+  @@map("origem_pdi")
+}
+
 // ---------------------------------------------------------------------
 // Organização
 // ---------------------------------------------------------------------
@@ -211,6 +226,7 @@ model Competencia {
   formacaoRequisitos     FormacaoRequisitoCompetencia[]
   lobRequisitos          LobRequisitoCompetencia[]
   colaboradorCompetencias ColaboradorCompetencia[]
+  pdiItems                PdiItem[]
 
   @@unique([nome])
   @@map("competencias")
@@ -225,6 +241,7 @@ model Certificacao {
   requisitosCompetencia CertificacaoRequisitoCompetencia[]
   lobRequisitos         LobRequisitoCertificacao[]
   colaboradorCertificacoes ColaboradorCertificacao[]
+  pdiItems               PdiItem[]
 
   @@map("certificacoes")
 }
@@ -260,6 +277,7 @@ model Formacao {
   area Area @relation(fields: [areaId], references: [id])
 
   requisitosCompetencia FormacaoRequisitoCompetencia[]
+  pdiItems              PdiItem[]
 
   @@map("formacoes")
 }
@@ -392,6 +410,7 @@ model Colaborador {
   competencias    ColaboradorCompetencia[]
   certificacoes   ColaboradorCertificacao[]
   lobRecomendacoes ColaboradorLobRecomendacao[]
+  pdiItems         PdiItem[]
 
   gapAnalysisRunsScope    GapAnalysisRun[]
   gapAnalysisLobResults   GapAnalysisLobResult[]
@@ -460,6 +479,36 @@ model ColaboradorLobRecomendacao {
 
   @@unique([colaboradorId, lobId])
   @@map("colaborador_lob_recomendacao")
+}
+
+// ---------------------------------------------------------------------
+// PDI — Plano de Desenvolvimento Individual (gerado a partir dos gaps do
+// motor de gap analysis, ver PdiService.gerar; nunca duplicamos a lógica
+// de comparação aqui, só persistimos o estado de acompanhamento).
+// ---------------------------------------------------------------------
+
+model PdiItem {
+  id             Int       @id @default(autoincrement())
+  colaboradorId  Int       @map("colaborador_id")
+  competenciaId  Int?      @map("competencia_id")
+  certificacaoId String?   @map("certificacao_id")
+  formacaoId     Int?      @map("formacao_id") // formação sugerida para colmatar o gap
+  descricao      String
+  estado         EstadoPdi @default(PENDENTE)
+  origem         OrigemPdi @default(AUTOMATICO)
+  notas          String?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  createdBy      Int?      @map("created_by")
+  updatedBy      Int?      @map("updated_by")
+
+  colaborador  Colaborador   @relation(fields: [colaboradorId], references: [id])
+  competencia  Competencia?  @relation(fields: [competenciaId], references: [id])
+  certificacao Certificacao? @relation(fields: [certificacaoId], references: [id])
+  formacao     Formacao?     @relation(fields: [formacaoId], references: [id])
+
+  @@index([colaboradorId])
+  @@map("pdi_items")
 }
 
 // ---------------------------------------------------------------------

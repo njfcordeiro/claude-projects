@@ -1,21 +1,29 @@
 import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, Pencil, Plus, Trash2, Upload } from 'lucide-react';
+import { Download, Plus, Trash2, Upload } from 'lucide-react';
 import { endpoints } from '../api/endpoints';
 import { ApiError } from '../api/client';
-import { CatalogoRegisto } from '../types/api';
+import { CatalogoRegisto, ResumoImportacao } from '../types/api';
 import { Card } from '../components/ui/Card';
 import { DataTable } from '../components/ui/DataTable';
 import { Button } from '../components/ui/form';
+import { PrintButton } from '../components/ui/PrintButton';
 import { CatalogoRecordModal } from '../components/catalogo/CatalogoRecordModal';
+import { CatalogoCelula } from '../components/catalogo/CatalogoCelula';
+import { UploadReportModal } from '../components/catalogo/UploadReportModal';
 
-/** Ecrã genérico de administração de dados — cobre todas as tabelas de `CATALOGO_REGISTRY` (backend) sem código por tabela. ADMIN_RH only. */
+/**
+ * Ecrã genérico de administração de dados — cobre todas as tabelas de
+ * `CATALOGO_REGISTRY` (backend) sem código por tabela. ADMIN_RH only.
+ * Edição estilo Excel: clica numa célula para editar e grava ao sair do
+ * campo — o modal "Nova entrada" fica só para criar registos novos.
+ */
 export function CatalogoPage() {
   const queryClient = useQueryClient();
   const { data: meta, isLoading: metaLoading } = useQuery({ queryKey: ['catalogo-meta'], queryFn: endpoints.catalogoMeta });
   const [tabelaAtiva, setTabelaAtiva] = useState<string | null>(null);
   const [modal, setModal] = useState<{ registo: CatalogoRegisto | null } | null>(null);
-  const [mensagemImportacao, setMensagemImportacao] = useState<string | null>(null);
+  const [relatorioImportacao, setRelatorioImportacao] = useState<ResumoImportacao | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const tabela = meta?.find((t) => t.tabela === (tabelaAtiva ?? meta?.[0]?.tabela));
@@ -32,16 +40,20 @@ export function CatalogoPage() {
     onError: (err) => window.alert(err instanceof ApiError ? err.message : 'Não foi possível eliminar.'),
   });
 
+  const atualizarCampo = useMutation({
+    mutationFn: (dados: CatalogoRegisto) => endpoints.catalogoAtualizar(tabela!.tabela, dados),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['catalogo', tabela?.tabela] }),
+    onError: (err) => window.alert(err instanceof ApiError ? err.message : 'Não foi possível gravar esta alteração.'),
+  });
+
   const importar = useMutation({
     mutationFn: (file: File) => endpoints.catalogoImportar(tabela!.tabela, file),
     onSuccess: (resumo) => {
       queryClient.invalidateQueries({ queryKey: ['catalogo', tabela?.tabela] });
-      setMensagemImportacao(
-        `Importação concluída: ${resumo.criados} criados, ${resumo.atualizados} atualizados` +
-          (resumo.erros.length ? `, ${resumo.erros.length} erro(s): ${resumo.erros.slice(0, 3).join(' | ')}` : '.'),
-      );
+      setRelatorioImportacao(resumo);
     },
-    onError: (err) => setMensagemImportacao(err instanceof ApiError ? err.message : 'Não foi possível importar o ficheiro.'),
+    onError: (err) =>
+      setRelatorioImportacao({ criados: 0, atualizados: 0, avisos: [], erros: [err instanceof ApiError ? err.message : 'Não foi possível importar o ficheiro.'] }),
   });
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -74,7 +86,7 @@ export function CatalogoPage() {
               type="button"
               onClick={() => {
                 setTabelaAtiva(t.tabela);
-                setMensagemImportacao(null);
+                setRelatorioImportacao(null);
               }}
               className={`block w-full rounded px-3 py-2 text-left text-sm ${
                 t.tabela === tabela.tabela ? 'bg-fiori-primary-bg font-medium text-fiori-primary' : 'text-fiori-text hover:bg-fiori-canvas'
@@ -89,7 +101,8 @@ export function CatalogoPage() {
           <Card
             title={tabela.label}
             action={
-              <div className="flex gap-2">
+              <div className="flex gap-2 no-print">
+                <PrintButton label="Imprimir" />
                 <Button variant="secondary" onClick={() => endpoints.catalogoExportar(tabela.tabela)}>
                   <span className="flex items-center gap-1.5">
                     <Download size={14} /> Download
@@ -109,10 +122,6 @@ export function CatalogoPage() {
               </div>
             }
           >
-            {mensagemImportacao && (
-              <p className="mb-3 rounded border border-fiori-border bg-fiori-canvas p-2 text-sm text-fiori-text">{mensagemImportacao}</p>
-            )}
-
             {linhasLoading ? (
               <p className="text-sm text-fiori-text-secondary">A carregar…</p>
             ) : (
@@ -123,17 +132,24 @@ export function CatalogoPage() {
                   ...tabela.campos.map((c) => ({
                     key: c.key,
                     header: c.label,
-                    render: (r: CatalogoRegisto) =>
-                      c.tipo === 'boolean' ? (r[c.key] ? 'Sim' : 'Não') : c.tipo === 'relation' ? String(r[`${c.key}Label`] ?? r[c.key] ?? '—') : String(r[c.key] ?? '—'),
+                    render: (r: CatalogoRegisto) => (
+                      <CatalogoCelula
+                        campo={c}
+                        registo={r}
+                        editavel={!tabela.identityFields.includes(c.key)}
+                        onSalvar={async (novoValor) => {
+                          await atualizarCampo.mutateAsync({ ...identidadeDe(r), [c.key]: novoValor });
+                        }}
+                      />
+                    ),
+                    searchValue: (r: CatalogoRegisto) =>
+                      c.tipo === 'relation' ? String(r[`${c.key}Label`] ?? r[c.key] ?? '') : String(r[c.key] ?? ''),
                   })),
                   {
                     key: '__acoes',
                     header: '',
                     render: (r: CatalogoRegisto) => (
-                      <div className="flex justify-end gap-2">
-                        <button type="button" onClick={() => setModal({ registo: r })} className="text-fiori-text-secondary hover:text-fiori-primary" aria-label="Editar">
-                          <Pencil size={15} />
-                        </button>
+                      <div className="flex justify-end no-print">
                         <button
                           type="button"
                           onClick={() => {
@@ -155,6 +171,7 @@ export function CatalogoPage() {
       </div>
 
       {modal && <CatalogoRecordModal tabelaDef={tabela} registoInicial={modal.registo} onClose={() => setModal(null)} />}
+      {relatorioImportacao && <UploadReportModal resumo={relatorioImportacao} onClose={() => setRelatorioImportacao(null)} />}
     </div>
   );
 }

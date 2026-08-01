@@ -11,6 +11,8 @@ import { FormacoesPage } from './pages/FormacoesPage';
 import { AdminPage } from './pages/AdminPage';
 import { CatalogoPage } from './pages/CatalogoPage';
 import { CandidatosPage } from './pages/CandidatosPage';
+import { AtribuicoesPage } from './pages/AtribuicoesPage';
+import { SkillMatrixPage } from './pages/SkillMatrixPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
 export function App() {
@@ -39,10 +41,12 @@ export function App() {
 
             <Route element={<ProtectedRoute allowedRoles={['ADMIN_RH', 'MANAGER', 'VIEWER']} />}>
               <Route path="/candidatos" element={<CandidatosPage />} />
+              <Route path="/skill-matrix" element={<SkillMatrixPage />} />
             </Route>
 
             <Route element={<ProtectedRoute allowedRoles={['ADMIN_RH']} />}>
               <Route path="/dados" element={<CatalogoPage />} />
+              <Route path="/atribuicoes" element={<AtribuicoesPage />} />
               <Route path="/admin" element={<AdminPage />} />
             </Route>
           </Route>

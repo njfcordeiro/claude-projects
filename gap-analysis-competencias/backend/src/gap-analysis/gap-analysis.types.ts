@@ -147,6 +147,7 @@ export interface ResumoColaboradorDashboard {
   lobsAtingidos: number;
   gap: number;
   prontidaoMedia: number;
+  dataAdmissao: string | null;
 }
 
 export interface ResumoGrupoDashboard {
@@ -165,6 +166,10 @@ export interface DashboardResponse {
   porNucleo: ResumoGrupoDashboard[];
   porCargo: ResumoGrupoDashboard[];
   colaboradores: ResumoColaboradorDashboard[];
+  /** Frases de insight geradas a partir dos agregados acima — ver GapAnalysisService.gerarInsights. */
+  insights: string[];
+  competenciasCriticas: CompetenciaCritica[];
+  colaboradoresEmRiscoFuga: ColaboradorEmRisco[];
 }
 
 /** Resposta de `GET /gap-analysis/candidatos` — colaboradores fora da carreira-alvo, ordenados por proximidade. */
@@ -175,4 +180,50 @@ export interface CandidatosCarreiraResponse {
   cargoEntradaNome: string | null;
   lobsExigidosEntrada: number;
   candidatos: ResumoColaboradorDashboard[];
+}
+
+// --- Skill Matrix (heatmap colaboradores × LOBs/competências) ------------
+
+export type DimensaoSkillMatrix = 'lob' | 'competencia';
+
+export interface SkillMatrixColuna {
+  id: number;
+  nome: string;
+}
+
+export interface SkillMatrixLinha {
+  colaboradorId: number;
+  nome: string;
+  /** Chave = String(coluna.id). Dimensão 'lob': prontidaoPercentual 0-100. Dimensão 'competencia': nivelId atual 0-5. */
+  valores: Record<string, number>;
+}
+
+export interface SkillMatrixResponse {
+  dimensao: DimensaoSkillMatrix;
+  colunas: SkillMatrixColuna[];
+  linhas: SkillMatrixLinha[];
+}
+
+export interface FiltrosOrganizacionais {
+  direcaoId?: number;
+  areaId?: number;
+  nucleoId?: number;
+  cargoId?: string;
+}
+
+// --- Insights automáticos e risco de fuga de talento (dashboard) ---------
+
+export interface CompetenciaCritica {
+  competenciaId: number;
+  competenciaNome: string;
+  colaboradoresEmFalta: number;
+}
+
+export interface ColaboradorEmRisco {
+  colaboradorId: number;
+  nome: string;
+  cargoNome: string;
+  prontidaoMedia: number;
+  anosNoCargoAtual: number;
+  motivo: string;
 }

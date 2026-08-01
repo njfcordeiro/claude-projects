@@ -1,5 +1,7 @@
 import { api, downloadFile } from './client';
 import {
+  AtribuirCertificacaoInput,
+  AtribuirCompetenciaInput,
   CandidatosCarreiraResponse,
   CatalogoRegisto,
   CatalogoTabelaMeta,
@@ -8,15 +10,22 @@ import {
   CreateAvaliacaoInput,
   CreateColaboradorInput,
   DashboardResponse,
+  DimensaoSkillMatrix,
+  FiltrosOrganizacionais,
   FormacaoResumo,
+  GerarPdiResponse,
   LobDetalhe,
   LobResumo,
   MeResponse,
   PapelUtilizador,
+  PdiItem,
   RelatorioGapCargo,
   RelatorioGapLob,
+  ResumoAtribuicao,
   ResumoImportacao,
+  SkillMatrixResponse,
   UltimaAvaliacao,
+  UpdatePdiItemInput,
   UpsertCertificacaoInput,
   UsuarioResumo,
 } from '../types/api';
@@ -28,6 +37,12 @@ export const endpoints = {
   colaborador: (id: number) => api.get<ColaboradorResumo>(`/colaboradores/${id}`),
   criarColaborador: (dto: CreateColaboradorInput) => api.post<ColaboradorResumo>('/colaboradores', dto),
   eliminarColaborador: (id: number) => api.delete<void>(`/colaboradores/${id}`),
+  colaboradoresExportar: () => downloadFile('/colaboradores/export', 'colaboradores.xlsx'),
+  colaboradoresImportar: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api.postForm<ResumoImportacao>('/colaboradores/import', form);
+  },
 
   // Escrita com locking otimista (Prompt 5) — ver docs/02-arquitetura-tecnica.md secção 4.5.
   ultimaAvaliacao: (colaboradorId: number, competenciaId: number) =>
@@ -69,5 +84,26 @@ export const endpoints = {
     const form = new FormData();
     form.append('file', file);
     return api.postForm<ResumoImportacao>(`/catalogo/${tabela}/import`, form);
+  },
+
+  // --- Assistente de atribuição em massa -----------------------------------
+  atribuirCompetencia: (dto: AtribuirCompetenciaInput) => api.post<ResumoAtribuicao>('/atribuicoes/competencias', dto),
+  atribuirCertificacao: (dto: AtribuirCertificacaoInput) => api.post<ResumoAtribuicao>('/atribuicoes/certificacoes', dto),
+
+  // --- PDI ------------------------------------------------------------------
+  pdiListar: (colaboradorId: number) => api.get<PdiItem[]>(`/colaboradores/${colaboradorId}/pdi`),
+  pdiGerar: (colaboradorId: number) => api.post<GerarPdiResponse>(`/colaboradores/${colaboradorId}/pdi/gerar`),
+  pdiAtualizar: (colaboradorId: number, itemId: number, dto: UpdatePdiItemInput) =>
+    api.patch<PdiItem>(`/colaboradores/${colaboradorId}/pdi/${itemId}`, dto),
+  pdiEliminar: (colaboradorId: number, itemId: number) => api.delete<void>(`/colaboradores/${colaboradorId}/pdi/${itemId}`),
+
+  // --- Skill Matrix -----------------------------------------------------------
+  skillMatrix: (dimensao: DimensaoSkillMatrix, filtros: FiltrosOrganizacionais = {}) => {
+    const params = new URLSearchParams({ dimensao });
+    if (filtros.direcaoId) params.set('direcaoId', String(filtros.direcaoId));
+    if (filtros.areaId) params.set('areaId', String(filtros.areaId));
+    if (filtros.nucleoId) params.set('nucleoId', String(filtros.nucleoId));
+    if (filtros.cargoId) params.set('cargoId', filtros.cargoId);
+    return api.get<SkillMatrixResponse>(`/gap-analysis/skill-matrix?${params.toString()}`);
   },
 };
