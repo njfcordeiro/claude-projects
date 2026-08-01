@@ -13,7 +13,9 @@
 //    SQL (ver prisma/migrations/..._init/migration.sql).
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // rhel-openssl-3.0.x: runtime do Vercel (Amazon Linux/Lambda Node) — "native" cobre dev local/Docker.
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
