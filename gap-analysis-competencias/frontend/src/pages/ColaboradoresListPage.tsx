@@ -49,9 +49,9 @@ export function ColaboradoresListPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-xl font-semibold text-fiori-text">Colaboradores</h1>
-        <div className="flex gap-2 no-print">
+        <div className="flex flex-wrap gap-2 no-print">
           <PrintButton label="Imprimir" />
           <Button variant="secondary" onClick={() => endpoints.colaboradoresExportar()}>
             <span className="flex items-center gap-1.5">

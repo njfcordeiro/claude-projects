@@ -1,6 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, LogOut, Search } from 'lucide-react';
+import { ChevronDown, LogOut, Menu, Search } from 'lucide-react';
 import { useAuth } from '../../auth/useAuth';
 
 const ROLE_LABEL: Record<string, string> = {
@@ -15,8 +15,8 @@ function iniciais(nome: string): string {
   return ((partes[0]?.[0] ?? '') + (partes[partes.length - 1]?.[0] ?? '')).toUpperCase();
 }
 
-/** Barra superior estilo SAP Shell Bar: logo, pesquisa global, perfil. */
-export function ShellBar() {
+/** Barra superior estilo SAP Shell Bar: logo, pesquisa global, perfil. Abaixo de md, o hambúrguer abre o MobileNavDrawer (ver AppLayout). */
+export function ShellBar({ onMenuClick }: { onMenuClick: () => void }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [termo, setTermo] = useState('');
@@ -30,14 +30,24 @@ export function ShellBar() {
   const nome = user?.colaborador?.nome ?? user?.email ?? '';
 
   return (
-    <header className="flex h-12 items-center gap-4 bg-fiori-shell px-4 text-fiori-text-inverse">
-      <span className="text-base font-semibold tracking-tight">Gap Analysis</span>
+    <header className="flex h-12 items-center gap-2 bg-fiori-shell px-3 text-fiori-text-inverse sm:gap-4 sm:px-4">
+      <button
+        type="button"
+        onClick={onMenuClick}
+        className="rounded p-1.5 hover:bg-white/10 md:hidden"
+        aria-label="Abrir menu de navegação"
+      >
+        <Menu size={20} />
+      </button>
+      <span className="shrink-0 text-base font-semibold tracking-tight">Gap Analysis</span>
 
       {/* GET /colaboradores (lista) só existe para ADMIN_RH/VIEWER no backend
           — esconder a pesquisa global para os papéis que não a conseguem usar,
-          em vez de mostrar um 403 depois de pesquisar. */}
+          em vez de mostrar um 403 depois de pesquisar. Escondida também em
+          telemóvel (< sm) para dar espaço ao hambúrguer + avatar — a lista
+          de Colaboradores tem a sua própria pesquisa. */}
       {(user?.role === 'ADMIN_RH' || user?.role === 'VIEWER') && (
-        <form onSubmit={pesquisar} className="flex flex-1 max-w-md items-center gap-2 rounded bg-white/10 px-3 py-1.5 focus-within:bg-white/20">
+        <form onSubmit={pesquisar} className="hidden flex-1 max-w-md items-center gap-2 rounded bg-white/10 px-3 py-1.5 focus-within:bg-white/20 sm:flex">
           <Search size={16} className="text-white/70" aria-hidden="true" />
           <input
             type="search"

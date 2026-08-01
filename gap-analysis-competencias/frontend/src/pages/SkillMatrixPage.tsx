@@ -69,7 +69,7 @@ export function SkillMatrixPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold text-fiori-text">Skill Matrix</h1>
           <p className="text-sm text-fiori-text-secondary">
@@ -148,6 +148,7 @@ export function SkillMatrixPage() {
             onRowClick={(l) => navigate(`/colaboradores/${l.colaboradorId}`)}
             searchPlaceholder="Pesquisar por colaborador…"
             columns={colunas}
+            cardOnMobile={false}
           />
         )}
       </Card>

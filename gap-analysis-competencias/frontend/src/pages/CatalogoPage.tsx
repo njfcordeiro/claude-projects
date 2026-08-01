@@ -78,8 +78,8 @@ export function CatalogoPage() {
         <p className="text-sm text-fiori-text-secondary">Criar, editar, eliminar e importar/exportar as tabelas de catálogo.</p>
       </div>
 
-      <div className="flex gap-4">
-        <nav className="w-56 shrink-0 space-y-0.5">
+      <div className="flex flex-col gap-4 md:flex-row">
+        <nav className="flex gap-1.5 overflow-x-auto pb-1 md:block md:w-56 md:shrink-0 md:space-y-0.5 md:overflow-visible md:pb-0">
           {meta.map((t) => (
             <button
               key={t.tabela}
@@ -88,7 +88,7 @@ export function CatalogoPage() {
                 setTabelaAtiva(t.tabela);
                 setRelatorioImportacao(null);
               }}
-              className={`block w-full rounded px-3 py-2 text-left text-sm ${
+              className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-sm md:block md:w-full md:whitespace-normal md:rounded md:px-3 md:py-2 md:text-left ${
                 t.tabela === tabela.tabela ? 'bg-fiori-primary-bg font-medium text-fiori-primary' : 'text-fiori-text hover:bg-fiori-canvas'
               }`}
             >
@@ -101,7 +101,7 @@ export function CatalogoPage() {
           <Card
             title={tabela.label}
             action={
-              <div className="flex gap-2 no-print">
+              <div className="flex flex-wrap gap-2 no-print">
                 <PrintButton label="Imprimir" />
                 <Button variant="secondary" onClick={() => endpoints.catalogoExportar(tabela.tabela)}>
                   <span className="flex items-center gap-1.5">

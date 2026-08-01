@@ -20,6 +20,14 @@ interface DataTableProps<T> {
   emptyMessage?: string;
   /** Pré-preenche a pesquisa (ex.: vinda da pesquisa global do ShellBar). */
   initialSearch?: string;
+  /**
+   * Abaixo de md, as linhas passam de <tr> tabular para cartões empilhados
+   * (label:valor por campo) — melhor para telemóvel do que scroll horizontal.
+   * Desliga para tabelas largas onde "cartão por linha" não faz sentido
+   * (ex.: Skill Matrix, com uma coluna por LOB/competência) — essas mantêm
+   * scroll horizontal em todos os tamanhos de ecrã.
+   */
+  cardOnMobile?: boolean;
 }
 
 /** Tabela densa com filtro por texto e ordenação por coluna — estilo Fiori (ver index.css .fiori-table). */
@@ -31,6 +39,7 @@ export function DataTable<T>({
   searchPlaceholder = 'Pesquisar…',
   emptyMessage = 'Sem resultados.',
   initialSearch = '',
+  cardOnMobile = true,
 }: DataTableProps<T>) {
   const [termo, setTermo] = useState(initialSearch);
   const [ordenacao, setOrdenacao] = useState<{ chave: string; direcao: 'asc' | 'desc' } | null>(null);
@@ -66,6 +75,12 @@ export function DataTable<T>({
     });
   }
 
+  // Colunas com header (a maioria) mostram-se como "label: valor" no cartão;
+  // colunas sem header (tipicamente uma coluna final de ícones de ação) vão
+  // para uma faixa de ações no fundo do cartão, sem label.
+  const colunasComLabel = columns.filter((c) => c.header.trim() !== '');
+  const colunasSemLabel = columns.filter((c) => c.header.trim() === '');
+
   return (
     <div>
       <div className="mb-3 flex items-center gap-2 rounded border border-fiori-border bg-fiori-surface px-3 py-1.5">
@@ -79,7 +94,7 @@ export function DataTable<T>({
         />
       </div>
 
-      <div className="overflow-x-auto rounded border border-fiori-border bg-fiori-surface">
+      <div className={`overflow-x-auto rounded border border-fiori-border bg-fiori-surface ${cardOnMobile ? 'hidden md:block' : ''}`}>
         <table className="fiori-table">
           <thead>
             <tr>
@@ -131,6 +146,38 @@ export function DataTable<T>({
           </tbody>
         </table>
       </div>
+
+      {cardOnMobile && (
+        <div className="space-y-2 md:hidden">
+          {dadosOrdenados.length === 0 && (
+            <p className="rounded border border-fiori-border bg-fiori-surface py-6 text-center text-sm text-fiori-text-secondary">
+              {emptyMessage}
+            </p>
+          )}
+          {dadosOrdenados.map((row) => (
+            <div
+              key={getRowKey(row)}
+              onClick={onRowClick ? () => onRowClick(row) : undefined}
+              className={`rounded border border-fiori-border bg-fiori-surface p-3 ${onRowClick ? 'cursor-pointer active:bg-fiori-canvas' : ''}`}
+            >
+              {colunasComLabel.map((col) => (
+                <div key={col.key} className="flex items-start justify-between gap-3 py-1 text-sm first:pt-0 last:pb-0">
+                  <span className="shrink-0 text-fiori-text-secondary">{col.header}</span>
+                  <span className="text-right text-fiori-text">{col.render(row)}</span>
+                </div>
+              ))}
+              {colunasSemLabel.length > 0 && (
+                <div className="mt-1 flex justify-end gap-2 border-t border-fiori-border/70 pt-2">
+                  {colunasSemLabel.map((col) => (
+                    <span key={col.key}>{col.render(row)}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       <p className="mt-1 text-xs text-fiori-text-secondary">
         {dadosOrdenados.length} de {data.length} resultado{data.length === 1 ? '' : 's'}
       </p>
