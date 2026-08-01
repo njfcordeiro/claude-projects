@@ -1,0 +1,68 @@
+# Ambiente de desenvolvimento local — ver docs/02-arquitetura-tecnica.md
+# secção 6. Um único comando arranca Postgres + backend (hot reload) +
+# frontend (hot reload):
+#
+#   cp .env.example .env   # ajusta JWT_SECRET e ADMIN_PASSWORD
+#   docker compose up
+#
+# Não é a imagem usada em produção — ver backend/Dockerfile e
+# frontend/Dockerfile (secção 7 do doc de arquitetura) para isso.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-gapapp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gapapp_dev_pw}
+      POSTGRES_DB: ${POSTGRES_DB:-gap_analysis}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-gapapp}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+      - backend_node_modules:/app/node_modules
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-gapapp}:${POSTGRES_PASSWORD:-gapapp_dev_pw}@db:5432/${POSTGRES_DB:-gap_analysis}?schema=public
+      PORT: 3000
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env — ver .env.example}
+      JWT_EXPIRES_IN: 8h
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@empresa.pt}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?defina ADMIN_PASSWORD no .env — ver .env.example}
+    ports:
+      - '3000:3000'
+    depends_on:
+      db:
+        condition: service_healthy
+    # migrate deploy + seed do admin correm a cada arranque; seed:admin é
+    # idempotente (upsert por email — ver backend/scripts/seed-admin.ts)
+    command: sh -c "npm install && npx prisma migrate deploy && npm run seed:admin && npm run start:dev"
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
+    ports:
+      - '5173:5173'
+    depends_on:
+      - backend
+    command: sh -c "npm install && npm run dev -- --host"
+
+volumes:
+  pgdata:
+  backend_node_modules:
+  frontend_node_modules:

@@ -1,0 +1,380 @@
+// Tipos espelhando os DTOs/respostas do backend (backend/src). Mantidos
+// manualmente por agora — gerar a partir do Swagger (`/api/docs-json`) é
+// um próximo passo razoável quando a API tiver mais módulos.
+
+export type PapelUtilizador = 'ADMIN_RH' | 'MANAGER' | 'EMPLOYEE' | 'VIEWER';
+
+export interface LoginResponse {
+  accessToken: string;
+}
+
+export interface MeResponse {
+  id: number;
+  email: string;
+  role: PapelUtilizador;
+  colaboradorId: number | null;
+  colaborador: { id: number; nome: string; cargoId: string | null } | null;
+}
+
+export interface ColaboradorResumo {
+  id: number;
+  nome: string;
+  cargoId: string | null;
+  direcaoId: number | null;
+  nucleoId: number | null;
+  areaId: number | null;
+  carreiraId: string | null;
+  categoriaId: string | null;
+  managerId: number | null;
+  /** Locking otimista — ver docs/02-arquitetura-tecnica.md secção 4.5. */
+  version: number;
+}
+
+export interface CreateColaboradorInput {
+  id: number;
+  nome: string;
+  cargoId?: string;
+  direcaoId?: number;
+  nucleoId?: number;
+  areaId?: number;
+  carreiraId?: string;
+  categoriaId?: string;
+  managerId?: number;
+}
+
+// --- Escrita com locking otimista (Prompt 5) ------------------------------
+
+export interface UltimaAvaliacao {
+  id: number;
+  nivel_id: number;
+  data_avaliacao: string;
+  origem: string;
+}
+
+export interface CertificacaoAtual {
+  id: number;
+  colaboradorId: number;
+  certificacaoId: string;
+  dataObtencao: string | null;
+  dataValidade: string | null;
+  anexoUrl: string | null;
+  version: number;
+}
+
+export interface CreateAvaliacaoInput {
+  competenciaId: number;
+  nivelId: number;
+  baseAssessmentId: number | null;
+  origem?: 'MANAGER' | 'FORMAL' | 'AVALIACAO_360';
+}
+
+export interface UpsertCertificacaoInput {
+  dataObtencao?: string;
+  dataValidade?: string;
+  anexoUrl?: string;
+  version?: number;
+}
+
+/** Corpo de uma resposta 409 — ver ApiError.body em api/client.ts. */
+export interface ConflitoResponse<T> {
+  message: string;
+  current: T | null;
+}
+
+// --- Motor de gap (backend/src/gap-analysis/gap-analysis.types.ts) -------
+
+export interface FormacaoCandidata {
+  formacaoId: number;
+  formacaoNome: string;
+  nivelOferecido: number;
+  duracaoHoras: number | null;
+}
+
+export interface CertificacaoCandidata {
+  certificacaoId: string;
+  certificacaoNome: string;
+  nivelOferecido: number;
+  jaPossui: boolean;
+}
+
+export interface RelatorioGapCompetencia {
+  competenciaId: number;
+  competenciaNome: string;
+  obrigatorio: boolean;
+  nivelExigido: number;
+  nivelAtual: number;
+  pontosPossiveis: number;
+  pontosObtidos: number;
+  cumprido: boolean;
+  sugestoes: { formacoes: FormacaoCandidata[]; certificacoes: CertificacaoCandidata[] };
+}
+
+export interface PreparacaoCertificacao {
+  competenciaId: number;
+  competenciaNome: string;
+  nivelValidado: number;
+  formacoesRecomendadas: FormacaoCandidata[];
+}
+
+export interface RelatorioGapCertificacao {
+  certificacaoId: string;
+  certificacaoNome: string;
+  obrigatorio: boolean;
+  possui: boolean;
+  valida: boolean;
+  dataValidade: string | null;
+  cumprido: boolean;
+  preparacao: PreparacaoCertificacao[];
+}
+
+export interface RelatorioGapLob {
+  lobId: number;
+  lobNome: string;
+  pontosObtidos: number;
+  pontosMinimos: number;
+  prontidaoPercentual: number;
+  atingido: boolean;
+  obrigatoriosEmFalta: number;
+  competencias: RelatorioGapCompetencia[];
+  certificacoes: RelatorioGapCertificacao[];
+}
+
+export interface ResumoGapLob {
+  lobId: number;
+  lobNome: string;
+  pontosObtidos: number;
+  pontosMinimos: number;
+  prontidaoPercentual: number;
+  atingido: boolean;
+}
+
+export interface RelatorioGapCargo {
+  colaboradorId: number;
+  cargoId: string;
+  cargoNome: string;
+  lobsExigidos: number;
+  lobsAtingidos: number;
+  gap: number;
+  lobs: ResumoGapLob[];
+}
+
+export interface ResumoColaboradorDashboard {
+  colaboradorId: number;
+  nome: string;
+  direcaoNome: string | null;
+  areaNome: string | null;
+  nucleoNome: string | null;
+  cargoId: string;
+  cargoNome: string;
+  carreiraId: string | null;
+  lobsExigidos: number;
+  lobsAtingidos: number;
+  gap: number;
+  prontidaoMedia: number;
+  dataAdmissao: string | null;
+}
+
+export interface CompetenciaCritica {
+  competenciaId: number;
+  competenciaNome: string;
+  colaboradoresEmFalta: number;
+}
+
+export interface ColaboradorEmRisco {
+  colaboradorId: number;
+  nome: string;
+  cargoNome: string;
+  prontidaoMedia: number;
+  anosNoCargoAtual: number;
+  motivo: string;
+}
+
+export interface ResumoGrupoDashboard {
+  grupo: string;
+  totalColaboradores: number;
+  prontidaoMedia: number;
+  emRisco: number;
+}
+
+export interface DashboardResponse {
+  totalColaboradores: number;
+  prontidaoMediaGeral: number;
+  colaboradoresEmRisco: number;
+  porDirecao: ResumoGrupoDashboard[];
+  porArea: ResumoGrupoDashboard[];
+  porNucleo: ResumoGrupoDashboard[];
+  porCargo: ResumoGrupoDashboard[];
+  colaboradores: ResumoColaboradorDashboard[];
+  insights: string[];
+  competenciasCriticas: CompetenciaCritica[];
+  colaboradoresEmRiscoFuga: ColaboradorEmRisco[];
+}
+
+export interface CandidatosCarreiraResponse {
+  carreiraId: string;
+  carreiraNome: string;
+  cargoEntradaId: string | null;
+  cargoEntradaNome: string | null;
+  lobsExigidosEntrada: number;
+  candidatos: ResumoColaboradorDashboard[];
+}
+
+// --- Catálogo genérico (backend/src/catalogo) -----------------------------
+
+export type CatalogoTipoCampo = 'string' | 'int' | 'boolean' | 'relation';
+
+export interface CatalogoCampoDef {
+  key: string;
+  label: string;
+  tipo: CatalogoTipoCampo;
+  obrigatorio: boolean;
+  relatedTable?: string;
+  relationAccessor?: string;
+}
+
+export interface CatalogoTabelaMeta {
+  tabela: string;
+  label: string;
+  campos: CatalogoCampoDef[];
+  identityFields: string[];
+}
+
+export type CatalogoRegisto = Record<string, string | number | boolean | null>;
+
+export interface ResumoImportacao {
+  criados: number;
+  atualizados: number;
+  avisos: string[];
+  erros: string[];
+}
+
+// --- Assistente de atribuição em massa (backend/src/atribuicoes) ---------
+
+export interface AtribuirCompetenciaInput {
+  colaboradorIds: number[];
+  competenciaId: number;
+  nivelId: number;
+  dataAvaliacao?: string;
+}
+
+export interface AtribuirCertificacaoInput {
+  colaboradorIds: number[];
+  certificacaoId: string;
+  dataObtencao?: string;
+  dataValidade?: string;
+}
+
+export interface ResumoAtribuicao {
+  processados: number;
+  criados: number;
+  atualizados: number;
+  erros: string[];
+}
+
+// --- PDI (backend/src/pdi) -------------------------------------------------
+
+export type EstadoPdi = 'PENDENTE' | 'EM_CURSO' | 'CONCLUIDO';
+export type OrigemPdi = 'AUTOMATICO' | 'MANUAL';
+
+export interface PdiItem {
+  id: number;
+  colaboradorId: number;
+  competenciaId: number | null;
+  certificacaoId: string | null;
+  formacaoId: number | null;
+  descricao: string;
+  estado: EstadoPdi;
+  origem: OrigemPdi;
+  notas: string | null;
+  createdAt: string;
+  updatedAt: string;
+  competencia: { nome: string } | null;
+  certificacao: { nome: string } | null;
+  formacao: { nome: string; duracaoHoras: number | null } | null;
+}
+
+export interface GerarPdiResponse {
+  criados: number;
+  itens: PdiItem[];
+}
+
+export interface UpdatePdiItemInput {
+  estado?: EstadoPdi;
+  notas?: string;
+}
+
+// --- Skill Matrix (backend/src/gap-analysis) ------------------------------
+
+export type DimensaoSkillMatrix = 'lob' | 'competencia';
+
+export interface SkillMatrixColuna {
+  id: number;
+  nome: string;
+}
+
+export interface SkillMatrixLinha {
+  colaboradorId: number;
+  nome: string;
+  valores: Record<string, number>;
+}
+
+export interface SkillMatrixResponse {
+  dimensao: DimensaoSkillMatrix;
+  colunas: SkillMatrixColuna[];
+  linhas: SkillMatrixLinha[];
+}
+
+export interface FiltrosOrganizacionais {
+  direcaoId?: number;
+  areaId?: number;
+  nucleoId?: number;
+  cargoId?: string;
+}
+
+// --- Catálogo (backend/src/lobs, backend/src/formacoes) -------------------
+
+export interface LobResumo {
+  id: number;
+  nome: string;
+  areaNome: string;
+  pontosMinimos: number;
+  totalRequisitosCompetencia: number;
+  totalRequisitosCertificacao: number;
+}
+
+export interface LobDetalhe {
+  id: number;
+  nome: string;
+  areaNome: string;
+  pontosMinimos: number;
+  requisitosCompetencia: {
+    competenciaId: number;
+    competenciaNome: string;
+    obrigatorio: boolean;
+    pontos: number;
+    nivelMinimoId: number;
+    nivelMinimoNome: string;
+  }[];
+  requisitosCertificacao: { certificacaoId: string; certificacaoNome: string; obrigatorio: boolean }[];
+}
+
+export interface FormacaoResumo {
+  id: number;
+  nome: string;
+  areaNome: string;
+  duracaoHoras: number | null;
+  competenciasDesenvolvidas: string[];
+}
+
+// --- Administração (backend/src/users) ------------------------------------
+
+export interface UsuarioResumo {
+  id: number;
+  email: string;
+  role: PapelUtilizador;
+  isActive: boolean;
+  colaboradorId: number | null;
+  lastLoginAt: string | null;
+  createdAt: string;
+  colaborador: { id: number; nome: string } | null;
+}

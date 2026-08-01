@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply font-sans;
+  }
+  body {
+    @apply m-0 bg-fiori-canvas text-fiori-text antialiased;
+  }
+}
+
+@layer components {
+  /* Tabela densa estilo Fiori: cabeçalho em maiúsculas pequenas, linhas
+     compactas, sem grelha pesada — só uma linha divisória subtil. */
+  .fiori-table {
+    @apply w-full border-collapse text-sm;
+  }
+  .fiori-table thead th {
+    @apply border-b border-fiori-border px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-fiori-text-secondary;
+  }
+  .fiori-table tbody td {
+    @apply border-b border-fiori-border/70 px-3 py-2 text-fiori-text;
+  }
+  .fiori-table tbody tr:hover {
+    @apply bg-fiori-primary-bg;
+  }
+}
+
+/**
+ * Impressão/PDF (pedido do utilizador: "botões de impressão... em todas as
+ * funcionalidades"): esconde navegação/ações e liberta o layout de altura
+ * fixa (a shell normal é h-screen + overflow-y-auto, que corta o conteúdo
+ * ao ecrã — em impressão isso teria de caber numa página só).
+ */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .app-shell,
+  .app-body,
+  .app-main {
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+  body {
+    background: #fff;
+  }
+  .print-break-avoid {
+    break-inside: avoid;
+  }
+}
