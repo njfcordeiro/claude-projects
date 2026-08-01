@@ -139,8 +139,10 @@ export interface ResumoColaboradorDashboard {
   nome: string;
   direcaoNome: string | null;
   areaNome: string | null;
+  nucleoNome: string | null;
   cargoId: string;
   cargoNome: string;
+  carreiraId: string | null;
   lobsExigidos: number;
   lobsAtingidos: number;
   gap: number;
@@ -159,5 +161,18 @@ export interface DashboardResponse {
   prontidaoMediaGeral: number;
   colaboradoresEmRisco: number;
   porDirecao: ResumoGrupoDashboard[];
+  porArea: ResumoGrupoDashboard[];
+  porNucleo: ResumoGrupoDashboard[];
+  porCargo: ResumoGrupoDashboard[];
   colaboradores: ResumoColaboradorDashboard[];
+}
+
+/** Resposta de `GET /gap-analysis/candidatos` — colaboradores fora da carreira-alvo, ordenados por proximidade. */
+export interface CandidatosCarreiraResponse {
+  carreiraId: string;
+  carreiraNome: string;
+  cargoEntradaId: string | null;
+  cargoEntradaNome: string | null;
+  lobsExigidosEntrada: number;
+  candidatos: ResumoColaboradorDashboard[];
 }

@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { GraduationCap, LayoutGrid, ShieldCheck, Target, Users } from 'lucide-react';
+import { Compass, Database, GraduationCap, LayoutGrid, ShieldCheck, Target, Users } from 'lucide-react';
 import { useAuth } from '../../auth/useAuth';
 import { PapelUtilizador } from '../../types/api';
 
@@ -17,6 +17,8 @@ const ITEMS: NavItem[] = [
   { to: '/colaboradores', label: 'Colaboradores', icon: Users, roles: ['ADMIN_RH', 'VIEWER'] },
   { to: '/lobs', label: 'LOBs', icon: Target },
   { to: '/formacoes', label: 'Formações', icon: GraduationCap },
+  { to: '/candidatos', label: 'Candidatos', icon: Compass, roles: ['ADMIN_RH', 'MANAGER', 'VIEWER'] },
+  { to: '/dados', label: 'Gestão de Dados', icon: Database, roles: ['ADMIN_RH'] },
   { to: '/admin', label: 'Administração', icon: ShieldCheck, roles: ['ADMIN_RH'] },
 ];
 

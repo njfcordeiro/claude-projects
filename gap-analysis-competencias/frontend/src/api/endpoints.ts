@@ -1,8 +1,12 @@
-import { api } from './client';
+import { api, downloadFile } from './client';
 import {
+  CandidatosCarreiraResponse,
+  CatalogoRegisto,
+  CatalogoTabelaMeta,
   CertificacaoAtual,
   ColaboradorResumo,
   CreateAvaliacaoInput,
+  CreateColaboradorInput,
   DashboardResponse,
   FormacaoResumo,
   LobDetalhe,
@@ -11,6 +15,7 @@ import {
   PapelUtilizador,
   RelatorioGapCargo,
   RelatorioGapLob,
+  ResumoImportacao,
   UltimaAvaliacao,
   UpsertCertificacaoInput,
   UsuarioResumo,
@@ -21,6 +26,8 @@ export const endpoints = {
 
   colaboradores: () => api.get<ColaboradorResumo[]>('/colaboradores'),
   colaborador: (id: number) => api.get<ColaboradorResumo>(`/colaboradores/${id}`),
+  criarColaborador: (dto: CreateColaboradorInput) => api.post<ColaboradorResumo>('/colaboradores', dto),
+  eliminarColaborador: (id: number) => api.delete<void>(`/colaboradores/${id}`),
 
   // Escrita com locking otimista (Prompt 5) — ver docs/02-arquitetura-tecnica.md secção 4.5.
   ultimaAvaliacao: (colaboradorId: number, competenciaId: number) =>
@@ -47,4 +54,20 @@ export const endpoints = {
     api.post<UsuarioResumo>('/users', dto),
   updateUser: (id: number, dto: { role?: PapelUtilizador; isActive?: boolean }) =>
     api.patch<UsuarioResumo>(`/users/${id}`, dto),
+
+  candidatos: (carreiraId: string) =>
+    api.get<CandidatosCarreiraResponse>(`/gap-analysis/candidatos?carreiraId=${encodeURIComponent(carreiraId)}`),
+
+  // --- Catálogo genérico (Gestão de Dados) --------------------------------
+  catalogoMeta: () => api.get<CatalogoTabelaMeta[]>('/catalogo/meta'),
+  catalogoListar: (tabela: string) => api.get<CatalogoRegisto[]>(`/catalogo/${tabela}`),
+  catalogoCriar: (tabela: string, dados: CatalogoRegisto) => api.post<CatalogoRegisto>(`/catalogo/${tabela}`, dados),
+  catalogoAtualizar: (tabela: string, dados: CatalogoRegisto) => api.patch<CatalogoRegisto>(`/catalogo/${tabela}`, dados),
+  catalogoEliminar: (tabela: string, identidade: CatalogoRegisto) => api.delete<void>(`/catalogo/${tabela}`, identidade),
+  catalogoExportar: (tabela: string) => downloadFile(`/catalogo/${tabela}/export`, `${tabela}.xlsx`),
+  catalogoImportar: (tabela: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api.postForm<ResumoImportacao>(`/catalogo/${tabela}/import`, form);
+  },
 };

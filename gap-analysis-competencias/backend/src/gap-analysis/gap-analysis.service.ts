@@ -1,10 +1,11 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { PapelUtilizador } from '@prisma/client';
+import { PapelUtilizador, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ColaboradoresService } from '../colaboradores/colaboradores.service';
 import { AuthenticatedUser } from '../auth/jwt-payload.interface';
 import { calcularGapLob, ordenarCertificacoes, ordenarFormacoes } from './gap-analysis.logic';
 import {
+  CandidatosCarreiraResponse,
   CertificacaoCandidata,
   CertificacaoColaboradorInput,
   DashboardResponse,
@@ -111,20 +112,102 @@ export class GapAnalysisService {
         ? { managerId: user.colaboradorId ?? -1, cargoId: { not: null } }
         : { cargoId: { not: null } };
 
+    const resumos = await this.calcularResumos(where);
+
+    if (resumos.length === 0) {
+      return {
+        totalColaboradores: 0,
+        prontidaoMediaGeral: 0,
+        colaboradoresEmRisco: 0,
+        porDirecao: [],
+        porArea: [],
+        porNucleo: [],
+        porCargo: [],
+        colaboradores: [],
+      };
+    }
+
+    return {
+      totalColaboradores: resumos.length,
+      prontidaoMediaGeral: Math.round(resumos.reduce((soma, r) => soma + r.prontidaoMedia, 0) / resumos.length),
+      colaboradoresEmRisco: resumos.filter((r) => r.gap > 0).length,
+      porDirecao: this.agruparPorCampo(resumos, (r) => r.direcaoNome ?? 'Sem direção'),
+      porArea: this.agruparPorCampo(resumos, (r) => r.areaNome ?? 'Sem área'),
+      porNucleo: this.agruparPorCampo(resumos, (r) => r.nucleoNome ?? 'Sem núcleo'),
+      porCargo: this.agruparPorCampo(resumos, (r) => r.cargoNome),
+      colaboradores: [...resumos].sort((a, b) => a.prontidaoMedia - b.prontidaoMedia),
+    };
+  }
+
+  /**
+   * Candidatos a uma carreira (ex. Arquiteto): os LOBs não estão ligados a
+   * um cargo específico — `lobsAtingidos`/`prontidaoMedia` de um
+   * colaborador são calculados sobre TODAS as LOBs da organização e não
+   * dependem do cargo-alvo (ver `calcularResumos`/`obterDashboard`); só
+   * `cargo.lobsExigidos` varia por cargo. Por isso "quão perto está alguém
+   * da carreira X" reduz-se a comparar o `lobsAtingidos` já calculado (uma
+   * vez, em lote) contra o MENOR `lobsExigidos` entre os cargos dessa
+   * carreira — o cargo de entrada mais acessível.
+   */
+  async sugerirCandidatosCarreira(carreiraId: string, user: AuthenticatedUser): Promise<CandidatosCarreiraResponse> {
+    if (user.role === PapelUtilizador.EMPLOYEE) {
+      throw new ForbiddenException('Os candidatos são uma vista de equipa/organização — usa a tua ficha pessoal.');
+    }
+
+    const carreira = await this.prisma.carreira.findUnique({ where: { id: carreiraId } });
+    if (!carreira) throw new NotFoundException(`Carreira "${carreiraId}" não encontrada.`);
+
+    const cargosDaCarreira = await this.prisma.cargo.findMany({ where: { carreiraId } });
+    const cargoEntrada = cargosDaCarreira.reduce<(typeof cargosDaCarreira)[number] | null>((menor, atual) => {
+      const atualExigidos = atual.lobsExigidos ?? 0;
+      if (!menor) return atual;
+      return atualExigidos < (menor.lobsExigidos ?? 0) ? atual : menor;
+    }, null);
+    const lobsExigidosEntrada = cargoEntrada?.lobsExigidos ?? 0;
+
+    const where =
+      user.role === PapelUtilizador.MANAGER
+        ? { managerId: user.colaboradorId ?? -1, cargoId: { not: null }, carreiraId: { not: carreiraId } }
+        : { cargoId: { not: null }, carreiraId: { not: carreiraId } };
+
+    const resumos = await this.calcularResumos(where);
+
+    const candidatos = resumos
+      .map((r) => ({ ...r, lobsExigidos: lobsExigidosEntrada, gap: Math.max(0, lobsExigidosEntrada - r.lobsAtingidos) }))
+      .sort((a, b) => a.gap - b.gap || b.prontidaoMedia - a.prontidaoMedia);
+
+    return {
+      carreiraId: carreira.id,
+      carreiraNome: carreira.nome,
+      cargoEntradaId: cargoEntrada?.id ?? null,
+      cargoEntradaNome: cargoEntrada?.nome ?? null,
+      lobsExigidosEntrada,
+      candidatos,
+    };
+  }
+
+  /**
+   * Núcleo partilhado por `obterDashboard`/`sugerirCandidatosCarreira`:
+   * carrega colaboradores (com o `where` pedido) em lote e calcula
+   * `lobsAtingidos`/`prontidaoMedia` sobre todas as LOBs da organização —
+   * ver nota em `sugerirCandidatosCarreira` sobre porque isto não depende
+   * do cargo-alvo.
+   */
+  private async calcularResumos(where: Prisma.ColaboradorWhereInput): Promise<ResumoColaboradorDashboard[]> {
     const colaboradores = await this.prisma.colaborador.findMany({
       where,
       select: {
         id: true,
         nome: true,
         cargoId: true,
+        carreiraId: true,
         direcao: { select: { nome: true } },
         area: { select: { nome: true } },
+        nucleo: { select: { nome: true } },
       },
     });
 
-    if (colaboradores.length === 0) {
-      return { totalColaboradores: 0, prontidaoMediaGeral: 0, colaboradoresEmRisco: 0, porDirecao: [], colaboradores: [] };
-    }
+    if (colaboradores.length === 0) return [];
 
     const ids = colaboradores.map((c) => c.id);
     const [niveisPorColaborador, certsPorColaborador, cargosPorId, todasAsLobs] = await Promise.all([
@@ -139,7 +222,7 @@ export class GapAnalysisService {
       }),
     ]);
 
-    const resumos: ResumoColaboradorDashboard[] = colaboradores.map((c) => {
+    return colaboradores.map((c) => {
       const cargo = cargosPorId.get(c.cargoId!);
       const niveisAtuais = niveisPorColaborador.get(c.id) ?? new Map();
       const certsColaborador = certsPorColaborador.get(c.id) ?? new Map();
@@ -161,24 +244,16 @@ export class GapAnalysisService {
         nome: c.nome,
         direcaoNome: c.direcao?.nome ?? null,
         areaNome: c.area?.nome ?? null,
+        nucleoNome: c.nucleo?.nome ?? null,
         cargoId: c.cargoId!,
         cargoNome: cargo?.nome ?? c.cargoId!,
+        carreiraId: c.carreiraId,
         lobsExigidos,
         lobsAtingidos,
         gap: Math.max(0, lobsExigidos - lobsAtingidos),
         prontidaoMedia,
       };
     });
-
-    const porDirecao = this.agruparPorCampo(resumos, (r) => r.direcaoNome ?? 'Sem direção');
-
-    return {
-      totalColaboradores: resumos.length,
-      prontidaoMediaGeral: Math.round(resumos.reduce((soma, r) => soma + r.prontidaoMedia, 0) / resumos.length),
-      colaboradoresEmRisco: resumos.filter((r) => r.gap > 0).length,
-      porDirecao,
-      colaboradores: resumos.sort((a, b) => a.prontidaoMedia - b.prontidaoMedia),
-    };
   }
 
   // -----------------------------------------------------------------

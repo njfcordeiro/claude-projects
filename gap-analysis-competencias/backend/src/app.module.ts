@@ -8,6 +8,7 @@ import { GapAnalysisModule } from './gap-analysis/gap-analysis.module';
 import { LobsModule } from './lobs/lobs.module';
 import { FormacoesModule } from './formacoes/formacoes.module';
 import { UsersModule } from './users/users.module';
+import { CatalogoModule } from './catalogo/catalogo.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { UsersModule } from './users/users.module';
     LobsModule,
     FormacoesModule,
     UsersModule,
+    CatalogoModule,
     HealthModule,
   ],
 })

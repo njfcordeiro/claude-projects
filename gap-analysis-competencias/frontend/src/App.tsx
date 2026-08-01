@@ -9,6 +9,8 @@ import { LobsListPage } from './pages/LobsListPage';
 import { LobDetailPage } from './pages/LobDetailPage';
 import { FormacoesPage } from './pages/FormacoesPage';
 import { AdminPage } from './pages/AdminPage';
+import { CatalogoPage } from './pages/CatalogoPage';
+import { CandidatosPage } from './pages/CandidatosPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
 export function App() {
@@ -35,7 +37,12 @@ export function App() {
 
             <Route path="/formacoes" element={<FormacoesPage />} />
 
+            <Route element={<ProtectedRoute allowedRoles={['ADMIN_RH', 'MANAGER', 'VIEWER']} />}>
+              <Route path="/candidatos" element={<CandidatosPage />} />
+            </Route>
+
             <Route element={<ProtectedRoute allowedRoles={['ADMIN_RH']} />}>
+              <Route path="/dados" element={<CatalogoPage />} />
               <Route path="/admin" element={<AdminPage />} />
             </Route>
           </Route>

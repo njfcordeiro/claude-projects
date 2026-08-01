@@ -2,6 +2,7 @@ import { ConflictException, ForbiddenException, Injectable, NotFoundException } 
 import { OrigemAvaliacao, PapelUtilizador, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from '../auth/jwt-payload.interface';
+import { CreateColaboradorDto } from './dto/create-colaborador.dto';
 import { UpdateColaboradorDto } from './dto/update-colaborador.dto';
 import { CreateAvaliacaoDto } from './dto/create-avaliacao.dto';
 import { UpsertCertificacaoDto } from './dto/upsert-certificacao.dto';
@@ -13,6 +14,8 @@ const SELECT_RESUMO = {
   direcaoId: true,
   nucleoId: true,
   areaId: true,
+  carreiraId: true,
+  categoriaId: true,
   managerId: true,
   version: true,
 } as const;
@@ -30,8 +33,42 @@ export class ColaboradoresService {
   constructor(private readonly prisma: PrismaService) {}
 
   /** Lista completa — só ADMIN_RH/VIEWER chegam aqui (bloqueado pelo RolesGuard no controller). */
-  async listar(skip = 0, take = 50) {
+  async listar(skip = 0, take = 1000) {
     return this.prisma.colaborador.findMany({ select: SELECT_RESUMO, skip, take, orderBy: { nome: 'asc' } });
+  }
+
+  /** Cria um colaborador novo — `id` é fornecido pelo cliente (replica o "ID Colaborador" do Excel, não é autoincrement). */
+  async criar(dto: CreateColaboradorDto, autor: AuthenticatedUser) {
+    try {
+      return await this.prisma.runAsUser(autor.sub, (tx) => tx.colaborador.create({ data: dto, select: SELECT_RESUMO }));
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException(`Já existe um colaborador com o id ${dto.id}.`);
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Elimina um colaborador. O schema não define `onDelete: Cascade` nas FKs
+   * para Colaborador, por isso o Postgres já rejeita (RESTRICT) eliminar
+   * alguém com subordinados/avaliações/certificações/conta associada —
+   * aqui só traduzimos esse erro para uma mensagem percetível.
+   */
+  async eliminar(id: number, autor: AuthenticatedUser) {
+    try {
+      await this.prisma.runAsUser(autor.sub, (tx) => tx.colaborador.delete({ where: { id } }));
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+        throw new NotFoundException(`Colaborador ${id} não encontrado.`);
+      }
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+        throw new ConflictException(
+          `Este colaborador tem dados associados (avaliações, subordinados, conta, etc.) — não pode ser eliminado.`,
+        );
+      }
+      throw err;
+    }
   }
 
   async meuPerfil(user: AuthenticatedUser) {

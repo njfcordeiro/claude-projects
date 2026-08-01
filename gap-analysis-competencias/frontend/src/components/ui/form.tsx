@@ -18,6 +18,16 @@ export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
   );
 }
 
+export function Checkbox(props: InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      type="checkbox"
+      {...props}
+      className={`h-4 w-4 rounded border-fiori-border text-fiori-primary focus:ring-1 focus:ring-fiori-primary ${props.className ?? ''}`}
+    />
+  );
+}
+
 export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select

@@ -50,4 +50,34 @@ export const api = {
     request<T>(path, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined }),
   put: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'PUT', body: body ? JSON.stringify(body) : undefined }),
+  delete: <T>(path: string, body?: unknown) =>
+    request<T>(path, { method: 'DELETE', body: body ? JSON.stringify(body) : undefined }),
+  /** Upload multipart — sem Content-Type manual, o browser define o boundary sozinho. */
+  postForm: <T>(path: string, form: FormData) => {
+    const headers = new Headers();
+    if (authToken) headers.set('Authorization', `Bearer ${authToken}`);
+    return fetch(`${API_URL}${path}`, { method: 'POST', headers, body: form }).then(async (res) => {
+      const texto = await res.text();
+      if (!res.ok) {
+        const body = texto ? JSON.parse(texto) : {};
+        throw new ApiError(res.status, body.message ?? `Erro ${res.status}`, body);
+      }
+      return texto ? (JSON.parse(texto) as T) : (null as T);
+    });
+  },
 };
+
+/** Descarrega um ficheiro protegido por Bearer token (não dá para usar <a href> simples). */
+export async function downloadFile(path: string, filename: string): Promise<void> {
+  const headers = new Headers();
+  if (authToken) headers.set('Authorization', `Bearer ${authToken}`);
+  const res = await fetch(`${API_URL}${path}`, { headers });
+  if (!res.ok) throw new ApiError(res.status, `Erro ${res.status} ao descarregar.`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}

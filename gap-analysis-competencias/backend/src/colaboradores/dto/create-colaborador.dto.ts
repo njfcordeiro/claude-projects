@@ -1,8 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsInt, IsOptional, IsString } from 'class-validator';
 
-/** Campos demonstrativos — os módulos seguintes (secção 7 do doc de arquitetura) alargam isto. */
-export class UpdateColaboradorDto {
+/** Igual a UpdateColaboradorDto, mas `id`/`nome` são obrigatórios (não há autoincrement — `id` replica o "ID Colaborador" do Excel) e sem `version` (não existe ainda). */
+export class CreateColaboradorDto {
+  @ApiProperty()
+  @IsInt()
+  id!: number;
+
+  @ApiProperty()
+  @IsString()
+  nome!: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -37,8 +45,4 @@ export class UpdateColaboradorDto {
   @IsOptional()
   @IsInt()
   managerId?: number;
-
-  @ApiProperty({ description: 'Versão lida pelo cliente antes de editar — locking otimista, ver docs/02-arquitetura-tecnica.md secção 4.5.' })
-  @IsInt()
-  version!: number;
 }

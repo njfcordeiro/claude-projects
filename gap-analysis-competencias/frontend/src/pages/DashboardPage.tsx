@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { endpoints } from '../api/endpoints';
@@ -7,12 +8,21 @@ import { KpiTile } from '../components/ui/KpiTile';
 import { ReadinessBarChart } from '../components/ui/ReadinessBarChart';
 import { DataTable } from '../components/ui/DataTable';
 import { Badge } from '../components/ui/Badge';
+import { DashboardResponse } from '../types/api';
+
+const DIMENSOES: { chave: keyof Pick<DashboardResponse, 'porDirecao' | 'porArea' | 'porNucleo' | 'porCargo'>; label: string }[] = [
+  { chave: 'porDirecao', label: 'Direção' },
+  { chave: 'porArea', label: 'Área' },
+  { chave: 'porNucleo', label: 'Núcleo' },
+  { chave: 'porCargo', label: 'Cargo' },
+];
 
 /** Visão geral de gaps por equipa/categoria (docs Prompt 4). ADMIN_RH/VIEWER veem a organização; MANAGER só a sua equipa. */
 export function DashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { data, isLoading, error } = useQuery({ queryKey: ['dashboard'], queryFn: endpoints.dashboard });
+  const [dimensao, setDimensao] = useState<(typeof DIMENSOES)[number]['chave']>('porDirecao');
 
   if (isLoading) return <p className="text-sm text-fiori-text-secondary">A carregar…</p>;
   if (error) return <p className="text-sm text-fiori-error">Não foi possível carregar o dashboard.</p>;
@@ -42,9 +52,27 @@ export function DashboardPage() {
         />
       </div>
 
-      <Card title="Prontidão média por direção">
+      <Card
+        title={`Prontidão média por ${DIMENSOES.find((d) => d.chave === dimensao)!.label.toLowerCase()}`}
+        action={
+          <div className="flex gap-1">
+            {DIMENSOES.map((d) => (
+              <button
+                key={d.chave}
+                type="button"
+                onClick={() => setDimensao(d.chave)}
+                className={`rounded px-2.5 py-1 text-xs font-medium ${
+                  dimensao === d.chave ? 'bg-fiori-primary-bg text-fiori-primary' : 'text-fiori-text-secondary hover:bg-fiori-canvas'
+                }`}
+              >
+                {d.label}
+              </button>
+            ))}
+          </div>
+        }
+      >
         <ReadinessBarChart
-          dados={data.porDirecao.map((g) => ({
+          dados={data[dimensao].map((g) => ({
             grupo: g.grupo,
             prontidaoMedia: g.prontidaoMedia,
             totalColaboradores: g.totalColaboradores,

@@ -23,9 +23,23 @@ export interface ColaboradorResumo {
   direcaoId: number | null;
   nucleoId: number | null;
   areaId: number | null;
+  carreiraId: string | null;
+  categoriaId: string | null;
   managerId: number | null;
   /** Locking otimista — ver docs/02-arquitetura-tecnica.md secção 4.5. */
   version: number;
+}
+
+export interface CreateColaboradorInput {
+  id: number;
+  nome: string;
+  cargoId?: string;
+  direcaoId?: number;
+  nucleoId?: number;
+  areaId?: number;
+  carreiraId?: string;
+  categoriaId?: string;
+  managerId?: number;
 }
 
 // --- Escrita com locking otimista (Prompt 5) ------------------------------
@@ -149,8 +163,10 @@ export interface ResumoColaboradorDashboard {
   nome: string;
   direcaoNome: string | null;
   areaNome: string | null;
+  nucleoNome: string | null;
   cargoId: string;
   cargoNome: string;
+  carreiraId: string | null;
   lobsExigidos: number;
   lobsAtingidos: number;
   gap: number;
@@ -169,7 +185,47 @@ export interface DashboardResponse {
   prontidaoMediaGeral: number;
   colaboradoresEmRisco: number;
   porDirecao: ResumoGrupoDashboard[];
+  porArea: ResumoGrupoDashboard[];
+  porNucleo: ResumoGrupoDashboard[];
+  porCargo: ResumoGrupoDashboard[];
   colaboradores: ResumoColaboradorDashboard[];
+}
+
+export interface CandidatosCarreiraResponse {
+  carreiraId: string;
+  carreiraNome: string;
+  cargoEntradaId: string | null;
+  cargoEntradaNome: string | null;
+  lobsExigidosEntrada: number;
+  candidatos: ResumoColaboradorDashboard[];
+}
+
+// --- Catálogo genérico (backend/src/catalogo) -----------------------------
+
+export type CatalogoTipoCampo = 'string' | 'int' | 'boolean' | 'relation';
+
+export interface CatalogoCampoDef {
+  key: string;
+  label: string;
+  tipo: CatalogoTipoCampo;
+  obrigatorio: boolean;
+  relatedTable?: string;
+  relationAccessor?: string;
+}
+
+export interface CatalogoTabelaMeta {
+  tabela: string;
+  label: string;
+  campos: CatalogoCampoDef[];
+  identityFields: string[];
+}
+
+export type CatalogoRegisto = Record<string, string | number | boolean | null>;
+
+export interface ResumoImportacao {
+  criados: number;
+  atualizados: number;
+  erros: string[];
 }
 
 // --- Catálogo (backend/src/lobs, backend/src/formacoes) -------------------
