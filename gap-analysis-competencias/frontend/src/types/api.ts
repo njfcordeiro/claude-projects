@@ -20,12 +20,20 @@ export interface ColaboradorResumo {
   id: number;
   nome: string;
   cargoId: string | null;
+  cargoNome: string | null;
   direcaoId: number | null;
-  nucleoId: number | null;
+  direcaoNome: string | null;
+  direcaoRelevante: boolean;
   areaId: number | null;
+  areaNome: string | null;
+  areaRelevante: boolean;
+  nucleoId: number | null;
+  nucleoNome: string | null;
+  nucleoRelevante: boolean;
   carreiraId: string | null;
   categoriaId: string | null;
   managerId: number | null;
+  managerNome: string | null;
   /** Locking otimista — ver docs/02-arquitetura-tecnica.md secção 4.5. */
   version: number;
 }

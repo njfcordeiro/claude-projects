@@ -20,7 +20,38 @@ const SELECT_RESUMO = {
   categoriaId: true,
   managerId: true,
   version: true,
-} as const;
+  cargo: { select: { nome: true } },
+  direcao: { select: { nome: true, relevante: true } },
+  area: { select: { nome: true, relevante: true } },
+  nucleo: { select: { nome: true, relevante: true } },
+  gestor: { select: { nome: true } },
+} satisfies Prisma.ColaboradorSelect;
+
+type ColaboradorComRelacoes = Prisma.ColaboradorGetPayload<{ select: typeof SELECT_RESUMO }>;
+
+/** Achata as relações (nome + relevância de Direção/Área/Núcleo, nome do gestor) para um DTO simples — nunca devolvemos a forma aninhada do Prisma ao cliente. */
+function mapearResumo(c: ColaboradorComRelacoes) {
+  return {
+    id: c.id,
+    nome: c.nome,
+    cargoId: c.cargoId,
+    cargoNome: c.cargo?.nome ?? null,
+    direcaoId: c.direcaoId,
+    direcaoNome: c.direcao?.nome ?? null,
+    direcaoRelevante: c.direcao?.relevante ?? false,
+    areaId: c.areaId,
+    areaNome: c.area?.nome ?? null,
+    areaRelevante: c.area?.relevante ?? false,
+    nucleoId: c.nucleoId,
+    nucleoNome: c.nucleo?.nome ?? null,
+    nucleoRelevante: c.nucleo?.relevante ?? false,
+    carreiraId: c.carreiraId,
+    categoriaId: c.categoriaId,
+    managerId: c.managerId,
+    managerNome: c.gestor?.nome ?? null,
+    version: c.version,
+  };
+}
 
 /** Colunas do round-trip de Excel — ver `exportar`/`importar` mais abaixo. */
 const COLUNAS_IMPORT_EXPORT = [
@@ -61,13 +92,15 @@ export class ColaboradoresService {
 
   /** Lista completa — só ADMIN_RH/VIEWER chegam aqui (bloqueado pelo RolesGuard no controller). */
   async listar(skip = 0, take = 1000) {
-    return this.prisma.colaborador.findMany({ select: SELECT_RESUMO, skip, take, orderBy: { nome: 'asc' } });
+    const linhas = await this.prisma.colaborador.findMany({ select: SELECT_RESUMO, skip, take, orderBy: { nome: 'asc' } });
+    return linhas.map(mapearResumo);
   }
 
   /** Cria um colaborador novo — `id` é fornecido pelo cliente (replica o "ID Colaborador" do Excel, não é autoincrement). */
   async criar(dto: CreateColaboradorDto, autor: AuthenticatedUser) {
     try {
-      return await this.prisma.runAsUser(autor.sub, (tx) => tx.colaborador.create({ data: dto, select: SELECT_RESUMO }));
+      const criado = await this.prisma.runAsUser(autor.sub, (tx) => tx.colaborador.create({ data: dto, select: SELECT_RESUMO }));
+      return mapearResumo(criado);
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         throw new ConflictException(`Já existe um colaborador com o id ${dto.id}.`);
@@ -290,7 +323,7 @@ export class ColaboradoresService {
     if (!podeVer) {
       throw new ForbiddenException('Sem acesso a este colaborador.');
     }
-    return colaborador;
+    return mapearResumo(colaborador);
   }
 
   /**
@@ -331,7 +364,8 @@ export class ColaboradoresService {
         await this.lancarConflitoColaborador(tx, id);
       }
 
-      return tx.colaborador.findUniqueOrThrow({ where: { id }, select: SELECT_RESUMO });
+      const atualizado = await tx.colaborador.findUniqueOrThrow({ where: { id }, select: SELECT_RESUMO });
+      return mapearResumo(atualizado);
     });
   }
 
@@ -340,7 +374,7 @@ export class ColaboradoresService {
     if (!atual) throw new NotFoundException(`Colaborador ${id} não encontrado.`);
     throw new ConflictException({
       message: 'Este colaborador foi alterado por outra pessoa entretanto. Revê os dados atuais e tenta novamente.',
-      current: atual,
+      current: mapearResumo(atual),
     });
   }
 

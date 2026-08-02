@@ -69,14 +69,22 @@ export const CATALOGO_REGISTRY: CatalogoTabelaDef[] = [
     label: 'Áreas',
     delegate: 'area',
     identityFields: ['id'],
-    campos: [campo('id', 'ID', 'int'), campo('nome', 'Nome', 'string')],
+    campos: [
+      campo('id', 'ID', 'int'),
+      campo('nome', 'Nome', 'string'),
+      campo('relevante', 'Relevante', 'boolean', false),
+    ],
   },
   {
     tabela: 'nucleos',
     label: 'Núcleos',
     delegate: 'nucleo',
     identityFields: ['id'],
-    campos: [campo('id', 'ID', 'int'), campo('nome', 'Nome', 'string')],
+    campos: [
+      campo('id', 'ID', 'int'),
+      campo('nome', 'Nome', 'string'),
+      campo('relevante', 'Relevante', 'boolean', false),
+    ],
   },
   {
     tabela: 'carreiras',

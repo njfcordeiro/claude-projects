@@ -1,4 +1,4 @@
-import { FormEvent, useRef, useState } from 'react';
+import { FormEvent, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Download, Plus, Trash2, Upload } from 'lucide-react';
@@ -6,11 +6,55 @@ import { endpoints } from '../api/endpoints';
 import { ApiError } from '../api/client';
 import { ColaboradorResumo, ResumoImportacao } from '../types/api';
 import { Card } from '../components/ui/Card';
-import { DataTable } from '../components/ui/DataTable';
+import { DataTable, DataTableColumn } from '../components/ui/DataTable';
 import { Modal } from '../components/ui/Modal';
 import { PrintButton } from '../components/ui/PrintButton';
 import { Button, Field, Input, Select } from '../components/ui/form';
 import { UploadReportModal } from '../components/catalogo/UploadReportModal';
+
+type FiltroRelevancia = 'todos' | 'relevantes' | 'outros';
+type Agrupamento = 'nenhum' | 'direcao' | 'area' | 'nucleo';
+
+function ehRelevante(c: ColaboradorResumo): boolean {
+  return c.direcaoRelevante || c.areaRelevante || c.nucleoRelevante;
+}
+
+function construirColunas(
+  navigate: (path: string) => void,
+  eliminar: (id: number) => void,
+): DataTableColumn<ColaboradorResumo>[] {
+  return [
+    { key: 'id', header: 'ID', render: (c) => c.id, sortValue: (c) => c.id },
+    { key: 'nome', header: 'Nome', render: (c) => c.nome, sortValue: (c) => c.nome },
+    { key: 'cargo', header: 'Cargo', render: (c) => c.cargoNome ?? '—', sortValue: (c) => c.cargoNome ?? '', searchValue: (c) => c.cargoNome ?? '' },
+    { key: 'direcao', header: 'Direção', render: (c) => c.direcaoNome ?? '—', sortValue: (c) => c.direcaoNome ?? '', searchValue: (c) => c.direcaoNome ?? '' },
+    { key: 'area', header: 'Área', render: (c) => c.areaNome ?? '—', sortValue: (c) => c.areaNome ?? '', searchValue: (c) => c.areaNome ?? '' },
+    { key: 'nucleo', header: 'Núcleo', render: (c) => c.nucleoNome ?? '—', sortValue: (c) => c.nucleoNome ?? '', searchValue: (c) => c.nucleoNome ?? '' },
+    {
+      key: 'gestor',
+      header: 'Gestor',
+      render: (c) => (c.managerId ? `${c.managerId} · ${c.managerNome ?? '—'}` : '—'),
+      searchValue: (c) => c.managerNome ?? '',
+    },
+    {
+      key: '__acoes',
+      header: '',
+      render: (c: ColaboradorResumo) => (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (window.confirm(`Eliminar ${c.nome}?`)) eliminar(c.id);
+          }}
+          className="no-print text-fiori-text-secondary hover:text-fiori-error"
+          aria-label="Eliminar"
+        >
+          <Trash2 size={15} />
+        </button>
+      ),
+    },
+  ];
+}
 
 /** Restrito a ADMIN_RH/VIEWER (RolesGuard do backend em GET /colaboradores). */
 export function ColaboradoresListPage() {
@@ -20,6 +64,8 @@ export function ColaboradoresListPage() {
   const { data, isLoading, error } = useQuery({ queryKey: ['colaboradores'], queryFn: endpoints.colaboradores });
   const [modalAberto, setModalAberto] = useState(false);
   const [relatorioImportacao, setRelatorioImportacao] = useState<ResumoImportacao | null>(null);
+  const [filtro, setFiltro] = useState<FiltroRelevancia>('todos');
+  const [agrupamento, setAgrupamento] = useState<Agrupamento>('nenhum');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const eliminar = useMutation({
@@ -44,8 +90,37 @@ export function ColaboradoresListPage() {
     if (file) importar.mutate(file);
   }
 
+  const dadosFiltrados = useMemo(() => {
+    const base = data ?? [];
+    if (filtro === 'relevantes') return base.filter(ehRelevante);
+    if (filtro === 'outros') return base.filter((c) => !ehRelevante(c));
+    return base;
+  }, [data, filtro]);
+
+  const grupos = useMemo(() => {
+    if (agrupamento === 'nenhum') return null;
+    const chaveDe = (c: ColaboradorResumo) =>
+      agrupamento === 'direcao' ? c.direcaoNome : agrupamento === 'area' ? c.areaNome : c.nucleoNome;
+    const semLabel =
+      agrupamento === 'direcao' ? 'Sem direção' : agrupamento === 'area' ? 'Sem área' : 'Sem núcleo';
+
+    const mapa = new Map<string, ColaboradorResumo[]>();
+    for (const c of dadosFiltrados) {
+      const chave = chaveDe(c) ?? semLabel;
+      if (!mapa.has(chave)) mapa.set(chave, []);
+      mapa.get(chave)!.push(c);
+    }
+    return Array.from(mapa.entries()).sort(([a], [b]) => {
+      if (a === semLabel) return 1;
+      if (b === semLabel) return -1;
+      return a.localeCompare(b);
+    });
+  }, [dadosFiltrados, agrupamento]);
+
   if (isLoading) return <p className="text-sm text-fiori-text-secondary">A carregar…</p>;
   if (error) return <p className="text-sm text-fiori-error">Não foi possível carregar os colaboradores.</p>;
+
+  const colunas = construirColunas(navigate, eliminar.mutate);
 
   return (
     <div className="space-y-4">
@@ -71,37 +146,81 @@ export function ColaboradoresListPage() {
           </Button>
         </div>
       </div>
+
       <Card>
-        <DataTable
-          data={data ?? []}
-          getRowKey={(c) => c.id}
-          onRowClick={(c) => navigate(`/colaboradores/${c.id}`)}
-          initialSearch={searchParams.get('q') ?? ''}
-          searchPlaceholder="Pesquisar por nome ou cargo…"
-          columns={[
-            { key: 'nome', header: 'Nome', render: (c) => c.nome, sortValue: (c) => c.nome },
-            { key: 'cargo', header: 'Cargo', render: (c) => c.cargoId ?? '—', sortValue: (c) => c.cargoId ?? '' },
-            { key: 'manager', header: 'Gestor (ID)', render: (c) => c.managerId ?? '—' },
-            {
-              key: '__acoes',
-              header: '',
-              render: (c: ColaboradorResumo) => (
+        <div className="flex flex-wrap items-center gap-4">
+          <div>
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-fiori-text-secondary">Mostrar</p>
+            <div className="flex gap-1 rounded bg-fiori-canvas p-0.5">
+              {([
+                ['todos', 'Todos'],
+                ['relevantes', 'Relevantes'],
+                ['outros', 'Outros'],
+              ] as [FiltroRelevancia, string][]).map(([valor, label]) => (
                 <button
+                  key={valor}
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (window.confirm(`Eliminar ${c.nome}?`)) eliminar.mutate(c.id);
-                  }}
-                  className="no-print text-fiori-text-secondary hover:text-fiori-error"
-                  aria-label="Eliminar"
+                  onClick={() => setFiltro(valor)}
+                  className={`rounded px-2.5 py-1 text-xs font-medium ${
+                    filtro === valor ? 'bg-fiori-surface text-fiori-primary shadow-fiori' : 'text-fiori-text-secondary'
+                  }`}
                 >
-                  <Trash2 size={15} />
+                  {label}
                 </button>
-              ),
-            },
-          ]}
-        />
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-fiori-text-secondary">Agrupar por</p>
+            <div className="flex gap-1 rounded bg-fiori-canvas p-0.5">
+              {([
+                ['nenhum', 'Nenhum'],
+                ['direcao', 'Direção'],
+                ['area', 'Área'],
+                ['nucleo', 'Núcleo'],
+              ] as [Agrupamento, string][]).map(([valor, label]) => (
+                <button
+                  key={valor}
+                  type="button"
+                  onClick={() => setAgrupamento(valor)}
+                  className={`rounded px-2.5 py-1 text-xs font-medium ${
+                    agrupamento === valor ? 'bg-fiori-surface text-fiori-primary shadow-fiori' : 'text-fiori-text-secondary'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       </Card>
+
+      {grupos ? (
+        <div className="space-y-4">
+          {grupos.map(([nomeGrupo, colaboradoresGrupo]) => (
+            <Card key={nomeGrupo} title={`${nomeGrupo} (${colaboradoresGrupo.length})`}>
+              <DataTable
+                data={colaboradoresGrupo}
+                getRowKey={(c) => c.id}
+                onRowClick={(c) => navigate(`/colaboradores/${c.id}`)}
+                searchPlaceholder="Pesquisar por nome ou cargo…"
+                columns={colunas}
+              />
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <Card>
+          <DataTable
+            data={dadosFiltrados}
+            getRowKey={(c) => c.id}
+            onRowClick={(c) => navigate(`/colaboradores/${c.id}`)}
+            initialSearch={searchParams.get('q') ?? ''}
+            searchPlaceholder="Pesquisar por nome ou cargo…"
+            columns={colunas}
+          />
+        </Card>
+      )}
 
       {modalAberto && <CriarColaboradorModal onClose={() => setModalAberto(false)} />}
       {relatorioImportacao && <UploadReportModal resumo={relatorioImportacao} onClose={() => setRelatorioImportacao(null)} />}

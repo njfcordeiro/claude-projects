@@ -111,6 +111,7 @@ model Direcao {
 model Area {
   id        Int      @id
   nome      String   @unique
+  relevante Boolean  @default(false)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -126,6 +127,7 @@ model Nucleo {
   // (*) sem FK a Direcao — confirmado com o utilizador, ver doc secção 6.6
   id        Int      @id
   nome      String   @unique
+  relevante Boolean  @default(false)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
