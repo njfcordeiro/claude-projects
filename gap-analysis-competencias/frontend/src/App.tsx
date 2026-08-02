@@ -13,6 +13,7 @@ import { CatalogoPage } from './pages/CatalogoPage';
 import { CandidatosPage } from './pages/CandidatosPage';
 import { AtribuicoesPage } from './pages/AtribuicoesPage';
 import { SkillMatrixPage } from './pages/SkillMatrixPage';
+import { ComoFuncionaPage } from './pages/ComoFuncionaPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
 export function App() {
@@ -38,6 +39,8 @@ export function App() {
             <Route path="/lobs/:id" element={<LobDetailPage />} />
 
             <Route path="/formacoes" element={<FormacoesPage />} />
+
+            <Route path="/como-funciona" element={<ComoFuncionaPage />} />
 
             <Route element={<ProtectedRoute allowedRoles={['ADMIN_RH', 'MANAGER', 'VIEWER']} />}>
               <Route path="/candidatos" element={<CandidatosPage />} />
