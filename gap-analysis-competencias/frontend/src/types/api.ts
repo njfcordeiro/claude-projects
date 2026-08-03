@@ -376,6 +376,10 @@ export interface FormacaoResumo {
 
 // --- Administração (backend/src/users) ------------------------------------
 
+export interface SenhaTemporariaResponse {
+  senhaTemporaria: string;
+}
+
 export interface UsuarioResumo {
   id: number;
   email: string;

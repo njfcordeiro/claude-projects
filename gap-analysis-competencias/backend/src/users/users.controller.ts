@@ -33,4 +33,9 @@ export class UsersController {
   atualizar(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateUserDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.atualizar(id, dto, user);
   }
+
+  @Post(':id/reset-password')
+  reinicializarPassword(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.reinicializarPassword(id, user);
+  }
 }

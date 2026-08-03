@@ -4,6 +4,7 @@ import { AlertCircle, Target } from 'lucide-react';
 import { useAuth } from '../auth/useAuth';
 import { ApiError } from '../api/client';
 import { Button, Field, Input } from '../components/ui/form';
+import { Modal } from '../components/ui/Modal';
 
 export function LoginPage() {
   const { user, login } = useAuth();
@@ -11,6 +12,7 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [mostrarAjudaPassword, setMostrarAjudaPassword] = useState(false);
 
   if (user) return <Navigate to="/" replace />;
 
@@ -56,7 +58,27 @@ export function LoginPage() {
         <Button type="submit" disabled={submitting}>
           {submitting ? 'A entrar…' : 'Entrar'}
         </Button>
+
+        <button
+          type="button"
+          onClick={() => setMostrarAjudaPassword(true)}
+          className="mt-3 block w-full text-center text-xs text-fiori-text-secondary hover:text-fiori-primary hover:underline"
+        >
+          Esqueceu-se da password?
+        </button>
       </form>
+
+      {mostrarAjudaPassword && (
+        <Modal title="Esqueceu-se da password?" onClose={() => setMostrarAjudaPassword(false)}>
+          <p className="mb-4 text-sm text-fiori-text-secondary">
+            Esta app não envia emails automáticos de reinicialização. Contacta o teu Administrador de RH — ele consegue
+            reinicializar a tua password no ecrã de Administração e vai partilhar contigo uma nova password temporária.
+          </p>
+          <div className="flex justify-end">
+            <Button onClick={() => setMostrarAjudaPassword(false)}>Percebi</Button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

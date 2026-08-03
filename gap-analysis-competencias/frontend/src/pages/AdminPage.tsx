@@ -1,6 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { Check, Copy, KeyRound, Plus } from 'lucide-react';
 import { endpoints } from '../api/endpoints';
 import { ApiError } from '../api/client';
 import { PapelUtilizador, UsuarioResumo } from '../types/api';
@@ -21,6 +21,7 @@ export function AdminPage() {
   const queryClient = useQueryClient();
   const { data, isLoading, error } = useQuery({ queryKey: ['users'], queryFn: endpoints.users });
   const [modalAberto, setModalAberto] = useState(false);
+  const [senhaReinicializada, setSenhaReinicializada] = useState<{ email: string; senha: string } | null>(null);
 
   const atualizarPapel = useMutation({
     mutationFn: ({ id, role }: { id: number; role: PapelUtilizador }) => endpoints.updateUser(id, { role }),
@@ -30,6 +31,12 @@ export function AdminPage() {
   const alternarAtivo = useMutation({
     mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) => endpoints.updateUser(id, { isActive }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+  });
+
+  const reinicializarPassword = useMutation({
+    mutationFn: (u: UsuarioResumo) => endpoints.reinicializarPasswordUtilizador(u.id).then((r) => ({ email: u.email, senha: r.senhaTemporaria })),
+    onSuccess: (resultado) => setSenhaReinicializada(resultado),
+    onError: (err) => window.alert(err instanceof ApiError ? err.message : 'Não foi possível reinicializar a password.'),
   });
 
   if (isLoading) return <p className="text-sm text-fiori-text-secondary">A carregar…</p>;
@@ -100,12 +107,71 @@ export function AdminPage() {
               header: 'Último login',
               render: (u) => (u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString('pt-PT') : 'Nunca'),
             },
+            {
+              key: '__acoes',
+              header: '',
+              render: (u) => (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (window.confirm(`Reinicializar a password de ${u.email}? A password atual deixa de funcionar imediatamente.`)) {
+                      reinicializarPassword.mutate(u);
+                    }
+                  }}
+                  className="no-print flex items-center gap-1 text-xs font-medium text-fiori-text-secondary hover:text-fiori-primary"
+                  title="Reinicializar password"
+                >
+                  <KeyRound size={14} /> Reinicializar password
+                </button>
+              ),
+            },
           ]}
         />
       </Card>
 
       {modalAberto && <CriarUtilizadorModal onClose={() => setModalAberto(false)} />}
+      {senhaReinicializada && (
+        <SenhaReinicializadaModal
+          email={senhaReinicializada.email}
+          senha={senhaReinicializada.senha}
+          onClose={() => setSenhaReinicializada(null)}
+        />
+      )}
     </div>
+  );
+}
+
+function SenhaReinicializadaModal({ email, senha, onClose }: { email: string; senha: string; onClose: () => void }) {
+  const [copiada, setCopiada] = useState(false);
+
+  async function copiar() {
+    await navigator.clipboard.writeText(senha);
+    setCopiada(true);
+    setTimeout(() => setCopiada(false), 2000);
+  }
+
+  return (
+    <Modal title="Password reinicializada" onClose={onClose}>
+      <p className="mb-3 text-sm text-fiori-text-secondary">
+        Nova password temporária para <strong className="text-fiori-text">{email}</strong>. Esta password só é mostrada
+        agora — copia-a e partilha-a com o utilizador por um canal seguro (não há envio automático de email nesta app).
+      </p>
+      <div className="mb-4 flex items-center gap-2 rounded border border-fiori-border bg-fiori-canvas p-3">
+        <code className="flex-1 font-mono text-base font-semibold text-fiori-text">{senha}</code>
+        <button
+          type="button"
+          onClick={copiar}
+          className="flex items-center gap-1 rounded border border-fiori-border bg-fiori-surface px-2 py-1 text-xs font-medium text-fiori-text hover:bg-fiori-canvas"
+        >
+          {copiada ? <Check size={13} className="text-fiori-success" /> : <Copy size={13} />}
+          {copiada ? 'Copiada' : 'Copiar'}
+        </button>
+      </div>
+      <div className="flex justify-end">
+        <Button onClick={onClose}>Fechar</Button>
+      </div>
+    </Modal>
   );
 }
 

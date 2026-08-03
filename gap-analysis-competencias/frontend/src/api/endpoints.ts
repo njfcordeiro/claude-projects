@@ -23,6 +23,7 @@ import {
   RelatorioGapLob,
   ResumoAtribuicao,
   ResumoImportacao,
+  SenhaTemporariaResponse,
   SkillMatrixResponse,
   UltimaAvaliacao,
   UpdatePdiItemInput,
@@ -69,6 +70,7 @@ export const endpoints = {
     api.post<UsuarioResumo>('/users', dto),
   updateUser: (id: number, dto: { role?: PapelUtilizador; isActive?: boolean }) =>
     api.patch<UsuarioResumo>(`/users/${id}`, dto),
+  reinicializarPasswordUtilizador: (id: number) => api.post<SenhaTemporariaResponse>(`/users/${id}/reset-password`),
 
   candidatos: (carreiraId: string) =>
     api.get<CandidatosCarreiraResponse>(`/gap-analysis/candidatos?carreiraId=${encodeURIComponent(carreiraId)}`),
