@@ -12,11 +12,15 @@ import { Badge } from '../components/ui/Badge';
 import { PrintButton } from '../components/ui/PrintButton';
 import { DashboardResponse } from '../types/api';
 
-const DIMENSOES: { chave: keyof Pick<DashboardResponse, 'porDirecao' | 'porArea' | 'porNucleo' | 'porCargo'>; label: string }[] = [
+const DIMENSOES: {
+  chave: keyof Pick<DashboardResponse, 'porDirecao' | 'porArea' | 'porNucleo' | 'porCargo' | 'porCarreira'>;
+  label: string;
+}[] = [
   { chave: 'porDirecao', label: 'Direção' },
   { chave: 'porArea', label: 'Área' },
   { chave: 'porNucleo', label: 'Núcleo' },
   { chave: 'porCargo', label: 'Cargo' },
+  { chave: 'porCarreira', label: 'Carreira' },
 ];
 
 /** Visão geral de gaps por equipa/categoria (docs Prompt 4). ADMIN_RH/VIEWER veem a organização; MANAGER só a sua equipa. */
@@ -125,6 +129,7 @@ export function DashboardPage() {
             grupo: g.grupo,
             prontidaoMedia: g.prontidaoMedia,
             totalColaboradores: g.totalColaboradores,
+            percentualDoTotal: g.percentualDoTotal,
             emRisco: g.emRisco,
           }))}
         />

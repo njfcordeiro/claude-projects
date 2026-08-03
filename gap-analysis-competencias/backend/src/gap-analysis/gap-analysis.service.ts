@@ -67,11 +67,13 @@ export class GapAnalysisService {
       this.buscarCertificacoesColaborador(colaboradorId),
       this.prisma.lob.findMany({
         include: {
+          area: { select: { nome: true } },
           requisitosCompetencia: { include: { competencia: true } },
           requisitosCertificacao: { include: { certificacao: true } },
         },
       }),
     ]);
+
 
     const lobs: ResumoGapLob[] = todasAsLobs.map((lob) => {
       const requisitosCompetencia = this.mapearRequisitosCompetencia(lob.requisitosCompetencia);
@@ -80,6 +82,8 @@ export class GapAnalysisService {
       return {
         lobId: resultado.lobId,
         lobNome: resultado.lobNome,
+        areaId: lob.areaId,
+        areaNome: lob.area.nome,
         pontosObtidos: resultado.pontosObtidos,
         pontosMinimos: resultado.pontosMinimos,
         prontidaoPercentual: resultado.prontidaoPercentual,
@@ -90,6 +94,17 @@ export class GapAnalysisService {
     const lobsAtingidos = lobs.filter((l) => l.atingido).length;
     const lobsExigidos = cargo.lobsExigidos ?? 0;
 
+    // Pedido do utilizador: as LOBs da mesma área do colaborador vêm primeiro
+    // (o cargo não aponta para LOBs específicas — ver nota em
+    // sugerirCandidatosCarreira — por isso "prioridade" só pode ser de
+    // ordenação/visualização, não de cálculo do gap).
+    const lobsOrdenadas = [...lobs].sort((a, b) => {
+      const aMesmaArea = a.areaId === colaborador.areaId ? 1 : 0;
+      const bMesmaArea = b.areaId === colaborador.areaId ? 1 : 0;
+      if (aMesmaArea !== bMesmaArea) return bMesmaArea - aMesmaArea;
+      return b.prontidaoPercentual - a.prontidaoPercentual;
+    });
+
     return {
       colaboradorId,
       cargoId: cargo.id,
@@ -97,7 +112,7 @@ export class GapAnalysisService {
       lobsExigidos,
       lobsAtingidos,
       gap: Math.max(0, lobsExigidos - lobsAtingidos),
-      lobs: lobs.sort((a, b) => b.prontidaoPercentual - a.prontidaoPercentual),
+      lobs: lobsOrdenadas,
     };
   }
 
@@ -132,6 +147,7 @@ export class GapAnalysisService {
         porArea: [],
         porNucleo: [],
         porCargo: [],
+        porCarreira: [],
         colaboradores: [],
         insights: [],
         competenciasCriticas: [],
@@ -143,6 +159,7 @@ export class GapAnalysisService {
     const porArea = this.agruparPorCampo(resumos, (r) => r.areaNome ?? 'Sem área');
     const porNucleo = this.agruparPorCampo(resumos, (r) => r.nucleoNome ?? 'Sem núcleo');
     const porCargo = this.agruparPorCampo(resumos, (r) => r.cargoNome);
+    const porCarreira = this.agruparPorCampo(resumos, (r) => r.carreiraNome ?? 'Sem carreira');
     const colaboradoresEmRiscoFuga = await this.calcularRiscoFuga(resumos);
 
     return {
@@ -153,6 +170,7 @@ export class GapAnalysisService {
       porArea,
       porNucleo,
       porCargo,
+      porCarreira,
       colaboradores: [...resumos].sort((a, b) => a.prontidaoMedia - b.prontidaoMedia),
       insights: this.gerarInsights(resumos, porDirecao, porArea, competenciasCriticas, colaboradoresEmRiscoFuga),
       competenciasCriticas,
@@ -298,6 +316,7 @@ export class GapAnalysisService {
         direcao: { select: { nome: true } },
         area: { select: { nome: true } },
         nucleo: { select: { nome: true } },
+        carreira: { select: { nome: true } },
       },
     });
 
@@ -316,8 +335,17 @@ export class GapAnalysisService {
       }),
     ]);
 
-    /** Tally de competências obrigatórias em falta em toda a população — alimenta "competências mais críticas" no dashboard. */
-    const tallyCriticas = new Map<number, { nome: string; count: number }>();
+    /**
+     * Tally de competências obrigatórias em falta em toda a população —
+     * alimenta "competências mais críticas" no dashboard. Guarda o SET de
+     * colaboradores (não um contador incrementado por LOB): uma mesma
+     * competência obrigatória pode aparecer em várias LOBs, e um colaborador
+     * a quem falte essa competência conta-se UMA vez, não uma vez por LOB
+     * onde ela é exigida — caso contrário "colaboradoresEmFalta" pode
+     * facilmente exceder o total de colaboradores avaliados (bug
+     * encontrado pelo utilizador).
+     */
+    const tallyCriticas = new Map<number, { nome: string; colaboradores: Set<number> }>();
 
     const resumos = colaboradores.map((c) => {
       const cargo = cargosPorId.get(c.cargoId!);
@@ -331,8 +359,8 @@ export class GapAnalysisService {
 
         for (const comp of resultado.competencias) {
           if (comp.cumprido || !comp.obrigatorio) continue;
-          const atual = tallyCriticas.get(comp.competenciaId) ?? { nome: comp.competenciaNome, count: 0 };
-          atual.count++;
+          const atual = tallyCriticas.get(comp.competenciaId) ?? { nome: comp.competenciaNome, colaboradores: new Set<number>() };
+          atual.colaboradores.add(c.id);
           tallyCriticas.set(comp.competenciaId, atual);
         }
 
@@ -354,6 +382,7 @@ export class GapAnalysisService {
         cargoId: c.cargoId!,
         cargoNome: cargo?.nome ?? c.cargoId!,
         carreiraId: c.carreiraId,
+        carreiraNome: c.carreira?.nome ?? null,
         lobsExigidos,
         lobsAtingidos,
         gap: Math.max(0, lobsExigidos - lobsAtingidos),
@@ -363,7 +392,7 @@ export class GapAnalysisService {
     });
 
     const competenciasCriticas = Array.from(tallyCriticas.entries())
-      .map(([competenciaId, v]) => ({ competenciaId, competenciaNome: v.nome, colaboradoresEmFalta: v.count }))
+      .map(([competenciaId, v]) => ({ competenciaId, competenciaNome: v.nome, colaboradoresEmFalta: v.colaboradores.size }))
       .sort((a, b) => b.colaboradoresEmFalta - a.colaboradoresEmFalta)
       .slice(0, 5);
 
@@ -460,6 +489,7 @@ export class GapAnalysisService {
       .map(([grupo, itens]) => ({
         grupo,
         totalColaboradores: itens.length,
+        percentualDoTotal: Math.round((itens.length / resumos.length) * 100),
         prontidaoMedia: Math.round(itens.reduce((soma, i) => soma + i.prontidaoMedia, 0) / itens.length),
         emRisco: itens.filter((i) => i.gap > 0).length,
       }))

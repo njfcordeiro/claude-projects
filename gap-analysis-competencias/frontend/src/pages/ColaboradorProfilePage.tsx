@@ -46,6 +46,11 @@ export function ColaboradorProfilePage() {
     ? Math.round(gap.lobs.reduce((soma, l) => soma + l.prontidaoPercentual, 0) / gap.lobs.length)
     : 0;
 
+  // As LOBs já vêm ordenadas com as da área do colaborador primeiro (ver
+  // GapAnalysisService.avaliarColaboradorCargo) — aqui só filtramos para
+  // ter os dois conjuntos dos dois gráficos pedidos.
+  const lobsDaArea = colaborador?.areaId != null ? (gap?.lobs.filter((l) => l.areaId === colaborador.areaId) ?? []) : [];
+
   return (
     <div className="space-y-6">
       <Card
@@ -79,9 +84,22 @@ export function ColaboradorProfilePage() {
       </Card>
 
       {gap && gap.lobs.length >= 3 && (
-        <Card title="Perfil atual vs. exigido">
-          <PerfilRadarChart lobs={gap.lobs} />
-        </Card>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Card title={`Perfil atual vs. exigido — Área${colaborador?.areaNome ? ` (${colaborador.areaNome})` : ''}`}>
+            {lobsDaArea.length >= 3 ? (
+              <PerfilRadarChart lobs={lobsDaArea} />
+            ) : (
+              <p className="text-sm text-fiori-text-secondary">
+                {colaborador?.areaId == null
+                  ? 'Colaborador sem área atribuída.'
+                  : 'Menos de 3 LOBs nesta área — sem dados suficientes para o gráfico.'}
+              </p>
+            )}
+          </Card>
+          <Card title="Perfil atual vs. exigido — Todas as LOBs">
+            <PerfilRadarChart lobs={gap.lobs} />
+          </Card>
+        </div>
       )}
 
       {gap && gap.lobs.length > 0 && (

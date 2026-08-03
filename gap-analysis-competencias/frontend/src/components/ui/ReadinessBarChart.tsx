@@ -5,6 +5,7 @@ export interface ReadinessBarDatum {
   grupo: string;
   prontidaoMedia: number;
   totalColaboradores: number;
+  percentualDoTotal: number;
   emRisco: number;
 }
 
@@ -42,6 +43,7 @@ export function ReadinessBarChart({ dados }: { dados: ReadinessBarDatum[] }) {
           <div className="mb-1 flex items-center justify-between text-sm">
             <span className="flex items-center gap-1.5 font-medium text-fiori-text">
               {d.grupo}
+              <span className="text-xs font-normal text-fiori-text-secondary">({d.percentualDoTotal}%)</span>
               {d.emRisco > 0 && (
                 <span className="flex items-center gap-0.5 text-xs text-fiori-warning">
                   <AlertTriangle size={11} /> {d.emRisco} em risco
@@ -58,7 +60,8 @@ export function ReadinessBarChart({ dados }: { dados: ReadinessBarDatum[] }) {
           </div>
           {hover === d.grupo && (
             <div className="absolute -top-1 left-0 z-10 -translate-y-full rounded border border-fiori-border bg-fiori-surface px-2 py-1 text-xs text-fiori-text shadow-fiori">
-              {d.totalColaboradores} colaborador{d.totalColaboradores === 1 ? '' : 'es'} · prontidão média {d.prontidaoMedia}%
+              {d.totalColaboradores} colaborador{d.totalColaboradores === 1 ? '' : 'es'} ({d.percentualDoTotal}% do total) · prontidão média{' '}
+              {d.prontidaoMedia}%
             </div>
           )}
         </div>

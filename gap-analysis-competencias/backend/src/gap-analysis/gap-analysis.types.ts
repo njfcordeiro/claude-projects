@@ -118,6 +118,8 @@ export interface RelatorioGapLob {
 export interface ResumoGapLob {
   lobId: number;
   lobNome: string;
+  areaId: number;
+  areaNome: string;
   pontosObtidos: number;
   pontosMinimos: number;
   prontidaoPercentual: number;
@@ -143,6 +145,7 @@ export interface ResumoColaboradorDashboard {
   cargoId: string;
   cargoNome: string;
   carreiraId: string | null;
+  carreiraNome: string | null;
   lobsExigidos: number;
   lobsAtingidos: number;
   gap: number;
@@ -153,6 +156,8 @@ export interface ResumoColaboradorDashboard {
 export interface ResumoGrupoDashboard {
   grupo: string;
   totalColaboradores: number;
+  /** % do total de colaboradores neste universo (organização inteira ou equipa do MANAGER) — "peso" do grupo. */
+  percentualDoTotal: number;
   prontidaoMedia: number;
   emRisco: number;
 }
@@ -165,6 +170,7 @@ export interface DashboardResponse {
   porArea: ResumoGrupoDashboard[];
   porNucleo: ResumoGrupoDashboard[];
   porCargo: ResumoGrupoDashboard[];
+  porCarreira: ResumoGrupoDashboard[];
   colaboradores: ResumoColaboradorDashboard[];
   /** Frases de insight geradas a partir dos agregados acima — ver GapAnalysisService.gerarInsights. */
   insights: string[];
