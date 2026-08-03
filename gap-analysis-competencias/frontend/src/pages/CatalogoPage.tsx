@@ -145,6 +145,12 @@ export function CatalogoPage() {
                     ),
                     searchValue: (r: CatalogoRegisto) =>
                       c.tipo === 'relation' ? String(r[`${c.key}Label`] ?? r[c.key] ?? '') : String(r[c.key] ?? ''),
+                    sortValue: (r: CatalogoRegisto): string | number => {
+                      if (c.tipo === 'relation') return String(r[`${c.key}Label`] ?? r[c.key] ?? '');
+                      if (c.tipo === 'boolean') return r[c.key] ? 1 : 0;
+                      if (c.tipo === 'int') return Number(r[c.key] ?? 0);
+                      return String(r[c.key] ?? '');
+                    },
                   })),
                   {
                     key: '__acoes',

@@ -35,6 +35,7 @@ function construirColunas(
       header: 'Gestor',
       render: (c) => (c.managerId ? `${c.managerId} · ${c.managerNome ?? '—'}` : '—'),
       searchValue: (c) => c.managerNome ?? '',
+      sortValue: (c) => c.managerNome ?? '',
     },
     {
       key: '__acoes',

@@ -67,6 +67,7 @@ export function AdminPage() {
               key: 'colaborador',
               header: 'Colaborador ligado',
               render: (u) => u.colaborador?.nome ?? '—',
+              sortValue: (u) => u.colaborador?.nome ?? '',
             },
             {
               key: 'role',
@@ -86,6 +87,7 @@ export function AdminPage() {
                 </Select>
               ),
               searchValue: (u) => u.role,
+              sortValue: (u) => u.role,
             },
             {
               key: 'estado',
@@ -101,11 +103,13 @@ export function AdminPage() {
                   {u.isActive ? <Badge status="success">Ativo</Badge> : <Badge status="neutral">Inativo</Badge>}
                 </button>
               ),
+              sortValue: (u) => (u.isActive ? 1 : 0),
             },
             {
               key: 'ultimoLogin',
               header: 'Último login',
               render: (u) => (u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString('pt-PT') : 'Nunca'),
+              sortValue: (u) => u.lastLoginAt ?? '',
             },
             {
               key: '__acoes',
