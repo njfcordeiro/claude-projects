@@ -270,6 +270,14 @@ const REGRAS = [
       'Colaborador e a Certificação do colaborador têm um campo "version", incrementado a cada escrita. Um pedido de atualização tem de enviar a versão que leu — se já não bater certo, o backend rejeita em vez de sobrescrever silenciosamente a alteração de outra pessoa.',
     formula: 'PATCH devolve 409 Conflict se version enviada ≠ version atual na base de dados',
   },
+  {
+    icone: Building2,
+    titulo: 'Cobertura de Arquitetos por Área/Núcleo',
+    texto:
+      'Regra de dimensionamento pedida para o quadro "Cobertura de Arquitetos" no Dashboard: cada Área/Núcleo precisa de Arquitetos proporcionalmente à sua dimensão. Áreas/Núcleos pequenos não entram em défice — assume-se que são cobertos por Arquitetos de outras áreas ("apoio transversal"). Quando uma Área/Núcleo está em défice, os seus colaboradores passam à frente na lista de Candidatos à carreira de Arquiteto, antes do critério de gap/prontidão.',
+    formula:
+      'exigidos = 0 se colaboradores < 10, senão max(1, arredondar para cima de colaboradores/10) · défice = max(0, exigidos − arquitetos)',
+  },
 ];
 
 function CartoesRegras() {

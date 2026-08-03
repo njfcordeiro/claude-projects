@@ -162,6 +162,22 @@ export interface ResumoGrupoDashboard {
   emRisco: number;
 }
 
+/**
+ * Cobertura de Arquitetos por Área/Núcleo (regras pedidas pelo utilizador,
+ * ver docs no ecrã "Como Funciona"): 1 Arquiteto por cada 10 colaboradores,
+ * mínimo de 1 por área/núcleo com 10 ou mais colaboradores, áreas/núcleos
+ * com menos de 10 não entram em défice (contam com apoio transversal).
+ */
+export interface CoberturaArquitetos {
+  tipo: 'area' | 'nucleo';
+  nome: string;
+  totalColaboradores: number;
+  arquitetos: number;
+  exigidos: number;
+  defice: number;
+  excesso: number;
+}
+
 export interface DashboardResponse {
   totalColaboradores: number;
   prontidaoMediaGeral: number;
@@ -171,6 +187,7 @@ export interface DashboardResponse {
   porNucleo: ResumoGrupoDashboard[];
   porCargo: ResumoGrupoDashboard[];
   porCarreira: ResumoGrupoDashboard[];
+  coberturaArquitetos: CoberturaArquitetos[];
   colaboradores: ResumoColaboradorDashboard[];
   /** Frases de insight geradas a partir dos agregados acima — ver GapAnalysisService.gerarInsights. */
   insights: string[];

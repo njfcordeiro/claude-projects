@@ -10,7 +10,7 @@ import { ReadinessBarChart } from '../components/ui/ReadinessBarChart';
 import { DataTable } from '../components/ui/DataTable';
 import { Badge } from '../components/ui/Badge';
 import { PrintButton } from '../components/ui/PrintButton';
-import { DashboardResponse } from '../types/api';
+import { CoberturaArquitetos, DashboardResponse } from '../types/api';
 
 const DIMENSOES: {
   chave: keyof Pick<DashboardResponse, 'porDirecao' | 'porArea' | 'porNucleo' | 'porCargo' | 'porCarreira'>;
@@ -134,6 +134,53 @@ export function DashboardPage() {
           }))}
         />
       </Card>
+
+      {data.coberturaArquitetos.length > 0 && (
+        <Card title="Cobertura de Arquitetos por Área/Núcleo">
+          <p className="mb-3 text-xs text-fiori-text-secondary">
+            Regra: 1 Arquiteto por cada 10 colaboradores, mínimo de 1 por área/núcleo com 10 ou mais colaboradores. Áreas/núcleos com
+            menos de 10 colaboradores contam com apoio transversal (não entram em défice). Ver detalhe em "Como Funciona".
+          </p>
+          <DataTable
+            data={data.coberturaArquitetos}
+            getRowKey={(c) => `${c.tipo}-${c.nome}`}
+            searchPlaceholder="Pesquisar por área ou núcleo…"
+            emptyMessage="Sem áreas/núcleos com colaboradores atribuídos."
+            columns={[
+              {
+                key: 'tipo',
+                header: 'Tipo',
+                render: (c: CoberturaArquitetos) => (c.tipo === 'area' ? 'Área' : 'Núcleo'),
+                sortValue: (c) => c.tipo,
+                searchValue: (c) => (c.tipo === 'area' ? 'área' : 'núcleo'),
+              },
+              { key: 'nome', header: 'Nome', render: (c) => c.nome, sortValue: (c) => c.nome },
+              {
+                key: 'colaboradores',
+                header: 'Colaboradores',
+                render: (c) => c.totalColaboradores,
+                sortValue: (c) => c.totalColaboradores,
+              },
+              { key: 'arquitetos', header: 'Arquitetos', render: (c) => c.arquitetos, sortValue: (c) => c.arquitetos },
+              { key: 'exigidos', header: 'Exigidos', render: (c) => c.exigidos, sortValue: (c) => c.exigidos },
+              {
+                key: 'estado',
+                header: 'Estado',
+                render: (c) =>
+                  c.defice > 0 ? (
+                    <Badge status="error">Défice de {c.defice}</Badge>
+                  ) : c.excesso > 0 ? (
+                    <Badge status="info">Excesso de {c.excesso}</Badge>
+                  ) : (
+                    <Badge status="success">Adequado</Badge>
+                  ),
+                sortValue: (c) => c.defice - c.excesso,
+                searchValue: (c) => (c.defice > 0 ? 'défice' : c.excesso > 0 ? 'excesso' : 'adequado'),
+              },
+            ]}
+          />
+        </Card>
+      )}
 
       <Card title="Colaboradores">
         <DataTable

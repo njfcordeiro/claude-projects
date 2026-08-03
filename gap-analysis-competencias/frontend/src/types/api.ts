@@ -209,6 +209,16 @@ export interface ResumoGrupoDashboard {
   emRisco: number;
 }
 
+export interface CoberturaArquitetos {
+  tipo: 'area' | 'nucleo';
+  nome: string;
+  totalColaboradores: number;
+  arquitetos: number;
+  exigidos: number;
+  defice: number;
+  excesso: number;
+}
+
 export interface DashboardResponse {
   totalColaboradores: number;
   prontidaoMediaGeral: number;
@@ -218,6 +228,7 @@ export interface DashboardResponse {
   porNucleo: ResumoGrupoDashboard[];
   porCargo: ResumoGrupoDashboard[];
   porCarreira: ResumoGrupoDashboard[];
+  coberturaArquitetos: CoberturaArquitetos[];
   colaboradores: ResumoColaboradorDashboard[];
   insights: string[];
   competenciasCriticas: CompetenciaCritica[];

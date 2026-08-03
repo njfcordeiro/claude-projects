@@ -9,6 +9,7 @@ import {
   CertificacaoCandidata,
   CertificacaoColaboradorInput,
   ColaboradorEmRisco,
+  CoberturaArquitetos,
   CompetenciaCritica,
   DashboardResponse,
   DimensaoSkillMatrix,
@@ -29,6 +30,23 @@ import {
 const LIMIAR_PRONTIDAO_RISCO_FUGA = 85;
 const ANOS_MINIMOS_RISCO_FUGA = 2;
 const MS_POR_ANO = 1000 * 60 * 60 * 24 * 365.25;
+
+/**
+ * Regras de cobertura de Arquitetos pedidas pelo utilizador (documentadas
+ * também no ecrã "Como Funciona"):
+ *   1. 1 Arquiteto por cada 10 colaboradores.
+ *   2. Mínimo de 1 Arquiteto por área/núcleo com 10 ou mais colaboradores
+ *      (o "ceil" do ponto 1 já garante isto sozinho, o max(1, ...) é só
+ *      uma rede de segurança explícita).
+ *   3. Área/núcleo com menos de 10 colaboradores não entra em défice —
+ *      conta com apoio transversal de outra área/núcleo.
+ */
+const LIMIAR_COBERTURA_ARQUITETOS = 10;
+
+function exigidosArquitetos(totalColaboradores: number): number {
+  if (totalColaboradores < LIMIAR_COBERTURA_ARQUITETOS) return 0;
+  return Math.max(1, Math.ceil(totalColaboradores / LIMIAR_COBERTURA_ARQUITETOS));
+}
 
 /** Linha da view colaborador_competencia_atual (docs/01-modelo-dados.md secção 5.1). */
 interface ColaboradorCompetenciaAtualRow {
@@ -148,6 +166,7 @@ export class GapAnalysisService {
         porNucleo: [],
         porCargo: [],
         porCarreira: [],
+        coberturaArquitetos: [],
         colaboradores: [],
         insights: [],
         competenciasCriticas: [],
@@ -160,6 +179,8 @@ export class GapAnalysisService {
     const porNucleo = this.agruparPorCampo(resumos, (r) => r.nucleoNome ?? 'Sem núcleo');
     const porCargo = this.agruparPorCampo(resumos, (r) => r.cargoNome);
     const porCarreira = this.agruparPorCampo(resumos, (r) => r.carreiraNome ?? 'Sem carreira');
+    const carreiraArquiteto = await this.resolverCarreiraArquiteto();
+    const coberturaArquitetos = this.calcularCoberturaArquitetosDeResumos(resumos, carreiraArquiteto?.id ?? null);
     const colaboradoresEmRiscoFuga = await this.calcularRiscoFuga(resumos);
 
     return {
@@ -171,6 +192,7 @@ export class GapAnalysisService {
       porNucleo,
       porCargo,
       porCarreira,
+      coberturaArquitetos,
       colaboradores: [...resumos].sort((a, b) => a.prontidaoMedia - b.prontidaoMedia),
       insights: this.gerarInsights(resumos, porDirecao, porArea, competenciasCriticas, colaboradoresEmRiscoFuga),
       competenciasCriticas,
@@ -284,6 +306,32 @@ export class GapAnalysisService {
     const candidatos = resumos
       .map((r) => ({ ...r, lobsExigidos: lobsExigidosEntrada, gap: Math.max(0, lobsExigidosEntrada - r.lobsAtingidos) }))
       .sort((a, b) => a.gap - b.gap || b.prontidaoMedia - a.prontidaoMedia);
+
+    // Pedido do utilizador: se a carreira-alvo é a de Arquiteto, colaboradores
+    // de uma área/núcleo com défice de Arquitetos (ver
+    // calcularCoberturaArquitetosDeResumos) passam à frente na lista de
+    // candidatos, antes do critério de gap/prontidão — a organização tem uma
+    // necessidade concreta e urgente nessas áreas/núcleos.
+    const carreiraArquiteto = await this.resolverCarreiraArquiteto();
+    if (carreiraArquiteto && carreiraArquiteto.id === carreiraId) {
+      const whereOrg =
+        user.role === PapelUtilizador.MANAGER
+          ? { managerId: user.colaboradorId ?? -1, cargoId: { not: null } }
+          : { cargoId: { not: null } };
+      const { resumos: resumosOrg } = await this.calcularResumos(whereOrg);
+      const cobertura = this.calcularCoberturaArquitetosDeResumos(resumosOrg, carreiraArquiteto.id);
+      const areasDeficit = new Set(cobertura.filter((c) => c.tipo === 'area' && c.defice > 0).map((c) => c.nome));
+      const nucleosDeficit = new Set(cobertura.filter((c) => c.tipo === 'nucleo' && c.defice > 0).map((c) => c.nome));
+      const emDefice = (r: (typeof candidatos)[number]) =>
+        (r.areaNome !== null && areasDeficit.has(r.areaNome)) || (r.nucleoNome !== null && nucleosDeficit.has(r.nucleoNome));
+
+      candidatos.sort((a, b) => {
+        const aPrioridade = emDefice(a) ? 1 : 0;
+        const bPrioridade = emDefice(b) ? 1 : 0;
+        if (aPrioridade !== bPrioridade) return bPrioridade - aPrioridade;
+        return a.gap - b.gap || b.prontidaoMedia - a.prontidaoMedia;
+      });
+    }
 
     return {
       carreiraId: carreira.id,
@@ -494,6 +542,53 @@ export class GapAnalysisService {
         emRisco: itens.filter((i) => i.gap > 0).length,
       }))
       .sort((a, b) => a.prontidaoMedia - b.prontidaoMedia);
+  }
+
+  /** Resolve a Carreira "Arquiteto" por nome (mesma convenção do frontend em CandidatosPage: /arquitet/i) — não há um id fixo garantido no catálogo. */
+  private async resolverCarreiraArquiteto() {
+    return this.prisma.carreira.findFirst({ where: { nome: { contains: 'arquitet', mode: 'insensitive' } } });
+  }
+
+  /**
+   * Cobertura de Arquitetos por Área e por Núcleo — ver regras junto a
+   * `exigidosArquitetos`. Colaboradores sem área/núcleo atribuído ficam de
+   * fora desta cobertura (não há grupo "Sem área/núcleo" aqui, ao
+   * contrário de `agruparPorCampo`, porque não faz sentido pedir um
+   * Arquiteto para "nenhures").
+   */
+  private calcularCoberturaArquitetosDeResumos(
+    resumos: ResumoColaboradorDashboard[],
+    carreiraArquitetoId: string | null,
+  ): CoberturaArquitetos[] {
+    const ehArquiteto = (r: ResumoColaboradorDashboard) => carreiraArquitetoId !== null && r.carreiraId === carreiraArquitetoId;
+
+    const porGrupo = (tipo: 'area' | 'nucleo', chave: (r: ResumoColaboradorDashboard) => string | null): CoberturaArquitetos[] => {
+      const grupos = new Map<string, ResumoColaboradorDashboard[]>();
+      for (const r of resumos) {
+        const nome = chave(r);
+        if (!nome) continue;
+        if (!grupos.has(nome)) grupos.set(nome, []);
+        grupos.get(nome)!.push(r);
+      }
+      return Array.from(grupos.entries()).map(([nome, itens]) => {
+        const totalColaboradores = itens.length;
+        const arquitetos = itens.filter(ehArquiteto).length;
+        const exigidos = exigidosArquitetos(totalColaboradores);
+        return {
+          tipo,
+          nome,
+          totalColaboradores,
+          arquitetos,
+          exigidos,
+          defice: Math.max(0, exigidos - arquitetos),
+          excesso: Math.max(0, arquitetos - exigidos),
+        };
+      });
+    };
+
+    return [...porGrupo('area', (r) => r.areaNome), ...porGrupo('nucleo', (r) => r.nucleoNome)].sort(
+      (a, b) => b.defice - a.defice,
+    );
   }
 
   private async avaliarLobParaColaborador(
