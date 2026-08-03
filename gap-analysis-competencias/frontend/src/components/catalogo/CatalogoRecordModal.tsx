@@ -56,13 +56,17 @@ function CampoRelacao({
 export function CatalogoRecordModal({ tabelaDef, registoInicial, onClose }: Props) {
   const queryClient = useQueryClient();
   const aEditar = registoInicial !== null;
+  // Tabelas de junção puras (ex. "Progressão de cargos") não têm nenhum campo
+  // além da chave composta — não há nada para bloquear, e "editar" só pode
+  // significar trocar essa chave (ver mutationFn abaixo).
+  const todosIdentidade = tabelaDef.campos.every((c) => tabelaDef.identityFields.includes(c.key));
   const [valores, setValores] = useState<Record<string, string | boolean>>(() =>
     Object.fromEntries(tabelaDef.campos.map((c) => [c.key, valorInicial(c, registoInicial)])),
   );
   const [erro, setErro] = useState<string | null>(null);
 
   const gravar = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const dados: CatalogoRegisto = {};
       for (const c of tabelaDef.campos) {
         const v = valores[c.key];
@@ -74,7 +78,16 @@ export function CatalogoRecordModal({ tabelaDef, registoInicial, onClose }: Prop
           dados[c.key] = v as string;
         }
       }
-      return aEditar ? endpoints.catalogoAtualizar(tabelaDef.tabela, dados) : endpoints.catalogoCriar(tabelaDef.tabela, dados);
+      if (!aEditar) return endpoints.catalogoCriar(tabelaDef.tabela, dados);
+      if (!todosIdentidade) return endpoints.catalogoAtualizar(tabelaDef.tabela, dados);
+
+      // Tabela só com campos de identidade: não há como fazer PATCH sem
+      // tocar na própria chave — em vez disso, substitui-se a linha:
+      // elimina a original e cria a nova combinação.
+      const identidadeOriginal: CatalogoRegisto = {};
+      for (const chave of tabelaDef.identityFields) identidadeOriginal[chave] = registoInicial![chave];
+      await endpoints.catalogoEliminar(tabelaDef.tabela, identidadeOriginal);
+      return endpoints.catalogoCriar(tabelaDef.tabela, dados);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['catalogo', tabelaDef.tabela] });
@@ -92,8 +105,13 @@ export function CatalogoRecordModal({ tabelaDef, registoInicial, onClose }: Prop
   return (
     <Modal title={`${aEditar ? 'Editar' : 'Nova entrada'} — ${tabelaDef.label}`} onClose={onClose}>
       <form onSubmit={handleSubmit}>
+        {todosIdentidade && aEditar && (
+          <p className="mb-3 text-sm text-fiori-text-secondary">
+            Esta tabela só tem campos de identidade — gravar substitui a combinação original por esta.
+          </p>
+        )}
         {tabelaDef.campos.map((c) => {
-          const disabled = aEditar && tabelaDef.identityFields.includes(c.key);
+          const disabled = aEditar && tabelaDef.identityFields.includes(c.key) && !todosIdentidade;
           return (
             <Field key={c.key} label={c.label + (c.obrigatorio ? ' *' : '')}>
               {c.tipo === 'boolean' ? (

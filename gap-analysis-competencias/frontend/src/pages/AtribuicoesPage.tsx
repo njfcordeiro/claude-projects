@@ -149,7 +149,7 @@ export function AtribuicoesPage() {
                 className="flex w-full items-center justify-between border-b border-fiori-border/60 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-fiori-primary-bg"
               >
                 <span>
-                  {c.nome} <span className="text-fiori-text-secondary">· {c.cargoId ?? 'sem cargo'}</span>
+                  {c.nome} <span className="text-fiori-text-secondary">· {c.cargoNome ?? 'sem cargo'}</span>
                 </span>
                 <ArrowRight size={14} className="text-fiori-text-secondary" />
               </button>

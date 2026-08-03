@@ -29,6 +29,7 @@ function CampoRelacaoInline({
       defaultValue={valorInicial}
       onBlur={onCancelar}
       onChange={(e) => onSalvar(e.target.value)}
+      onClick={(e) => e.stopPropagation()}
       className="w-full rounded border border-fiori-primary bg-fiori-surface px-1 py-0.5 text-sm text-fiori-text outline-none"
     >
       <option value="">— selecionar —</option>
@@ -64,15 +65,17 @@ export function CatalogoCelula({ campo, registo, editavel, onSalvar }: Props) {
 
   if (campo.tipo === 'boolean') {
     return (
-      <Checkbox
-        checked={Boolean(registo[campo.key])}
-        disabled={aGravar}
-        onChange={async (e) => {
-          setAGravar(true);
-          await onSalvar(e.target.checked);
-          setAGravar(false);
-        }}
-      />
+      <span onClick={(e) => e.stopPropagation()}>
+        <Checkbox
+          checked={Boolean(registo[campo.key])}
+          disabled={aGravar}
+          onChange={async (e) => {
+            setAGravar(true);
+            await onSalvar(e.target.checked);
+            setAGravar(false);
+          }}
+        />
+      </span>
     );
   }
 
@@ -80,7 +83,10 @@ export function CatalogoCelula({ campo, registo, editavel, onSalvar }: Props) {
     return (
       <button
         type="button"
-        onClick={() => setAEditar(true)}
+        onClick={(e) => {
+          e.stopPropagation();
+          setAEditar(true);
+        }}
         className="block w-full rounded px-1.5 py-0.5 text-left hover:bg-fiori-primary-bg"
         title="Clique para editar"
       >
@@ -118,6 +124,7 @@ export function CatalogoCelula({ campo, registo, editavel, onSalvar }: Props) {
       type={campo.tipo === 'int' ? 'number' : 'text'}
       className="w-full rounded border border-fiori-primary px-1.5 py-0.5 text-sm text-fiori-text outline-none"
       onBlur={confirmar}
+      onClick={(e) => e.stopPropagation()}
       onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter') e.currentTarget.blur();
         if (e.key === 'Escape') setAEditar(false);

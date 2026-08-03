@@ -128,6 +128,7 @@ export function CatalogoPage() {
               <DataTable
                 data={linhas ?? []}
                 getRowKey={(r) => tabela.identityFields.map((c) => String(r[c])).join('|')}
+                onRowClick={(r) => setModal({ registo: r })}
                 columns={[
                   ...tabela.campos.map((c) => ({
                     key: c.key,
@@ -152,7 +153,8 @@ export function CatalogoPage() {
                       <div className="flex justify-end no-print">
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             if (window.confirm('Eliminar este registo?')) eliminar.mutate(identidadeDe(r));
                           }}
                           className="text-fiori-text-secondary hover:text-fiori-error"

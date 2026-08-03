@@ -366,7 +366,12 @@ model User {
   updatedAt     DateTime        @updatedAt @map("updated_at")
   lastLoginAt   DateTime?       @map("last_login_at")
 
-  colaborador Colaborador? @relation(fields: [colaboradorId], references: [id])
+  // onDelete: Restrict (explícito) — sem isto, o default do Prisma para FK
+  // opcional é SET NULL, que deixaria eliminar um Colaborador com conta
+  // associada e simplesmente desligar a conta em silêncio. Ver pedido do
+  // utilizador: eliminar um registo em uso noutro lado tem de bloquear com
+  // aviso, nunca orfanar dados silenciosamente.
+  colaborador Colaborador? @relation(fields: [colaboradorId], references: [id], onDelete: Restrict)
 
   avaliacoesFeitas ColaboradorCompetencia[] @relation("Avaliador")
   gapAnalysisRuns  GapAnalysisRun[]
@@ -399,14 +404,18 @@ model Colaborador {
   // docs/02-arquitetura-tecnica.md secção 4.5.
   version        Int       @default(0)
 
-  carreira  Carreira?  @relation(fields: [carreiraId], references: [id])
-  categoria Categoria? @relation(fields: [categoriaId], references: [id])
-  cargo     Cargo?     @relation(fields: [cargoId], references: [id])
-  direcao   Direcao?   @relation(fields: [direcaoId], references: [id])
-  nucleo    Nucleo?    @relation(fields: [nucleoId], references: [id])
-  area      Area?      @relation(fields: [areaId], references: [id])
+  // onDelete: Restrict em todas — sem isto, o default do Prisma para FK
+  // opcional é SET NULL, que deixaria eliminar (ex.) uma Direção com
+  // colaboradores atribuídos e simplesmente desligar essa atribuição em
+  // silêncio, sem aviso nenhum. Ver pedido do utilizador.
+  carreira  Carreira?  @relation(fields: [carreiraId], references: [id], onDelete: Restrict)
+  categoria Categoria? @relation(fields: [categoriaId], references: [id], onDelete: Restrict)
+  cargo     Cargo?     @relation(fields: [cargoId], references: [id], onDelete: Restrict)
+  direcao   Direcao?   @relation(fields: [direcaoId], references: [id], onDelete: Restrict)
+  nucleo    Nucleo?    @relation(fields: [nucleoId], references: [id], onDelete: Restrict)
+  area      Area?      @relation(fields: [areaId], references: [id], onDelete: Restrict)
 
-  gestor       Colaborador?  @relation("Gestao", fields: [managerId], references: [id])
+  gestor       Colaborador?  @relation("Gestao", fields: [managerId], references: [id], onDelete: Restrict)
   subordinados Colaborador[] @relation("Gestao")
 
   user User?
@@ -507,9 +516,11 @@ model PdiItem {
   updatedBy      Int?      @map("updated_by")
 
   colaborador  Colaborador   @relation(fields: [colaboradorId], references: [id])
-  competencia  Competencia?  @relation(fields: [competenciaId], references: [id])
-  certificacao Certificacao? @relation(fields: [certificacaoId], references: [id])
-  formacao     Formacao?     @relation(fields: [formacaoId], references: [id])
+  // onDelete: Restrict (ver nota em Colaborador acima) — evita apagar uma
+  // Competência/Certificação/Formação em uso num PDI sem aviso.
+  competencia  Competencia?  @relation(fields: [competenciaId], references: [id], onDelete: Restrict)
+  certificacao Certificacao? @relation(fields: [certificacaoId], references: [id], onDelete: Restrict)
+  formacao     Formacao?     @relation(fields: [formacaoId], references: [id], onDelete: Restrict)
 
   @@index([colaboradorId])
   @@map("pdi_items")
