@@ -20,7 +20,7 @@ export function CandidatosPage() {
 
   useEffect(() => {
     if (carreiraId || !carreiras || carreiras.length === 0) return;
-    const arquiteto = carreiras.find((c) => /arquitet/i.test(String(c.nome ?? '')));
+    const arquiteto = carreiras.find((c) => /arquitet|architect/i.test(String(c.nome ?? '')));
     setCarreiraId(String((arquiteto ?? carreiras[0]).id));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [carreiras]);

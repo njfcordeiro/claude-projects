@@ -544,9 +544,19 @@ export class GapAnalysisService {
       .sort((a, b) => a.prontidaoMedia - b.prontidaoMedia);
   }
 
-  /** Resolve a Carreira "Arquiteto" por nome (mesma convenção do frontend em CandidatosPage: /arquitet/i) — não há um id fixo garantido no catálogo. */
+  /**
+   * Resolve a Carreira "Arquiteto" por nome — não há um id fixo garantido
+   * no catálogo. Aceita tanto o nome em português ("Arquiteto"/"Arquitecto")
+   * como em inglês ("Architect", confirmado pelo utilizador como o nome
+   * real usado no catálogo) — mesma convenção usada no frontend em
+   * CandidatosPage.
+   */
   private async resolverCarreiraArquiteto() {
-    return this.prisma.carreira.findFirst({ where: { nome: { contains: 'arquitet', mode: 'insensitive' } } });
+    return this.prisma.carreira.findFirst({
+      where: {
+        OR: [{ nome: { contains: 'arquitet', mode: 'insensitive' } }, { nome: { contains: 'architect', mode: 'insensitive' } }],
+      },
+    });
   }
 
   /**
