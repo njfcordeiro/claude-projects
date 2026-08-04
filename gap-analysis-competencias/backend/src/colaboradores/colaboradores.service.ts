@@ -4,7 +4,8 @@ import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from '../auth/jwt-payload.interface';
 import { AutoCriacaoService } from '../catalogo/auto-criacao.service';
-import { adicionarFolhasDeOpcoes } from '../catalogo/excel-referencias.util';
+import { adicionarFolhasDeOpcoes, formulaNomeAtual, nomeFolhaDeOpcoes, numParaColunaExcel } from '../catalogo/excel-referencias.util';
+import { encontrarTabela } from '../catalogo/catalogo.registry';
 import { CreateColaboradorDto } from './dto/create-colaborador.dto';
 import { UpdateColaboradorDto } from './dto/update-colaborador.dto';
 import { CreateAvaliacaoDto } from './dto/create-avaliacao.dto';
@@ -162,86 +163,92 @@ export class ColaboradoresService {
    * ignoradas por `importar` (não batem com nenhuma chave conhecida). As
    * sheets de referência trazem as opções válidas de cada relação.
    */
+  /**
+   * As colunas "— nome atual" usam fórmula VLOOKUP (não um valor estático)
+   * contra a sheet "Opções — X" da tabela relacionada — pedido do
+   * utilizador: mudar o id na coluna ao lado atualiza sozinho o texto, sem
+   * reexportar. `managerId` é a única relação auto-referencial (Colaborador
+   * → Colaborador), por isso não está no `CATALOGO_REGISTRY` — a sua sheet
+   * de referência ("Opções — Colaboradores") é construída aqui a partir da
+   * própria lista exportada, que já é o universo completo de colaboradores.
+   */
   async exportar(): Promise<Buffer> {
     const linhas = await this.prisma.colaborador.findMany({
       select: {
         id: true,
         nome: true,
         cargoId: true,
-        cargo: { select: { nome: true } },
         direcaoId: true,
-        direcao: { select: { nome: true } },
         nucleoId: true,
-        nucleo: { select: { nome: true } },
         areaId: true,
-        area: { select: { nome: true } },
         carreiraId: true,
-        carreira: { select: { nome: true } },
         categoriaId: true,
-        categoria: { select: { nome: true } },
         managerId: true,
-        gestor: { select: { nome: true } },
         nivelGestaoId: true,
-        nivelGestao: { select: { nome: true } },
         localTrabalhoId: true,
-        localTrabalho: { select: { nome: true } },
         eBum: true,
         dataAdmissao: true,
       },
       orderBy: { id: 'asc' },
     });
 
+    const FOLHA_COLABORADORES = nomeFolhaDeOpcoes('Colaboradores');
+    const TABELA_RELACAO: Partial<Record<(typeof COLUNAS_IMPORT_EXPORT)[number], string>> = {
+      cargoId: 'cargos',
+      direcaoId: 'direcoes',
+      nucleoId: 'nucleos',
+      areaId: 'areas',
+      carreiraId: 'carreiras',
+      categoriaId: 'categorias',
+      nivelGestaoId: 'niveis-gestao',
+      localTrabalhoId: 'locais-trabalho',
+    };
+    const LABEL_CAMPO: Partial<Record<(typeof COLUNAS_IMPORT_EXPORT)[number], string>> = {
+      cargoId: 'Cargo',
+      direcaoId: 'Direção',
+      nucleoId: 'Núcleo',
+      areaId: 'Área',
+      carreiraId: 'Carreira',
+      categoriaId: 'Categoria',
+      managerId: 'Gestor',
+      nivelGestaoId: 'Nível de Gestão',
+      localTrabalhoId: 'Local de Trabalho',
+    };
+
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('colaboradores');
-    sheet.addRow([
-      'id',
-      'nome',
-      'cargoId',
-      'Cargo — nome atual',
-      'direcaoId',
-      'Direção — nome atual',
-      'nucleoId',
-      'Núcleo — nome atual',
-      'areaId',
-      'Área — nome atual',
-      'carreiraId',
-      'Carreira — nome atual',
-      'categoriaId',
-      'Categoria — nome atual',
-      'managerId',
-      'Gestor — nome atual',
-      'nivelGestaoId',
-      'Nível de Gestão — nome atual',
-      'localTrabalhoId',
-      'Local de Trabalho — nome atual',
-      'eBum',
-      'dataAdmissao',
-    ]);
+
+    const cabecalhos: string[] = [];
+    const colunaPorCampo = new Map<string, string>();
+    let indiceColuna = 0;
+    for (const chave of COLUNAS_IMPORT_EXPORT) {
+      indiceColuna++;
+      cabecalhos.push(chave);
+      colunaPorCampo.set(chave, numParaColunaExcel(indiceColuna));
+      if (TABELA_RELACAO[chave] || chave === 'managerId') {
+        indiceColuna++;
+        cabecalhos.push(`${LABEL_CAMPO[chave]} — nome atual`);
+      }
+    }
+    sheet.addRow(cabecalhos);
+
+    let linhaExcel = 2;
     for (const l of linhas) {
-      sheet.addRow([
-        l.id,
-        l.nome,
-        l.cargoId,
-        l.cargo?.nome ?? null,
-        l.direcaoId,
-        l.direcao?.nome ?? null,
-        l.nucleoId,
-        l.nucleo?.nome ?? null,
-        l.areaId,
-        l.area?.nome ?? null,
-        l.carreiraId,
-        l.carreira?.nome ?? null,
-        l.categoriaId,
-        l.categoria?.nome ?? null,
-        l.managerId,
-        l.gestor?.nome ?? null,
-        l.nivelGestaoId,
-        l.nivelGestao?.nome ?? null,
-        l.localTrabalhoId,
-        l.localTrabalho?.nome ?? null,
-        l.eBum,
-        l.dataAdmissao ? l.dataAdmissao.toISOString().slice(0, 10) : null,
-      ]);
+      const valores: unknown[] = [];
+      for (const chave of COLUNAS_IMPORT_EXPORT) {
+        const valor = chave === 'dataAdmissao' ? (l.dataAdmissao ? l.dataAdmissao.toISOString().slice(0, 10) : null) : (l as any)[chave];
+        valores.push(valor ?? null);
+
+        const tabelaRelacionada = TABELA_RELACAO[chave];
+        const celula = `${colunaPorCampo.get(chave)}${linhaExcel}`;
+        if (tabelaRelacionada) {
+          valores.push(formulaNomeAtual(celula, nomeFolhaDeOpcoes(encontrarTabela(tabelaRelacionada).label)));
+        } else if (chave === 'managerId') {
+          valores.push(formulaNomeAtual(celula, FOLHA_COLABORADORES));
+        }
+      }
+      sheet.addRow(valores);
+      linhaExcel++;
     }
 
     await adicionarFolhasDeOpcoes(workbook, this.prisma, [
@@ -254,6 +261,10 @@ export class ColaboradoresService {
       'niveis-gestao',
       'locais-trabalho',
     ]);
+
+    const folhaColaboradores = workbook.addWorksheet(FOLHA_COLABORADORES);
+    folhaColaboradores.addRow(['id', 'nome']);
+    for (const l of [...linhas].sort((a, b) => a.nome.localeCompare(b.nome))) folhaColaboradores.addRow([l.id, l.nome]);
 
     return Buffer.from(await workbook.xlsx.writeBuffer());
   }

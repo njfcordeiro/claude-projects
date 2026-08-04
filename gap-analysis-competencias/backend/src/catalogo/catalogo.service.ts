@@ -5,7 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from '../auth/jwt-payload.interface';
 import { AutoCriacaoService } from './auto-criacao.service';
 import { CATALOGO_REGISTRY, CatalogoCampoDef, CatalogoTabelaDef, encontrarTabela } from './catalogo.registry';
-import { adicionarFolhasDeOpcoes } from './excel-referencias.util';
+import { adicionarFolhasDeOpcoes, formulaNomeAtual, nomeFolhaDeOpcoes, numParaColunaExcel } from './excel-referencias.util';
 
 export interface ResumoImportacao {
   criados: number;
@@ -101,35 +101,45 @@ export class CatalogoService {
    * (pedido do utilizador) — por isso as colunas de dados (id/chaves de
    * relação) ficam exatamente como `importar` as lê. Para cada campo de
    * relação acrescentamos: (1) uma coluna extra "<Label> — nome atual" logo
-   * a seguir, só para leitura/contexto, ignorada pelo `importar` porque não
-   * bate com nenhuma chave de `def.campos`; e (2) uma sheet "Opções — X" com
-   * todos os id/nome válidos dessa tabela relacionada.
+   * a seguir, com uma fórmula VLOOKUP (não um valor estático) contra a sheet
+   * "Opções — X" dessa tabela relacionada — pedido do utilizador: mudar o id
+   * na coluna ao lado atualiza este texto sozinho, sem reexportar; e (2) a
+   * própria sheet "Opções — X" com todos os id/nome válidos.
    */
   async exportar(tabela: string): Promise<Buffer> {
     const def = encontrarTabela(tabela);
-    const select = { ...Object.fromEntries(def.campos.map((c) => [c.key, true])), ...this.construirInclude(def) };
+    const select = Object.fromEntries(def.campos.map((c) => [c.key, true]));
     const linhas: Record<string, unknown>[] = await (this.prisma as any)[def.delegate].findMany({ select });
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet(def.tabela.slice(0, 31));
 
     const cabecalhos: string[] = [];
+    const colunaPorCampo = new Map<string, string>();
+    let indiceColuna = 0;
     for (const c of def.campos) {
+      indiceColuna++;
       cabecalhos.push(c.key);
-      if (c.tipo === 'relation' && c.relationAccessor) cabecalhos.push(`${c.label} — nome atual`);
+      colunaPorCampo.set(c.key, numParaColunaExcel(indiceColuna));
+      if (c.tipo === 'relation' && c.relationAccessor) {
+        indiceColuna++;
+        cabecalhos.push(`${c.label} — nome atual`);
+      }
     }
     sheet.addRow(cabecalhos);
 
+    let linhaExcel = 2;
     for (const linha of linhas) {
       const valores: unknown[] = [];
       for (const c of def.campos) {
         valores.push(linha[c.key] ?? null);
-        if (c.tipo === 'relation' && c.relationAccessor) {
-          const relacionado = linha[c.relationAccessor] as { nome?: string } | null | undefined;
-          valores.push(relacionado?.nome ?? null);
+        if (c.tipo === 'relation' && c.relationAccessor && c.relatedTable) {
+          const folha = nomeFolhaDeOpcoes(encontrarTabela(c.relatedTable).label);
+          valores.push(formulaNomeAtual(`${colunaPorCampo.get(c.key)}${linhaExcel}`, folha));
         }
       }
       sheet.addRow(valores);
+      linhaExcel++;
     }
 
     const tabelasRelacionadas = [...new Set(def.campos.filter((c) => c.tipo === 'relation' && c.relatedTable).map((c) => c.relatedTable!))];
