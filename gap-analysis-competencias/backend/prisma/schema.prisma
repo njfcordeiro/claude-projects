@@ -337,6 +337,7 @@ model Lob {
   requisitosCertificacao LobRequisitoCertificacao[]
   recomendacoes          ColaboradorLobRecomendacao[]
   gapAnalysisLobResults  GapAnalysisLobResult[]
+  colaboradoresComEstaProximaLob Colaborador[] @relation("ProximaLob")
 
   @@map("lobs")
 }
@@ -409,6 +410,11 @@ model Colaborador {
   nucleoId       Int?      @map("nucleo_id")
   areaId         Int?      @map("area_id")
   managerId      Int?      @map("manager_id")
+  // Próxima LOB visada pelo colaborador (pedido do utilizador) — editável
+  // manualmente; usada por PdiService.gerar para saber para que LOB
+  // sugerir competências/certificações quando preenchida, e na prontidão
+  // mostrada em Candidatos a carreira.
+  proximaLobId   Int?      @map("proxima_lob_id")
   eBum           Boolean   @default(false) @map("e_bum")
   dataAdmissao   DateTime? @map("data_admissao") @db.Date
   createdAt      DateTime  @default(now()) @map("created_at")
@@ -433,6 +439,7 @@ model Colaborador {
   direcao   Direcao?   @relation(fields: [direcaoId], references: [id], onDelete: Restrict)
   nucleo    Nucleo?    @relation(fields: [nucleoId], references: [id], onDelete: Restrict)
   area      Area?      @relation(fields: [areaId], references: [id], onDelete: Restrict)
+  proximaLob Lob?      @relation("ProximaLob", fields: [proximaLobId], references: [id], onDelete: Restrict)
 
   gestor       Colaborador?  @relation("Gestao", fields: [managerId], references: [id], onDelete: Restrict)
   subordinados Colaborador[] @relation("Gestao")

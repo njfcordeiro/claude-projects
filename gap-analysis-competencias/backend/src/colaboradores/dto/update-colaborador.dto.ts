@@ -38,6 +38,11 @@ export class UpdateColaboradorDto {
   @IsInt()
   managerId?: number;
 
+  @ApiPropertyOptional({ description: 'LOB que o colaborador visa a seguir — null para limpar.' })
+  @IsOptional()
+  @IsInt()
+  proximaLobId?: number | null;
+
   @ApiPropertyOptional({ description: 'Formato AAAA-MM-DD.' })
   @IsOptional()
   @IsDateString()

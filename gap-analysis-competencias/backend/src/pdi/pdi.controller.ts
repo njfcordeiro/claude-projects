@@ -5,6 +5,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { AuthenticatedUser } from '../auth/jwt-payload.interface';
 import { PdiService } from './pdi.service';
+import { CreatePdiItemDto } from './dto/create-pdi-item.dto';
 import { UpdatePdiItemDto } from './dto/update-pdi-item.dto';
 
 /**
@@ -27,6 +28,11 @@ export class PdiController {
   @Post('gerar')
   gerar(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser) {
     return this.service.gerar(id, user);
+  }
+
+  @Post()
+  criar(@Param('id', ParseIntPipe) id: number, @Body() dto: CreatePdiItemDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.criar(id, dto, user);
   }
 
   @Patch(':itemId')

@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { OrigemPdi } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ColaboradoresService } from '../colaboradores/colaboradores.service';
 import { GapAnalysisService } from '../gap-analysis/gap-analysis.service';
 import { AuthenticatedUser } from '../auth/jwt-payload.interface';
+import { CreatePdiItemDto } from './dto/create-pdi-item.dto';
 import { UpdatePdiItemDto } from './dto/update-pdi-item.dto';
 
 const INCLUDE_ITEM = {
@@ -27,6 +28,12 @@ interface CandidatoPdi {
  * e só persiste um item de acompanhamento por gap encontrado. Chamar
  * `gerar` outra vez não duplica itens já existentes (mesma competência ou
  * certificação em falta), mesmo que ainda estejam pendentes.
+ *
+ * Pedido do utilizador: as sugestões automáticas visam sempre UMA única
+ * LOB por chamada a `gerar` (nunca várias LOBs misturadas) — a "Próxima
+ * LOB" do colaborador se estiver preenchida, senão a LOB da própria Área
+ * do colaborador em que está mais perto de atingir (maior prontidão,
+ * ainda não atingida).
  */
 @Injectable()
 export class PdiService {
@@ -47,13 +54,20 @@ export class PdiService {
 
   async gerar(colaboradorId: number, user: AuthenticatedUser) {
     await this.colaboradores.podeEditar(colaboradorId, user);
+    const colaborador = await this.colaboradores.obterComVerificacaoDeAcesso(colaboradorId, user);
 
     const gapCargo = await this.gapAnalysis.avaliarColaboradorCargo(colaboradorId, user);
-    const lobsEmFalta = gapCargo.lobs.filter((l) => !l.atingido);
+
+    const lobAlvo =
+      colaborador.proximaLobId !== null
+        ? gapCargo.lobs.find((l) => l.lobId === colaborador.proximaLobId)
+        : gapCargo.lobs
+            .filter((l) => l.areaId === colaborador.areaId && !l.atingido)
+            .sort((a, b) => b.prontidaoPercentual - a.prontidaoPercentual)[0];
 
     const candidatos = new Map<string, CandidatoPdi>();
-    for (const lobResumo of lobsEmFalta) {
-      const detalhe = await this.gapAnalysis.avaliarColaboradorLob(colaboradorId, lobResumo.lobId, user);
+    if (lobAlvo) {
+      const detalhe = await this.gapAnalysis.avaliarColaboradorLob(colaboradorId, lobAlvo.lobId, user);
 
       for (const c of detalhe.competencias) {
         if (c.cumprido) continue;
@@ -107,6 +121,41 @@ export class PdiService {
     }
 
     return { criados, itens: await this.listar(colaboradorId, user) };
+  }
+
+  /** Adição manual de uma Competência ou Certificação ao PDI — pedido do utilizador: "deve ser possível adicionar... manualmente". */
+  async criar(colaboradorId: number, dto: CreatePdiItemDto, user: AuthenticatedUser) {
+    await this.colaboradores.podeEditar(colaboradorId, user);
+
+    if ((dto.competenciaId === undefined) === (dto.certificacaoId === undefined)) {
+      throw new BadRequestException('Indica exatamente uma Competência OU uma Certificação.');
+    }
+
+    let descricao: string;
+    if (dto.competenciaId !== undefined) {
+      const competencia = await this.prisma.competencia.findUnique({ where: { id: dto.competenciaId } });
+      if (!competencia) throw new NotFoundException(`Competência ${dto.competenciaId} não encontrada.`);
+      descricao = `Reforçar competência "${competencia.nome}".`;
+    } else {
+      const certificacao = await this.prisma.certificacao.findUnique({ where: { id: dto.certificacaoId } });
+      if (!certificacao) throw new NotFoundException(`Certificação "${dto.certificacaoId}" não encontrada.`);
+      descricao = `Obter a certificação "${certificacao.nome}".`;
+    }
+
+    const criado = await this.prisma.runAsUser(user.sub, (tx) =>
+      tx.pdiItem.create({
+        data: {
+          colaboradorId,
+          competenciaId: dto.competenciaId ?? null,
+          certificacaoId: dto.certificacaoId ?? null,
+          descricao,
+          origem: OrigemPdi.MANUAL,
+          createdBy: user.sub,
+        },
+        include: INCLUDE_ITEM,
+      }),
+    );
+    return criado;
   }
 
   async atualizar(colaboradorId: number, itemId: number, dto: UpdatePdiItemDto, user: AuthenticatedUser) {

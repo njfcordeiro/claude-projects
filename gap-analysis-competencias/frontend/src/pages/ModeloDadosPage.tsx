@@ -258,7 +258,10 @@ const TABELAS: TabelaModelo[] = [
       { nome: 'pontosMinimos', tipo: 'Int' },
       { nome: 'createdAt / updatedAt', tipo: 'DateTime' },
     ],
-    relacoes: ['1—N LobRequisitoCompetencia, LobRequisitoCertificacao, ColaboradorLobRecomendacao, GapAnalysisLobResult'],
+    relacoes: [
+      '1—N LobRequisitoCompetencia, LobRequisitoCertificacao, ColaboradorLobRecomendacao, GapAnalysisLobResult',
+      '1—N Colaborador.proximaLobId ("Próxima LOB" escolhida pelo colaborador)',
+    ],
     visibilidade: 'total',
     visibilidadeTexto: 'Gestão de Dados → "LOBs"; ecrã dedicado "LOBs". É o motor de gap real da aplicação.',
   },
@@ -323,6 +326,7 @@ const TABELAS: TabelaModelo[] = [
       { nome: 'carreiraId / categoriaId / cargoId', tipo: 'String?', nota: '→ Carreira / Categoria / Cargo, onDelete Restrict' },
       { nome: 'direcaoId / nucleoId / areaId', tipo: 'Int?', nota: '→ Direcao / Nucleo / Area, onDelete Restrict' },
       { nome: 'managerId', tipo: 'Int?', nota: '→ Colaborador (auto-relação), onDelete Restrict' },
+      { nome: 'proximaLobId', tipo: 'Int?', nota: '→ Lob, onDelete Restrict — "Próxima LOB" visada pelo colaborador' },
       { nome: 'eBum', tipo: 'Boolean', nota: 'default false' },
       { nome: 'dataAdmissao', tipo: 'Date?' },
       { nome: 'createdBy / updatedBy', tipo: 'Int?' },
@@ -330,13 +334,13 @@ const TABELAS: TabelaModelo[] = [
       { nome: 'createdAt / updatedAt', tipo: 'DateTime' },
     ],
     relacoes: [
-      'Entidade central — aponta para toda a Organização (Carreira/Categoria/Cargo/Direção/Núcleo/Área)',
+      'Entidade central — aponta para toda a Organização (Carreira/Categoria/Cargo/Direção/Núcleo/Área) e para a Lob (proximaLobId)',
       '1—1 User (opcional), 1—N subordinados (auto-relação managerId)',
       '1—N ColaboradorCompetencia, ColaboradorCertificacao, ColaboradorLobRecomendacao, PdiItem',
     ],
     visibilidade: 'parcial',
     visibilidadeTexto:
-      'Ecrã Colaboradores (lista + ficha): criar, eliminar, upload/download Excel, e agora editar dataAdmissao diretamente na ficha (ADMIN_RH). Os restantes campos de organização só são editáveis em massa via Excel — não há ainda um formulário de edição individual para cargo/direção/área/núcleo/carreira/categoria/manager. createdBy/updatedBy nunca aparecem na UI.',
+      'Ecrã Colaboradores (lista + ficha): criar, eliminar, upload/download Excel, e agora editar dataAdmissao e proximaLobId diretamente na ficha (ADMIN_RH) — "Anos de experiência" é calculado dinamicamente a partir de dataAdmissao, nunca guardado. Os restantes campos de organização só são editáveis em massa via Excel — não há ainda um formulário de edição individual para cargo/direção/área/núcleo/carreira/categoria/manager. createdBy/updatedBy nunca aparecem na UI.',
   },
 
   // --- Avaliações ------------------------------------------------------------

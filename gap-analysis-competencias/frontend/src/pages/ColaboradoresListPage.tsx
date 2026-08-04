@@ -44,6 +44,13 @@ function construirColunas(
       sortValue: (c) => c.dataAdmissao ?? '',
     },
     {
+      key: 'proximaLob',
+      header: 'Próxima LOB',
+      render: (c) => c.proximaLobNome ?? '—',
+      sortValue: (c) => c.proximaLobNome ?? '',
+      searchValue: (c) => c.proximaLobNome ?? '',
+    },
+    {
       key: '__acoes',
       header: '',
       render: (c: ColaboradorResumo) => (

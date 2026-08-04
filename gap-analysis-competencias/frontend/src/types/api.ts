@@ -34,6 +34,8 @@ export interface ColaboradorResumo {
   categoriaId: string | null;
   managerId: number | null;
   managerNome: string | null;
+  proximaLobId: number | null;
+  proximaLobNome: string | null;
   /** Formato AAAA-MM-DD, null se não preenchida. */
   dataAdmissao: string | null;
   /** Locking otimista — ver docs/02-arquitetura-tecnica.md secção 4.5. */
@@ -54,6 +56,7 @@ export interface CreateColaboradorInput {
 
 export interface UpdateColaboradorInput {
   dataAdmissao?: string;
+  proximaLobId?: number | null;
   version: number;
 }
 
@@ -193,6 +196,8 @@ export interface ResumoColaboradorDashboard {
   lobsAtingidos: number;
   gap: number;
   prontidaoMedia: number;
+  /** Prontidão (0-100) da Próxima LOB do colaborador — null se não tiver Próxima LOB definida. */
+  prontidaoProximaLob: number | null;
   dataAdmissao: string | null;
 }
 
@@ -247,18 +252,29 @@ export interface DashboardResponse {
   colaboradoresEmRiscoFuga: ColaboradorEmRisco[];
 }
 
-export interface CandidatoCarreira extends ResumoColaboradorDashboard {
+export interface CandidatoCarreira {
+  colaboradorId: number;
+  nome: string;
+  direcaoNome: string | null;
+  areaNome: string | null;
+  nucleoNome: string | null;
+  cargoAtualId: string;
+  cargoAtualNome: string;
+  proximoCargoId: string;
+  proximoCargoNome: string;
+  lobsAtingidos: number;
+  lobsExigidos: number;
+  gap: number;
+  prontidao: number | null;
   anosExperiencia: number | null;
+  aptoAntiguidade: boolean;
+  aptoLobs: boolean;
   apto: boolean;
 }
 
 export interface CandidatosCarreiraResponse {
   carreiraId: string;
   carreiraNome: string;
-  cargoEntradaId: string | null;
-  cargoEntradaNome: string | null;
-  lobsExigidosEntrada: number;
-  anosExperienciaMinimaEntrada: number;
   candidatos: CandidatoCarreira[];
 }
 
@@ -344,6 +360,11 @@ export interface GerarPdiResponse {
 export interface UpdatePdiItemInput {
   estado?: EstadoPdi;
   notas?: string;
+}
+
+export interface CreatePdiItemInput {
+  competenciaId?: number;
+  certificacaoId?: string;
 }
 
 // --- Skill Matrix (backend/src/gap-analysis) ------------------------------

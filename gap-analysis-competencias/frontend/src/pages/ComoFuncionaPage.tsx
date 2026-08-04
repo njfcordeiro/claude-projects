@@ -246,8 +246,16 @@ const REGRAS = [
     icone: Compass,
     titulo: 'Candidatos a carreira',
     texto:
-      'Os LOBs não estão ligados a um cargo específico — "lobsAtingidos" é calculado uma vez sobre TODAS as LOBs da organização e não depende do cargo-alvo. O "cargo de entrada" de uma carreira é obtido dinamicamente da tabela Progressão de cargos: é o cargo dessa carreira que nenhum outro cargo da mesma carreira aponta como "próximo cargo" (o início da escada, ex. "Associate Architect"). Esse cargo tem um "Anos de experiência mínimo" — um candidato só é elegível ("Apto") se a sua antiguidade (anos desde a Data de Admissão) o cumprir; sem essa data não é possível confirmar, por isso não passa. A elegibilidade é o critério de ordenação mais forte, antes do défice de área/núcleo e do gap/prontidão.',
-    formula: 'apto = anosExperienciaMinimo = 0 OU (dataAdmissao definida E antiguidade ≥ anosExperienciaMinimo do cargo de entrada)',
+      'Escolhe-se uma Carreira e, opcionalmente, um Cargo dessa carreira (ou "Todos os cargos"). Para cada Cargo-alvo, os candidatos são os colaboradores cujo Cargo ATUAL é um predecessor direto desse Cargo na tabela Progressão de Cargos — não interessa a Carreira atual do colaborador, só essa ligação. Por isso alguém já dentro da carreira, num cargo anterior, também aparece como candidato ao próximo cargo. Um mesmo colaborador pode aparecer em mais que uma linha se o seu cargo atual progride para mais do que um Cargo-alvo. A Elegibilidade ("Apto") exige DUAS condições em relação ao Cargo-alvo dessa linha — antiguidade e LOBs — e falha se qualquer uma não se verificar, listando qual(is). A Prontidão mostrada é sempre a da "Próxima LOB" do colaborador (editável na ficha, entre as LOBs da sua Área) — nunca a média geral.',
+    formula:
+      'apto = aptoAntiguidade E aptoLOBs · aptoAntiguidade = anosExperienciaMinimo do cargo-alvo = 0 OU antiguidade ≥ esse mínimo · aptoLOBs = lobsAtingidas ≥ lobsExigidas do cargo-alvo',
+  },
+  {
+    icone: Sparkles,
+    titulo: 'PDI — sugestões automáticas',
+    texto:
+      '"Gerar sugestões" visa sempre UMA única LOB por chamada — nunca mistura competências/certificações de LOBs diferentes. Usa a "Próxima LOB" do colaborador se estiver preenchida; senão, escolhe automaticamente a LOB da própria Área do colaborador em que está mais perto de a atingir (maior prontidão, ainda não atingida). Só sugere o que estiver em falta nessa LOB. Qualquer item — gerado ou adicionado manualmente — pode ser eliminado, e "Gerar sugestões" pode ser chamado de novo a qualquer momento (não duplica o que já existe).',
+    formula: 'LOB alvo = Próxima LOB do colaborador, senão máx(prontidão) entre as LOBs da Área ainda não atingidas',
   },
   {
     icone: AlertTriangle,

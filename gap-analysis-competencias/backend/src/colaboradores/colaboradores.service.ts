@@ -19,6 +19,7 @@ const SELECT_RESUMO = {
   carreiraId: true,
   categoriaId: true,
   managerId: true,
+  proximaLobId: true,
   dataAdmissao: true,
   version: true,
   cargo: { select: { nome: true } },
@@ -26,6 +27,7 @@ const SELECT_RESUMO = {
   area: { select: { nome: true, relevante: true } },
   nucleo: { select: { nome: true, relevante: true } },
   gestor: { select: { nome: true } },
+  proximaLob: { select: { nome: true } },
 } satisfies Prisma.ColaboradorSelect;
 
 type ColaboradorComRelacoes = Prisma.ColaboradorGetPayload<{ select: typeof SELECT_RESUMO }>;
@@ -50,6 +52,8 @@ function mapearResumo(c: ColaboradorComRelacoes) {
     categoriaId: c.categoriaId,
     managerId: c.managerId,
     managerNome: c.gestor?.nome ?? null,
+    proximaLobId: c.proximaLobId,
+    proximaLobNome: c.proximaLob?.nome ?? null,
     dataAdmissao: c.dataAdmissao ? c.dataAdmissao.toISOString().slice(0, 10) : null,
     version: c.version,
   };

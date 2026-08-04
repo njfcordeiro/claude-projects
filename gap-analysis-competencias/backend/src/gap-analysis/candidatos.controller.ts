@@ -15,10 +15,14 @@ export class CandidatosController {
   constructor(private readonly service: GapAnalysisService) {}
 
   @Get()
-  sugerir(@Query('carreiraId') carreiraId: string | undefined, @CurrentUser() user: AuthenticatedUser) {
+  sugerir(
+    @Query('carreiraId') carreiraId: string | undefined,
+    @Query('cargoId') cargoId: string | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     if (!carreiraId) {
       throw new BadRequestException('Parâmetro "carreiraId" é obrigatório.');
     }
-    return this.service.sugerirCandidatosCarreira(carreiraId, user);
+    return this.service.sugerirCandidatosCarreira(carreiraId, cargoId, user);
   }
 }

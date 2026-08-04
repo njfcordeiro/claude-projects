@@ -158,6 +158,8 @@ export interface ResumoColaboradorDashboard {
   lobsAtingidos: number;
   gap: number;
   prontidaoMedia: number;
+  /** Prontidão (0-100) da Próxima LOB do colaborador — null se não tiver Próxima LOB definida. */
+  prontidaoProximaLob: number | null;
   dataAdmissao: string | null;
 }
 
@@ -205,22 +207,38 @@ export interface DashboardResponse {
   colaboradoresEmRiscoFuga: ColaboradorEmRisco[];
 }
 
-export interface CandidatoCarreira extends ResumoColaboradorDashboard {
+/** Uma linha por par (colaborador, Cargo-alvo) — ver GapAnalysisService.sugerirCandidatosCarreira. */
+export interface CandidatoCarreira {
+  colaboradorId: number;
+  nome: string;
+  direcaoNome: string | null;
+  areaNome: string | null;
+  nucleoNome: string | null;
+  cargoAtualId: string;
+  cargoAtualNome: string;
+  /** Cargo para o qual este colaborador é candidato (predecessor direto em cargo_progressao). */
+  proximoCargoId: string;
+  proximoCargoNome: string;
+  lobsAtingidos: number;
+  /** lobsExigidos do próximoCargo. */
+  lobsExigidos: number;
+  gap: number;
+  /** Prontidão (0-100) da Próxima LOB do colaborador — null se não tiver Próxima LOB definida. */
+  prontidao: number | null;
   /** Anos desde dataAdmissao, arredondado a 1 casa decimal — null se dataAdmissao não estiver preenchida. */
   anosExperiencia: number | null;
-  /** anosExperiencia >= anosExperienciaMinimaEntrada (ver CandidatosCarreiraResponse) — dado em falta nunca passa. */
+  /** anosExperiencia cumpre o anosExperienciaMinimo do próximoCargo. */
+  aptoAntiguidade: boolean;
+  /** lobsAtingidos >= lobsExigidos do próximoCargo. */
+  aptoLobs: boolean;
+  /** aptoAntiguidade E aptoLobs. */
   apto: boolean;
 }
 
-/** Resposta de `GET /gap-analysis/candidatos` — colaboradores fora da carreira-alvo, ordenados por proximidade. */
+/** Resposta de `GET /gap-analysis/candidatos` — uma linha por (colaborador, Cargo-alvo), ordenadas por proximidade. */
 export interface CandidatosCarreiraResponse {
   carreiraId: string;
   carreiraNome: string;
-  cargoEntradaId: string | null;
-  cargoEntradaNome: string | null;
-  lobsExigidosEntrada: number;
-  /** Cargo.anosExperienciaMinimo do cargo de entrada — 0 quando não há mínimo definido. */
-  anosExperienciaMinimaEntrada: number;
   candidatos: CandidatoCarreira[];
 }
 

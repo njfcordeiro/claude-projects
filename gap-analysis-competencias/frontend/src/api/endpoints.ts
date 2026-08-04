@@ -9,6 +9,7 @@ import {
   ColaboradorResumo,
   CreateAvaliacaoInput,
   CreateColaboradorInput,
+  CreatePdiItemInput,
   DashboardResponse,
   DimensaoSkillMatrix,
   FiltrosOrganizacionais,
@@ -74,8 +75,10 @@ export const endpoints = {
     api.patch<UsuarioResumo>(`/users/${id}`, dto),
   reinicializarPasswordUtilizador: (id: number) => api.post<SenhaTemporariaResponse>(`/users/${id}/reset-password`),
 
-  candidatos: (carreiraId: string) =>
-    api.get<CandidatosCarreiraResponse>(`/gap-analysis/candidatos?carreiraId=${encodeURIComponent(carreiraId)}`),
+  candidatos: (carreiraId: string, cargoId?: string) =>
+    api.get<CandidatosCarreiraResponse>(
+      `/gap-analysis/candidatos?carreiraId=${encodeURIComponent(carreiraId)}${cargoId ? `&cargoId=${encodeURIComponent(cargoId)}` : ''}`,
+    ),
 
   // --- Catálogo genérico (Gestão de Dados) --------------------------------
   catalogoMeta: () => api.get<CatalogoTabelaMeta[]>('/catalogo/meta'),
@@ -97,6 +100,7 @@ export const endpoints = {
   // --- PDI ------------------------------------------------------------------
   pdiListar: (colaboradorId: number) => api.get<PdiItem[]>(`/colaboradores/${colaboradorId}/pdi`),
   pdiGerar: (colaboradorId: number) => api.post<GerarPdiResponse>(`/colaboradores/${colaboradorId}/pdi/gerar`),
+  pdiCriar: (colaboradorId: number, dto: CreatePdiItemInput) => api.post<PdiItem>(`/colaboradores/${colaboradorId}/pdi`, dto),
   pdiAtualizar: (colaboradorId: number, itemId: number, dto: UpdatePdiItemInput) =>
     api.patch<PdiItem>(`/colaboradores/${colaboradorId}/pdi/${itemId}`, dto),
   pdiEliminar: (colaboradorId: number, itemId: number) => api.delete<void>(`/colaboradores/${colaboradorId}/pdi/${itemId}`),

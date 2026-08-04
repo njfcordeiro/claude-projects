@@ -5,6 +5,7 @@ import { ColaboradoresService } from '../colaboradores/colaboradores.service';
 import { AuthenticatedUser } from '../auth/jwt-payload.interface';
 import { calcularGapLob, ordenarCertificacoes, ordenarFormacoes } from './gap-analysis.logic';
 import {
+  CandidatoCarreira,
   CandidatosCarreiraResponse,
   CertificacaoCandidata,
   CertificacaoColaboradorInput,
@@ -276,25 +277,39 @@ export class GapAnalysisService {
   }
 
   /**
-   * Candidatos a uma carreira (ex. Arquiteto): os LOBs não estão ligados a
-   * um cargo específico — `lobsAtingidos`/`prontidaoMedia` de um
-   * colaborador são calculados sobre TODAS as LOBs da organização e não
-   * dependem do cargo-alvo (ver `calcularResumos`/`obterDashboard`); só
-   * `cargo.lobsExigidos` varia por cargo. Por isso "quão perto está alguém
-   * da carreira X" reduz-se a comparar o `lobsAtingidos` já calculado (uma
-   * vez, em lote) contra o `lobsExigidos` do cargo de entrada da carreira
-   * (ver `resolverCargoEntradaCarreira`).
+   * Candidatos a uma carreira (ex. Arquiteto), com filtro opcional por
+   * Cargo (pedido do utilizador). Para cada Cargo-alvo, os candidatos são
+   * os colaboradores cujo Cargo ATUAL é um predecessor direto desse Cargo
+   * em `cargo_progressao` (ex.: alvo "Associate Architect" → candidatos
+   * com cargo atual "Senior Consultant"/"Principal Consultant", os que têm
+   * uma linha `cargo_progressao` a apontar para ele). Sem `cargoId`, os
+   * Cargos-alvo são TODOS os da carreira — um colaborador já dentro da
+   * carreira mas num Cargo anterior (ex. "Associate Architect" candidato a
+   * "Architect") também conta, porque o que importa é a relação de
+   * progressão, não a Carreira atual do colaborador.
    *
-   * Elegibilidade por antiguidade (pedido do utilizador): o cargo de
-   * entrada tem um `anosExperienciaMinimo` — um candidato só é `apto` se a
-   * sua antiguidade (anos desde `dataAdmissao`) o cumprir. Sem
-   * `dataAdmissao` não há como confirmar, por isso fica `apto: false`
-   * nesse caso (dado em falta não é tratado como "passa"). Cargos sem
-   * mínimo definido (`anosExperienciaMinimo` null/0) não bloqueiam
-   * ninguém. `apto` é o critério de ordenação mais forte — vem antes do
-   * défice de área/núcleo e do gap/prontidão.
+   * Uma linha por par (colaborador, Cargo-alvo) — o mesmo colaborador pode
+   * aparecer mais que uma vez se o seu Cargo atual progride para mais do
+   * que um Cargo-alvo (mesma lógica de "uma linha por combinação" já usada
+   * na Cobertura de Arquitetos).
+   *
+   * Elegibilidade ("Apto") exige DUAS condições, ambas em relação ao
+   * Cargo-alvo dessa linha: antiguidade (`anosExperienciaMinimo` do Cargo
+   * vs. anos desde `dataAdmissao` — sem essa data não é possível confirmar,
+   * por isso não passa) E LOBs (lobsAtingidos >= lobsExigidos do Cargo).
+   * `apto` é o critério de ordenação mais forte, antes do défice de
+   * área/núcleo e do gap.
+   *
+   * Prontidão aqui é sempre a da "Próxima LOB" do colaborador (já
+   * calculada em lote por `calcularResumos` → `prontidaoProximaLob`) —
+   * nunca a média geral — porque o pedido é perceber a proximidade a essa
+   * LOB específica, não ao cargo-alvo.
    */
-  async sugerirCandidatosCarreira(carreiraId: string, user: AuthenticatedUser): Promise<CandidatosCarreiraResponse> {
+  async sugerirCandidatosCarreira(
+    carreiraId: string,
+    cargoId: string | undefined,
+    user: AuthenticatedUser,
+  ): Promise<CandidatosCarreiraResponse> {
     if (user.role === PapelUtilizador.EMPLOYEE) {
       throw new ForbiddenException('Os candidatos são uma vista de equipa/organização — usa a tua ficha pessoal.');
     }
@@ -303,38 +318,81 @@ export class GapAnalysisService {
     if (!carreira) throw new NotFoundException(`Carreira "${carreiraId}" não encontrada.`);
 
     const cargosDaCarreira = await this.prisma.cargo.findMany({ where: { carreiraId } });
-    const cargoEntrada = await this.resolverCargoEntradaCarreira(cargosDaCarreira);
-    const lobsExigidosEntrada = cargoEntrada?.lobsExigidos ?? 0;
-    const anosExperienciaMinimaEntrada = cargoEntrada?.anosExperienciaMinimo ?? 0;
+    let cargosAlvo = cargosDaCarreira;
+    if (cargoId) {
+      const cargoEscolhido = cargosDaCarreira.find((c) => c.id === cargoId);
+      if (!cargoEscolhido) throw new NotFoundException(`Cargo "${cargoId}" não encontrado na carreira "${carreiraId}".`);
+      cargosAlvo = [cargoEscolhido];
+    }
+    if (cargosAlvo.length === 0) {
+      return { carreiraId: carreira.id, carreiraNome: carreira.nome, candidatos: [] };
+    }
+
+    const idsAlvo = cargosAlvo.map((c) => c.id);
+    const cargosAlvoPorId = new Map(cargosAlvo.map((c) => [c.id, c]));
+    const progressoes = await this.prisma.cargoProgressao.findMany({ where: { proximoCargoId: { in: idsAlvo } } });
+
+    const alvosPorPredecessor = new Map<string, Cargo[]>();
+    for (const p of progressoes) {
+      const alvo = cargosAlvoPorId.get(p.proximoCargoId);
+      if (!alvo) continue;
+      if (!alvosPorPredecessor.has(p.cargoId)) alvosPorPredecessor.set(p.cargoId, []);
+      alvosPorPredecessor.get(p.cargoId)!.push(alvo);
+    }
+    const idsPredecessores = Array.from(alvosPorPredecessor.keys());
+    if (idsPredecessores.length === 0) {
+      return { carreiraId: carreira.id, carreiraNome: carreira.nome, candidatos: [] };
+    }
 
     const where =
       user.role === PapelUtilizador.MANAGER
-        ? { managerId: user.colaboradorId ?? -1, cargoId: { not: null }, carreiraId: { not: carreiraId } }
-        : { cargoId: { not: null }, carreiraId: { not: carreiraId } };
+        ? { managerId: user.colaboradorId ?? -1, cargoId: { in: idsPredecessores } }
+        : { cargoId: { in: idsPredecessores } };
 
     const { resumos } = await this.calcularResumos(where);
 
     const agora = Date.now();
-    const candidatos = resumos
-      .map((r) => {
+    const candidatos: CandidatoCarreira[] = [];
+    for (const r of resumos) {
+      for (const alvo of alvosPorPredecessor.get(r.cargoId) ?? []) {
+        const lobsExigidos = alvo.lobsExigidos ?? 0;
+        const anosExperienciaMinima = alvo.anosExperienciaMinimo ?? 0;
+        const gap = Math.max(0, lobsExigidos - r.lobsAtingidos);
         const anosExperiencia = r.dataAdmissao ? Math.round(((agora - new Date(r.dataAdmissao).getTime()) / MS_POR_ANO) * 10) / 10 : null;
-        const apto = anosExperienciaMinimaEntrada <= 0 || (anosExperiencia !== null && anosExperiencia >= anosExperienciaMinimaEntrada);
-        return {
-          ...r,
-          lobsExigidos: lobsExigidosEntrada,
-          gap: Math.max(0, lobsExigidosEntrada - r.lobsAtingidos),
+        const aptoAntiguidade = anosExperienciaMinima <= 0 || (anosExperiencia !== null && anosExperiencia >= anosExperienciaMinima);
+        const aptoLobs = gap === 0;
+        candidatos.push({
+          colaboradorId: r.colaboradorId,
+          nome: r.nome,
+          direcaoNome: r.direcaoNome,
+          areaNome: r.areaNome,
+          nucleoNome: r.nucleoNome,
+          cargoAtualId: r.cargoId,
+          cargoAtualNome: r.cargoNome,
+          proximoCargoId: alvo.id,
+          proximoCargoNome: alvo.nome,
+          lobsAtingidos: r.lobsAtingidos,
+          lobsExigidos,
+          gap,
+          prontidao: r.prontidaoProximaLob,
           anosExperiencia,
-          apto,
-        };
-      })
-      .sort((a, b) => (b.apto ? 1 : 0) - (a.apto ? 1 : 0) || a.gap - b.gap || b.prontidaoMedia - a.prontidaoMedia);
+          aptoAntiguidade,
+          aptoLobs,
+          apto: aptoAntiguidade && aptoLobs,
+        });
+      }
+    }
+
+    candidatos.sort(
+      (a, b) => (b.apto ? 1 : 0) - (a.apto ? 1 : 0) || a.gap - b.gap || (b.prontidao ?? -1) - (a.prontidao ?? -1),
+    );
 
     // Pedido do utilizador: se a carreira-alvo é a de Arquiteto, colaboradores
     // de uma combinação área/núcleo com défice de Arquitetos (ver
     // calcularCoberturaArquitetosDeResumos) passam à frente na lista de
-    // candidatos, logo a seguir à elegibilidade por antiguidade e antes do
-    // critério de gap/prontidão — a organização tem uma necessidade
-    // concreta e urgente nessas áreas/núcleos.
+    // candidatos, logo a seguir à elegibilidade e antes do critério de
+    // gap/prontidão — a organização tem uma necessidade concreta e urgente
+    // nessas áreas/núcleos.
     const carreiraArquiteto = await this.resolverCarreiraArquiteto();
     if (carreiraArquiteto && carreiraArquiteto.id === carreiraId) {
       const whereOrg =
@@ -344,8 +402,7 @@ export class GapAnalysisService {
       const { resumos: resumosOrg } = await this.calcularResumos(whereOrg);
       const cobertura = await this.calcularCoberturaArquitetosDeResumos(resumosOrg, carreiraArquiteto.id);
       const paresEmDefice = new Set(cobertura.filter((c) => c.defice > 0).map((c) => `${c.nucleoNome ?? ''}::${c.areaNome}`));
-      const emDefice = (r: (typeof candidatos)[number]) =>
-        r.areaNome !== null && paresEmDefice.has(`${r.nucleoNome ?? ''}::${r.areaNome}`);
+      const emDefice = (c: CandidatoCarreira) => c.areaNome !== null && paresEmDefice.has(`${c.nucleoNome ?? ''}::${c.areaNome}`);
 
       candidatos.sort((a, b) => {
         const aApto = a.apto ? 1 : 0;
@@ -354,44 +411,11 @@ export class GapAnalysisService {
         const aPrioridade = emDefice(a) ? 1 : 0;
         const bPrioridade = emDefice(b) ? 1 : 0;
         if (aPrioridade !== bPrioridade) return bPrioridade - aPrioridade;
-        return a.gap - b.gap || b.prontidaoMedia - a.prontidaoMedia;
+        return a.gap - b.gap || (b.prontidao ?? -1) - (a.prontidao ?? -1);
       });
     }
 
-    return {
-      carreiraId: carreira.id,
-      carreiraNome: carreira.nome,
-      cargoEntradaId: cargoEntrada?.id ?? null,
-      cargoEntradaNome: cargoEntrada?.nome ?? null,
-      lobsExigidosEntrada,
-      anosExperienciaMinimaEntrada,
-      candidatos,
-    };
-  }
-
-  /**
-   * Cargo de entrada de uma carreira: o cargo dessa carreira que nenhum
-   * outro cargo DA MESMA carreira aponta como `proximoCargoId` em
-   * `cargo_progressao` — ou seja, o início da escada, o cargo com que se
-   * entra vindo de fora (ex. "Associate Architect" antes de "Architect").
-   * Pedido do utilizador: obter isto dinamicamente da tabela Progressão de
-   * cargos em vez de adivinhar pelo menor `lobsExigidos`. Se não houver um
-   * único cargo "sem predecessor" (dados incompletos/circulares), cai para
-   * todos os cargos da carreira — e o desempate é sempre o menor
-   * `lobsExigidos`, como acontecia antes.
-   */
-  private async resolverCargoEntradaCarreira(cargosDaCarreira: Cargo[]): Promise<Cargo | null> {
-    if (cargosDaCarreira.length === 0) return null;
-
-    const idsDaCarreira = cargosDaCarreira.map((c) => c.id);
-    const progressoes = await this.prisma.cargoProgressao.findMany({
-      where: { cargoId: { in: idsDaCarreira }, proximoCargoId: { in: idsDaCarreira } },
-    });
-    const comPredecessorNaCarreira = new Set(progressoes.map((p) => p.proximoCargoId));
-    const candidatosEntrada = cargosDaCarreira.filter((c) => !comPredecessorNaCarreira.has(c.id));
-    const base = candidatosEntrada.length > 0 ? candidatosEntrada : cargosDaCarreira;
-
-    return base.reduce((menor, atual) => ((atual.lobsExigidos ?? 0) < (menor.lobsExigidos ?? 0) ? atual : menor));
+    return { carreiraId: carreira.id, carreiraNome: carreira.nome, candidatos };
   }
 
   /**
@@ -412,6 +436,7 @@ export class GapAnalysisService {
         cargoId: true,
         carreiraId: true,
         dataAdmissao: true,
+        proximaLobId: true,
         direcao: { select: { nome: true } },
         area: { select: { nome: true } },
         nucleo: { select: { nome: true } },
@@ -471,6 +496,11 @@ export class GapAnalysisService {
       const prontidaoMedia = lobsResultados.length
         ? Math.round(lobsResultados.reduce((soma, r) => soma + r.prontidaoPercentual, 0) / lobsResultados.length)
         : 0;
+      // Prontidão da "Próxima LOB" do colaborador (pedido do utilizador) —
+      // só essa LOB conta, nunca a média geral. null se não tiver Próxima
+      // LOB definida.
+      const prontidaoProximaLob =
+        c.proximaLobId !== null ? (lobsResultados.find((r) => r.lobId === c.proximaLobId)?.prontidaoPercentual ?? null) : null;
 
       return {
         colaboradorId: c.id,
@@ -486,6 +516,7 @@ export class GapAnalysisService {
         lobsAtingidos,
         gap: Math.max(0, lobsExigidos - lobsAtingidos),
         prontidaoMedia,
+        prontidaoProximaLob,
         dataAdmissao: c.dataAdmissao ? c.dataAdmissao.toISOString().slice(0, 10) : null,
       };
     });

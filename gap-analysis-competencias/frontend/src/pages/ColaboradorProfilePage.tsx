@@ -12,13 +12,22 @@ import { Badge } from '../components/ui/Badge';
 import { DataTable } from '../components/ui/DataTable';
 import { PrintButton } from '../components/ui/PrintButton';
 import { Modal } from '../components/ui/Modal';
-import { Button, Field, Input } from '../components/ui/form';
+import { Button, Field, Input, Select } from '../components/ui/form';
 import { LobGapDetail } from '../components/gap/LobGapDetail';
 import { PerfilRadarChart } from '../components/gap/PerfilRadarChart';
 import { PdiSection } from '../components/pdi/PdiSection';
 
 function formatarData(iso: string | null): string {
   return iso ? new Date(iso).toLocaleDateString('pt-PT') : '—';
+}
+
+const MS_POR_ANO = 1000 * 60 * 60 * 24 * 365.25;
+
+/** Anos de experiência = anos desde a dataAdmissao até hoje, calculado dinamicamente (nunca guardado). */
+function calcularAnosExperiencia(dataAdmissao: string | null): number | null {
+  if (!dataAdmissao) return null;
+  const anos = (Date.now() - new Date(dataAdmissao).getTime()) / MS_POR_ANO;
+  return Math.round(anos * 10) / 10;
 }
 
 /** Editar a data de admissão — locking otimista pela `version` do colaborador, mesmo padrão de EditarCertificacaoModal. */
@@ -69,6 +78,71 @@ function EditarDataAdmissaoModal({ colaborador, onClose }: { colaborador: Colabo
   );
 }
 
+/** Editar a "Próxima LOB" — opções restritas às LOBs da Área do colaborador, mesmo padrão de locking otimista. */
+function EditarProximaLobModal({ colaborador, onClose }: { colaborador: ColaboradorResumo; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const { data: lobs } = useQuery({ queryKey: ['lobs'], queryFn: endpoints.lobs });
+  const [proximaLobId, setProximaLobId] = useState(colaborador.proximaLobId != null ? String(colaborador.proximaLobId) : '');
+  const [erro, setErro] = useState<string | null>(null);
+
+  const lobsDaArea = (lobs ?? []).filter((l) => l.areaNome === colaborador.areaNome);
+
+  const guardar = useMutation({
+    mutationFn: () =>
+      endpoints.atualizarColaborador(colaborador.id, {
+        proximaLobId: proximaLobId ? Number(proximaLobId) : null,
+        version: colaborador.version,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['colaborador', colaborador.id] });
+      onClose();
+    },
+    onError: (err) =>
+      setErro(
+        err instanceof ApiError && err.status === 409
+          ? 'Este colaborador foi alterado por outra pessoa entretanto — fecha e reabre para ver os dados atuais.'
+          : err instanceof ApiError
+            ? err.message
+            : 'Não foi possível gravar.',
+      ),
+  });
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setErro(null);
+    guardar.mutate();
+  }
+
+  return (
+    <Modal title="Próxima LOB" onClose={onClose}>
+      <form onSubmit={handleSubmit}>
+        <Field label="Próxima LOB">
+          <Select value={proximaLobId} onChange={(e) => setProximaLobId(e.target.value)} autoFocus>
+            <option value="">— nenhuma —</option>
+            {lobsDaArea.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.nome}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        {colaborador.areaNome == null && (
+          <p className="mb-3 text-xs text-fiori-text-secondary">Colaborador sem Área atribuída — sem LOBs para escolher.</p>
+        )}
+        {erro && <p className="mb-3 text-sm text-fiori-error">{erro}</p>}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={guardar.isPending}>
+            {guardar.isPending ? 'A gravar…' : 'Gravar'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 /**
  * Ficha do colaborador: competências/certificações e % de prontidão para
  * o cargo. Organizado por LOB (não há requisitos de competência "soltos"
@@ -81,6 +155,7 @@ export function ColaboradorProfilePage() {
   const { user } = useAuth();
   const [lobSelecionada, setLobSelecionada] = useState<number | null>(null);
   const [editarDataAdmissao, setEditarDataAdmissao] = useState(false);
+  const [editarProximaLob, setEditarProximaLob] = useState(false);
 
   const colaboradorQuery = useQuery({
     queryKey: ['colaborador', colaboradorId],
@@ -136,18 +211,36 @@ export function ColaboradorProfilePage() {
               </p>
             )}
             {colaborador && (
-              <p className="mt-1 flex items-center gap-1.5 text-sm text-fiori-text-secondary">
-                Admissão: {formatarData(colaborador.dataAdmissao)}
-                {user?.role === 'ADMIN_RH' && (
-                  <button
-                    type="button"
-                    onClick={() => setEditarDataAdmissao(true)}
-                    className="no-print text-fiori-text-secondary hover:text-fiori-primary"
-                    title="Editar data de admissão"
-                  >
-                    <Pencil size={13} />
-                  </button>
+              <p className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-fiori-text-secondary">
+                <span className="flex items-center gap-1.5">
+                  Admissão: {formatarData(colaborador.dataAdmissao)}
+                  {user?.role === 'ADMIN_RH' && (
+                    <button
+                      type="button"
+                      onClick={() => setEditarDataAdmissao(true)}
+                      className="no-print text-fiori-text-secondary hover:text-fiori-primary"
+                      title="Editar data de admissão"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                  )}
+                </span>
+                {calcularAnosExperiencia(colaborador.dataAdmissao) !== null && (
+                  <span>Anos de experiência: {calcularAnosExperiencia(colaborador.dataAdmissao)}</span>
                 )}
+                <span className="flex items-center gap-1.5">
+                  Próxima LOB: {colaborador.proximaLobNome ?? '—'}
+                  {user?.role === 'ADMIN_RH' && (
+                    <button
+                      type="button"
+                      onClick={() => setEditarProximaLob(true)}
+                      className="no-print text-fiori-text-secondary hover:text-fiori-primary"
+                      title="Editar próxima LOB"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                  )}
+                </span>
               </p>
             )}
           </div>
@@ -161,6 +254,9 @@ export function ColaboradorProfilePage() {
 
       {editarDataAdmissao && colaborador && (
         <EditarDataAdmissaoModal colaborador={colaborador} onClose={() => setEditarDataAdmissao(false)} />
+      )}
+      {editarProximaLob && colaborador && (
+        <EditarProximaLobModal colaborador={colaborador} onClose={() => setEditarProximaLob(false)} />
       )}
 
       {gap && gap.lobs.length >= 3 && (
