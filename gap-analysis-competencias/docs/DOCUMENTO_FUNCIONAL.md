@@ -71,8 +71,10 @@ certificação obrigatória (em falta ou expirada bloqueia sempre, independentem
 
 ### 4.3 Plano de Desenvolvimento Individual (PDI)
 "Gerar sugestões" cria um item por competência/certificação em falta em cada LOB-objetivo ativa
-(sem duplicar itens já existentes). Itens podem ser adicionados/eliminados manualmente e o estado
-acompanhado (Pendente/Em curso/Concluído).
+(sem duplicar itens já existentes). No ecrã, os itens aparecem separados em 3 grupos, por esta
+ordem: **Recomendadas pelo BUD**, **Sugeridas pelo sistema**, e **Outras competências** (itens
+adicionados manualmente, ou cuja LOB de origem deixou de ser um objetivo atual). Itens podem ser
+adicionados/eliminados manualmente e o estado acompanhado (Pendente/Em curso/Concluído).
 
 ### 4.4 Candidatos a carreira
 Para a carreira-alvo, calcula-se o cargo de entrada (menor `lobsExigidos`) e ordena-se os

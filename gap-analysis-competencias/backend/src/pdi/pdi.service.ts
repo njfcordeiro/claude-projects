@@ -12,12 +12,14 @@ const INCLUDE_ITEM = {
   competencia: { select: { nome: true } },
   certificacao: { select: { nome: true } },
   formacao: { select: { nome: true, duracaoHoras: true } },
+  lob: { select: { nome: true } },
 } as const;
 
 interface CandidatoPdi {
   competenciaId: number | null;
   certificacaoId: string | null;
   formacaoId: number | null;
+  lobId: number;
   descricao: string;
 }
 
@@ -33,7 +35,10 @@ interface CandidatoPdi {
  * As sugestões automáticas passam a cobrir TODOS os "objetivos de LOB"
  * ativos do colaborador (LobObjetivosService.listarLobsAlvo — união de até
  * 3 sugestões do sistema e das recomendações do BUD), não apenas uma única
- * LOB. Cada item gerado indica de qual LOB-objetivo veio.
+ * LOB. Cada item gerado grava a LOB de origem (`lobId`) — a classificação
+ * BUD/Sistema/Outras usada pelo frontend para agrupar o PDI é sempre
+ * derivada ao vivo desse `lobId` contra os objetivos de LOB atuais, nunca
+ * guardada como texto (evita ficar desatualizada se o objetivo mudar).
  */
 @Injectable()
 export class PdiService {
@@ -57,15 +62,11 @@ export class PdiService {
     await this.colaboradores.podeEditar(colaboradorId, user);
 
     const { auto, bud } = await this.lobObjetivos.listar(colaboradorId, user);
-    const origemPorLob = new Map<number, string>();
-    for (const o of auto) origemPorLob.set(o.lobId, 'Sistema');
-    for (const o of bud) origemPorLob.set(o.lobId, 'BUD');
     const lobsAlvo = [...auto, ...bud].filter((o, i, arr) => arr.findIndex((x) => x.lobId === o.lobId) === i);
 
     const candidatos = new Map<string, CandidatoPdi>();
     for (const lobAlvo of lobsAlvo) {
       const detalhe = await this.gapAnalysis.avaliarColaboradorLob(colaboradorId, lobAlvo.lobId, user);
-      const origem = origemPorLob.get(lobAlvo.lobId) ?? 'Sistema';
 
       for (const c of detalhe.competencias) {
         if (c.cumprido) continue;
@@ -75,7 +76,8 @@ export class PdiService {
           competenciaId: c.competenciaId,
           certificacaoId: null,
           formacaoId: c.sugestoes.formacoes[0]?.formacaoId ?? null,
-          descricao: `Reforçar competência "${c.competenciaNome}" (nível atual ${c.nivelAtual} → exigido ${c.nivelExigido}) para a LOB "${detalhe.lobNome}". Objetivo: ${detalhe.lobNome} · ${origem}.`,
+          lobId: lobAlvo.lobId,
+          descricao: `Reforçar competência "${c.competenciaNome}" (nível atual ${c.nivelAtual} → exigido ${c.nivelExigido}) para a LOB "${detalhe.lobNome}".`,
         });
       }
 
@@ -88,7 +90,8 @@ export class PdiService {
           competenciaId: null,
           certificacaoId: cert.certificacaoId,
           formacaoId: formacaoSugerida?.formacaoId ?? null,
-          descricao: `Obter a certificação "${cert.certificacaoNome}" — exigida pela LOB "${detalhe.lobNome}". Objetivo: ${detalhe.lobNome} · ${origem}.`,
+          lobId: lobAlvo.lobId,
+          descricao: `Obter a certificação "${cert.certificacaoNome}" — exigida pela LOB "${detalhe.lobNome}".`,
         });
       }
     }
@@ -109,6 +112,7 @@ export class PdiService {
             competenciaId: candidato.competenciaId,
             certificacaoId: candidato.certificacaoId,
             formacaoId: candidato.formacaoId,
+            lobId: candidato.lobId,
             descricao: candidato.descricao,
             origem: OrigemPdi.AUTOMATICO,
             createdBy: user.sub,

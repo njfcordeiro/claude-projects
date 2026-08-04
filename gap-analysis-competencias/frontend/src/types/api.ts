@@ -376,6 +376,7 @@ export interface PdiItem {
   competenciaId: number | null;
   certificacaoId: string | null;
   formacaoId: number | null;
+  lobId: number | null;
   descricao: string;
   estado: EstadoPdi;
   origem: OrigemPdi;
@@ -385,6 +386,7 @@ export interface PdiItem {
   competencia: { nome: string } | null;
   certificacao: { nome: string } | null;
   formacao: { nome: string; duracaoHoras: number | null } | null;
+  lob: { nome: string } | null;
 }
 
 export interface GerarPdiResponse {

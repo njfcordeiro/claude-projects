@@ -264,8 +264,8 @@ const REGRAS = [
     icone: Sparkles,
     titulo: 'PDI — sugestões automáticas',
     texto:
-      '"Gerar sugestões" já não visa uma única LOB: percorre TODOS os objetivos de LOB ativos do colaborador (sistema + BUD, ver "Objetivos de LOB" acima) e sugere o que estiver em falta em cada uma, sem duplicar entre elas. Cada sugestão indica de que LOB e de que origem (Sistema ou BUD) resultou. Qualquer item — gerado ou adicionado manualmente — pode ser eliminado, e "Gerar sugestões" pode ser chamado de novo a qualquer momento (não duplica o que já existe).',
-    formula: 'itens sugeridos = ⋃ᴸᴼᴮ∈objetivos { competências/certificações em falta nessa LOB }, sem duplicados',
+      '"Gerar sugestões" já não visa uma única LOB: percorre TODOS os objetivos de LOB ativos do colaborador (sistema + BUD, ver "Objetivos de LOB" acima) e sugere o que estiver em falta em cada uma, sem duplicar entre elas. No PDI, os itens aparecem separados em 3 grupos, por esta ordem: "Recomendadas pelo BUD", "Sugeridas pelo sistema" e "Outras competências" (itens manuais, ou cuja LOB de origem já não é um objetivo atual). Se uma LOB for, ao mesmo tempo, sugestão do sistema e recomendação do BUD, os seus itens contam para o grupo BUD. Qualquer item — gerado ou adicionado manualmente — pode ser eliminado, e "Gerar sugestões" pode ser chamado de novo a qualquer momento (não duplica o que já existe).',
+    formula: 'itens sugeridos = ⋃ᴸᴼᴮ∈objetivos { competências/certificações em falta nessa LOB }, sem duplicados · grupo do item = BUD, senão Sistema, senão Outras',
   },
   {
     icone: AlertTriangle,

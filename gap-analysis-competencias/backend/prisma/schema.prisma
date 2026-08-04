@@ -360,6 +360,7 @@ model Lob {
   recomendacoes                  ColaboradorLobRecomendacao[]
   gapAnalysisLobResults          GapAnalysisLobResult[]
   colaboradoresComEstaProximaLob Colaborador[]                @relation("ProximaLob")
+  pdiItems                       PdiItem[]
 
   @@map("lobs")
 }
@@ -575,6 +576,10 @@ model PdiItem {
   competenciaId  Int?      @map("competencia_id")
   certificacaoId String?   @map("certificacao_id")
   formacaoId     Int?      @map("formacao_id") // formação sugerida para colmatar o gap
+  // LOB que originou este item (só preenchido pelas sugestões automáticas de PdiService.gerar);
+  // usado para agrupar o PDI por origem — a classificação BUD/Sistema/Outras é sempre feita ao
+  // vivo contra os objetivos de LOB atuais (ver LobObjetivosService), nunca guardada aqui.
+  lobId          Int?      @map("lob_id")
   descricao      String
   estado         EstadoPdi @default(PENDENTE)
   origem         OrigemPdi @default(AUTOMATICO)
@@ -586,10 +591,11 @@ model PdiItem {
 
   colaborador  Colaborador   @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
   // onDelete: Restrict (ver nota em Colaborador acima) — evita apagar uma
-  // Competência/Certificação/Formação em uso num PDI sem aviso.
+  // Competência/Certificação/Formação/LOB em uso num PDI sem aviso.
   competencia  Competencia?  @relation(fields: [competenciaId], references: [id], onDelete: Restrict)
   certificacao Certificacao? @relation(fields: [certificacaoId], references: [id], onDelete: Restrict)
   formacao     Formacao?     @relation(fields: [formacaoId], references: [id], onDelete: Restrict)
+  lob          Lob?          @relation(fields: [lobId], references: [id], onDelete: Restrict)
 
   @@index([colaboradorId])
   @@map("pdi_items")

@@ -133,8 +133,10 @@ não estão ligadas a um cargo específico, `Cargo.lobsExigidos` é só uma cont
   `ColaboradorLobRecomendacao.bud`, sem limite de quantidade nem restrição de área.
 
 `PdiService.gerar()` itera a união (sem duplicados) de ambas as origens e cria um `PdiItem` por
-competência/certificação em falta em qualquer uma delas, anotando na descrição de qual LOB e
-origem (Sistema/BUD) resultou.
+competência/certificação em falta em qualquer uma delas, gravando `lobId` (a LOB de origem) em
+cada item criado. A classificação BUD/Sistema/Outras mostrada no frontend é sempre derivada ao
+vivo, cruzando `lobId` com os objetivos de LOB atuais — nunca guardada como texto, para nunca
+ficar desatualizada se um objetivo mudar de origem ou deixar de existir.
 
 ## 8. Frontend
 

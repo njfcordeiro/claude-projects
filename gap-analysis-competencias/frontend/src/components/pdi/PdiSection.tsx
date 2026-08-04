@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Sparkles, Trash2 } from 'lucide-react';
 import { endpoints } from '../../api/endpoints';
 import { ApiError } from '../../api/client';
-import { EstadoPdi } from '../../types/api';
+import { EstadoPdi, PdiItem } from '../../types/api';
 import { Card } from '../ui/Card';
 import { Badge, BadgeStatus } from '../ui/Badge';
 import { Modal } from '../ui/Modal';
@@ -90,14 +90,57 @@ function AdicionarPdiItemModal({ colaboradorId, onClose }: { colaboradorId: numb
   );
 }
 
+function ItemPdi({
+  item,
+  onAtualizar,
+  onEliminar,
+}: {
+  item: PdiItem;
+  onAtualizar: (estado: EstadoPdi) => void;
+  onEliminar: () => void;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3 rounded border border-fiori-border p-3">
+      <div className="min-w-0 flex-1">
+        <p className="text-sm text-fiori-text">{item.descricao}</p>
+        {item.formacao && (
+          <p className="mt-1 text-xs text-fiori-text-secondary">
+            Formação sugerida: <span className="font-medium">{item.formacao.nome}</span>
+            {item.formacao.duracaoHoras ? ` (${item.formacao.duracaoHoras}h)` : ''}
+          </p>
+        )}
+        <div className="mt-1.5 flex items-center gap-1.5">
+          <Badge status={ESTADO_BADGE[item.estado]}>{ESTADO_LABEL[item.estado]}</Badge>
+          {item.origem === 'MANUAL' && <Badge status="neutral">Manual</Badge>}
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2 no-print">
+        <Select value={item.estado} onChange={(e) => onAtualizar(e.target.value as EstadoPdi)} className="w-auto">
+          {(Object.keys(ESTADO_LABEL) as EstadoPdi[]).map((estado) => (
+            <option key={estado} value={estado}>
+              {ESTADO_LABEL[estado]}
+            </option>
+          ))}
+        </Select>
+        <button type="button" onClick={onEliminar} className="text-fiori-text-secondary hover:text-fiori-error" aria-label="Remover">
+          <Trash2 size={15} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /**
  * PDI (Plano de Desenvolvimento Individual) — pedido do utilizador:
  * "criação automática... com base nos gaps, sugerindo formações". As
- * sugestões vêm do backend (PdiService.gerar, que reutiliza o motor de gap
- * já existente e visa sempre uma única LOB por chamada — a "Próxima LOB"
- * do colaborador se preenchida, senão a LOB da sua Área mais perto de
- * atingir) — aqui só se mostra a checklist, permite marcar progresso,
- * eliminar itens (gerados ou manuais) e adicionar manualmente.
+ * sugestões vêm do backend (PdiService.gerar, que reutiliza o motor de
+ * gap existente e cobre todos os objetivos de LOB ativos — sistema +
+ * BUD, ver ObjetivosLobSection). Aqui mostra-se a checklist, separada em
+ * 3 grupos por origem (pedido do utilizador: "quero ver em primeiro as
+ * competências das lobs recomendadas pelo BUD e depois recomendadas
+ * pelo sistema; as restantes... ficam à parte") — a classificação
+ * cruza item.lobId com os objetivos de LOB atuais, nunca com texto
+ * guardado, por isso segue sempre o estado mais recente dos objetivos.
  */
 export function PdiSection({ colaboradorId }: { colaboradorId: number }) {
   const queryClient = useQueryClient();
@@ -144,14 +187,6 @@ export function PdiSection({ colaboradorId }: { colaboradorId: number }) {
         </div>
       }
     >
-      {objetivos && (objetivos.auto.length > 0 || objetivos.bud.length > 0) && (
-        <p className="mb-3 text-xs text-fiori-text-secondary">
-          Baseado em {objetivos.auto.length + objetivos.bud.length} objetivo{objetivos.auto.length + objetivos.bud.length === 1 ? '' : 's'} de LOB
-          atual{objetivos.auto.length + objetivos.bud.length === 1 ? '' : 'is'}:{' '}
-          {[...objetivos.auto.map((o) => `${o.lobNome} (sistema)`), ...objetivos.bud.map((o) => `${o.lobNome} (BUD)`)].join(', ')}.
-        </p>
-      )}
-
       {isLoading ? (
         <p className="text-sm text-fiori-text-secondary">A carregar…</p>
       ) : !itens || itens.length === 0 ? (
@@ -160,48 +195,41 @@ export function PdiSection({ colaboradorId }: { colaboradorId: number }) {
           para escolher manualmente.
         </p>
       ) : (
-        <div className="space-y-2">
-          {itens.map((item) => (
-            <div key={item.id} className="flex items-start justify-between gap-3 rounded border border-fiori-border p-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-sm text-fiori-text">{item.descricao}</p>
-                {item.formacao && (
-                  <p className="mt-1 text-xs text-fiori-text-secondary">
-                    Formação sugerida: <span className="font-medium">{item.formacao.nome}</span>
-                    {item.formacao.duracaoHoras ? ` (${item.formacao.duracaoHoras}h)` : ''}
-                  </p>
-                )}
-                <div className="mt-1.5 flex items-center gap-1.5">
-                  <Badge status={ESTADO_BADGE[item.estado]}>{ESTADO_LABEL[item.estado]}</Badge>
-                  {item.origem === 'MANUAL' && <Badge status="neutral">Manual</Badge>}
+        (() => {
+          const budLobIds = new Set((objetivos?.bud ?? []).map((o) => o.lobId));
+          const autoLobIds = new Set((objetivos?.auto ?? []).map((o) => o.lobId));
+          const grupoBud = itens.filter((i) => i.lobId !== null && budLobIds.has(i.lobId));
+          const grupoSistema = itens.filter((i) => i.lobId !== null && !budLobIds.has(i.lobId) && autoLobIds.has(i.lobId));
+          const grupoOutras = itens.filter((i) => i.lobId === null || (!budLobIds.has(i.lobId) && !autoLobIds.has(i.lobId)));
+
+          const grupos: { titulo: string; itens: PdiItem[] }[] = [
+            { titulo: 'Recomendadas pelo BUD', itens: grupoBud },
+            { titulo: 'Sugeridas pelo sistema', itens: grupoSistema },
+            { titulo: 'Outras competências', itens: grupoOutras },
+          ].filter((g) => g.itens.length > 0);
+
+          return (
+            <div className="space-y-5">
+              {grupos.map((grupo) => (
+                <div key={grupo.titulo}>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-fiori-text-secondary">{grupo.titulo}</p>
+                  <div className="space-y-2">
+                    {grupo.itens.map((item) => (
+                      <ItemPdi
+                        key={item.id}
+                        item={item}
+                        onAtualizar={(estado) => atualizar.mutate({ itemId: item.id, estado })}
+                        onEliminar={() => {
+                          if (window.confirm('Remover este item do PDI?')) eliminar.mutate(item.id);
+                        }}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-2 no-print">
-                <Select
-                  value={item.estado}
-                  onChange={(e) => atualizar.mutate({ itemId: item.id, estado: e.target.value as EstadoPdi })}
-                  className="w-auto"
-                >
-                  {(Object.keys(ESTADO_LABEL) as EstadoPdi[]).map((estado) => (
-                    <option key={estado} value={estado}>
-                      {ESTADO_LABEL[estado]}
-                    </option>
-                  ))}
-                </Select>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (window.confirm('Remover este item do PDI?')) eliminar.mutate(item.id);
-                  }}
-                  className="text-fiori-text-secondary hover:text-fiori-error"
-                  aria-label="Remover"
-                >
-                  <Trash2 size={15} />
-                </button>
-              </div>
+              ))}
             </div>
-          ))}
-        </div>
+          );
+        })()
       )}
 
       {aAdicionar && <AdicionarPdiItemModal colaboradorId={colaboradorId} onClose={() => setAAdicionar(false)} />}
