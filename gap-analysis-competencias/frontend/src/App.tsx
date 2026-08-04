@@ -14,6 +14,7 @@ import { CandidatosPage } from './pages/CandidatosPage';
 import { AtribuicoesPage } from './pages/AtribuicoesPage';
 import { SkillMatrixPage } from './pages/SkillMatrixPage';
 import { ComoFuncionaPage } from './pages/ComoFuncionaPage';
+import { ModeloDadosPage } from './pages/ModeloDadosPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
 export function App() {
@@ -51,6 +52,7 @@ export function App() {
               <Route path="/dados" element={<CatalogoPage />} />
               <Route path="/atribuicoes" element={<AtribuicoesPage />} />
               <Route path="/admin" element={<AdminPage />} />
+              <Route path="/modelo-dados" element={<ModeloDadosPage />} />
             </Route>
           </Route>
         </Route>

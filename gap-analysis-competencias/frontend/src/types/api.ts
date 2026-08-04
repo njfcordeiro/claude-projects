@@ -34,6 +34,8 @@ export interface ColaboradorResumo {
   categoriaId: string | null;
   managerId: number | null;
   managerNome: string | null;
+  /** Formato AAAA-MM-DD, null se não preenchida. */
+  dataAdmissao: string | null;
   /** Locking otimista — ver docs/02-arquitetura-tecnica.md secção 4.5. */
   version: number;
 }
@@ -48,6 +50,11 @@ export interface CreateColaboradorInput {
   carreiraId?: string;
   categoriaId?: string;
   managerId?: number;
+}
+
+export interface UpdateColaboradorInput {
+  dataAdmissao?: string;
+  version: number;
 }
 
 // --- Escrita com locking otimista (Prompt 5) ------------------------------
@@ -214,10 +221,9 @@ export interface ResumoGrupoDashboard {
 }
 
 export interface CoberturaArquitetos {
-  tipo: 'area' | 'nucleo';
-  nome: string;
-  /** Só preenchido para tipo 'nucleo' — nomes das Áreas associadas a este Núcleo. */
-  areasAssociadas: string[];
+  /** null = Área sem nenhum Núcleo associado — linha com o total da Área inteira. */
+  nucleoNome: string | null;
+  areaNome: string;
   totalColaboradores: number;
   arquitetos: number;
   exigidos: number;
@@ -241,13 +247,19 @@ export interface DashboardResponse {
   colaboradoresEmRiscoFuga: ColaboradorEmRisco[];
 }
 
+export interface CandidatoCarreira extends ResumoColaboradorDashboard {
+  anosExperiencia: number | null;
+  apto: boolean;
+}
+
 export interface CandidatosCarreiraResponse {
   carreiraId: string;
   carreiraNome: string;
   cargoEntradaId: string | null;
   cargoEntradaNome: string | null;
   lobsExigidosEntrada: number;
-  candidatos: ResumoColaboradorDashboard[];
+  anosExperienciaMinimaEntrada: number;
+  candidatos: CandidatoCarreira[];
 }
 
 // --- Catálogo genérico (backend/src/catalogo) -----------------------------

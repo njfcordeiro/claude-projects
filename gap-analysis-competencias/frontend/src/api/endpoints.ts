@@ -26,6 +26,7 @@ import {
   SenhaTemporariaResponse,
   SkillMatrixResponse,
   UltimaAvaliacao,
+  UpdateColaboradorInput,
   UpdatePdiItemInput,
   UpsertCertificacaoInput,
   UsuarioResumo,
@@ -37,6 +38,7 @@ export const endpoints = {
   colaboradores: () => api.get<ColaboradorResumo[]>('/colaboradores'),
   colaborador: (id: number) => api.get<ColaboradorResumo>(`/colaboradores/${id}`),
   criarColaborador: (dto: CreateColaboradorInput) => api.post<ColaboradorResumo>('/colaboradores', dto),
+  atualizarColaborador: (id: number, dto: UpdateColaboradorInput) => api.patch<ColaboradorResumo>(`/colaboradores/${id}`, dto),
   eliminarColaborador: (id: number) => api.delete<void>(`/colaboradores/${id}`),
   colaboradoresExportar: () => downloadFile('/colaboradores/export', 'colaboradores.xlsx'),
   colaboradoresImportar: (file: File) => {

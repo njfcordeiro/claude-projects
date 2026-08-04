@@ -246,8 +246,8 @@ const REGRAS = [
     icone: Compass,
     titulo: 'Candidatos a carreira',
     texto:
-      'Os LOBs não estão ligados a um cargo específico — "lobsAtingidos" é calculado uma vez sobre TODAS as LOBs da organização e não depende do cargo-alvo. "Quão perto está alguém de uma carreira" reduz-se a comparar isso com o cargo de entrada mais acessível dessa carreira (o de menor limiar).',
-    formula: 'gap = max(0, menor(lobsExigidos entre cargos da carreira) − lobsAtingidos)',
+      'Os LOBs não estão ligados a um cargo específico — "lobsAtingidos" é calculado uma vez sobre TODAS as LOBs da organização e não depende do cargo-alvo. O "cargo de entrada" de uma carreira é obtido dinamicamente da tabela Progressão de cargos: é o cargo dessa carreira que nenhum outro cargo da mesma carreira aponta como "próximo cargo" (o início da escada, ex. "Associate Architect"). Esse cargo tem um "Anos de experiência mínimo" — um candidato só é elegível ("Apto") se a sua antiguidade (anos desde a Data de Admissão) o cumprir; sem essa data não é possível confirmar, por isso não passa. A elegibilidade é o critério de ordenação mais forte, antes do défice de área/núcleo e do gap/prontidão.',
+    formula: 'apto = anosExperienciaMinimo = 0 OU (dataAdmissao definida E antiguidade ≥ anosExperienciaMinimo do cargo de entrada)',
   },
   {
     icone: AlertTriangle,
@@ -274,7 +274,7 @@ const REGRAS = [
     icone: Building2,
     titulo: 'Cobertura de Arquitetos por Área/Núcleo',
     texto:
-      'Regra de dimensionamento pedida para o quadro "Cobertura de Arquitetos" no Dashboard: cada Área/Núcleo precisa de Arquitetos proporcionalmente à sua dimensão. Áreas/Núcleos pequenos não entram em défice — assume-se que são cobertos por Arquitetos de outras áreas ("apoio transversal"). O total de colaboradores de um Núcleo cruza a tabela "Áreas por Núcleo" com a de Colaboradores: é a soma dos colaboradores de todas as Áreas associadas a esse Núcleo (um Núcleo sem nenhuma Área associada não aparece no quadro). Quando uma Área/Núcleo está em défice, os seus colaboradores passam à frente na lista de Candidatos à carreira de Arquiteto, antes do critério de gap/prontidão.',
+      'Regra de dimensionamento pedida para o quadro "Cobertura de Arquitetos" no Dashboard: cada combinação Núcleo/Área precisa de Arquitetos proporcionalmente à sua dimensão. Combinações pequenas não entram em défice — assume-se que são cobertas por Arquitetos de outras áreas ("apoio transversal"). Uma linha por combinação Núcleo/Área (tabela "Áreas por Núcleo"), contando só colaboradores cuja Área E Núcleo próprios batem certo com essa combinação — não só a Área. Áreas sem nenhum Núcleo associado mostram uma linha própria com o total da Área inteira. Quando uma combinação está em défice, os seus colaboradores passam à frente na lista de Candidatos à carreira de Arquiteto, logo a seguir à elegibilidade por antiguidade e antes do critério de gap/prontidão.',
     formula:
       'exigidos = 0 se colaboradores < 10, senão max(1, arredondar para cima de colaboradores/10) · défice = max(0, exigidos − arquitetos)',
   },

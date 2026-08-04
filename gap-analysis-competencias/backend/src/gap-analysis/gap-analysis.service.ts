@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { PapelUtilizador, Prisma } from '@prisma/client';
+import { Cargo, PapelUtilizador, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ColaboradoresService } from '../colaboradores/colaboradores.service';
 import { AuthenticatedUser } from '../auth/jwt-payload.interface';
@@ -282,8 +282,17 @@ export class GapAnalysisService {
    * dependem do cargo-alvo (ver `calcularResumos`/`obterDashboard`); só
    * `cargo.lobsExigidos` varia por cargo. Por isso "quão perto está alguém
    * da carreira X" reduz-se a comparar o `lobsAtingidos` já calculado (uma
-   * vez, em lote) contra o MENOR `lobsExigidos` entre os cargos dessa
-   * carreira — o cargo de entrada mais acessível.
+   * vez, em lote) contra o `lobsExigidos` do cargo de entrada da carreira
+   * (ver `resolverCargoEntradaCarreira`).
+   *
+   * Elegibilidade por antiguidade (pedido do utilizador): o cargo de
+   * entrada tem um `anosExperienciaMinimo` — um candidato só é `apto` se a
+   * sua antiguidade (anos desde `dataAdmissao`) o cumprir. Sem
+   * `dataAdmissao` não há como confirmar, por isso fica `apto: false`
+   * nesse caso (dado em falta não é tratado como "passa"). Cargos sem
+   * mínimo definido (`anosExperienciaMinimo` null/0) não bloqueiam
+   * ninguém. `apto` é o critério de ordenação mais forte — vem antes do
+   * défice de área/núcleo e do gap/prontidão.
    */
   async sugerirCandidatosCarreira(carreiraId: string, user: AuthenticatedUser): Promise<CandidatosCarreiraResponse> {
     if (user.role === PapelUtilizador.EMPLOYEE) {
@@ -294,12 +303,9 @@ export class GapAnalysisService {
     if (!carreira) throw new NotFoundException(`Carreira "${carreiraId}" não encontrada.`);
 
     const cargosDaCarreira = await this.prisma.cargo.findMany({ where: { carreiraId } });
-    const cargoEntrada = cargosDaCarreira.reduce<(typeof cargosDaCarreira)[number] | null>((menor, atual) => {
-      const atualExigidos = atual.lobsExigidos ?? 0;
-      if (!menor) return atual;
-      return atualExigidos < (menor.lobsExigidos ?? 0) ? atual : menor;
-    }, null);
+    const cargoEntrada = await this.resolverCargoEntradaCarreira(cargosDaCarreira);
     const lobsExigidosEntrada = cargoEntrada?.lobsExigidos ?? 0;
+    const anosExperienciaMinimaEntrada = cargoEntrada?.anosExperienciaMinimo ?? 0;
 
     const where =
       user.role === PapelUtilizador.MANAGER
@@ -308,15 +314,27 @@ export class GapAnalysisService {
 
     const { resumos } = await this.calcularResumos(where);
 
+    const agora = Date.now();
     const candidatos = resumos
-      .map((r) => ({ ...r, lobsExigidos: lobsExigidosEntrada, gap: Math.max(0, lobsExigidosEntrada - r.lobsAtingidos) }))
-      .sort((a, b) => a.gap - b.gap || b.prontidaoMedia - a.prontidaoMedia);
+      .map((r) => {
+        const anosExperiencia = r.dataAdmissao ? Math.round(((agora - new Date(r.dataAdmissao).getTime()) / MS_POR_ANO) * 10) / 10 : null;
+        const apto = anosExperienciaMinimaEntrada <= 0 || (anosExperiencia !== null && anosExperiencia >= anosExperienciaMinimaEntrada);
+        return {
+          ...r,
+          lobsExigidos: lobsExigidosEntrada,
+          gap: Math.max(0, lobsExigidosEntrada - r.lobsAtingidos),
+          anosExperiencia,
+          apto,
+        };
+      })
+      .sort((a, b) => (b.apto ? 1 : 0) - (a.apto ? 1 : 0) || a.gap - b.gap || b.prontidaoMedia - a.prontidaoMedia);
 
     // Pedido do utilizador: se a carreira-alvo é a de Arquiteto, colaboradores
-    // de uma área/núcleo com défice de Arquitetos (ver
+    // de uma combinação área/núcleo com défice de Arquitetos (ver
     // calcularCoberturaArquitetosDeResumos) passam à frente na lista de
-    // candidatos, antes do critério de gap/prontidão — a organização tem uma
-    // necessidade concreta e urgente nessas áreas/núcleos.
+    // candidatos, logo a seguir à elegibilidade por antiguidade e antes do
+    // critério de gap/prontidão — a organização tem uma necessidade
+    // concreta e urgente nessas áreas/núcleos.
     const carreiraArquiteto = await this.resolverCarreiraArquiteto();
     if (carreiraArquiteto && carreiraArquiteto.id === carreiraId) {
       const whereOrg =
@@ -325,18 +343,14 @@ export class GapAnalysisService {
           : { cargoId: { not: null } };
       const { resumos: resumosOrg } = await this.calcularResumos(whereOrg);
       const cobertura = await this.calcularCoberturaArquitetosDeResumos(resumosOrg, carreiraArquiteto.id);
-      const areasDeficit = new Set(cobertura.filter((c) => c.tipo === 'area' && c.defice > 0).map((c) => c.nome));
-      // Défice de Núcleo é calculado por soma das Áreas associadas (ver
-      // calcularCoberturaArquitetosDeResumos) — por isso um colaborador
-      // "pertence" a um Núcleo em défice através da sua Área, não do
-      // Colaborador.nucleoId direto.
-      const areasDeNucleoEmDefice = new Set(
-        cobertura.filter((c) => c.tipo === 'nucleo' && c.defice > 0).flatMap((c) => c.areasAssociadas),
-      );
+      const paresEmDefice = new Set(cobertura.filter((c) => c.defice > 0).map((c) => `${c.nucleoNome ?? ''}::${c.areaNome}`));
       const emDefice = (r: (typeof candidatos)[number]) =>
-        r.areaNome !== null && (areasDeficit.has(r.areaNome) || areasDeNucleoEmDefice.has(r.areaNome));
+        r.areaNome !== null && paresEmDefice.has(`${r.nucleoNome ?? ''}::${r.areaNome}`);
 
       candidatos.sort((a, b) => {
+        const aApto = a.apto ? 1 : 0;
+        const bApto = b.apto ? 1 : 0;
+        if (aApto !== bApto) return bApto - aApto;
         const aPrioridade = emDefice(a) ? 1 : 0;
         const bPrioridade = emDefice(b) ? 1 : 0;
         if (aPrioridade !== bPrioridade) return bPrioridade - aPrioridade;
@@ -350,8 +364,34 @@ export class GapAnalysisService {
       cargoEntradaId: cargoEntrada?.id ?? null,
       cargoEntradaNome: cargoEntrada?.nome ?? null,
       lobsExigidosEntrada,
+      anosExperienciaMinimaEntrada,
       candidatos,
     };
+  }
+
+  /**
+   * Cargo de entrada de uma carreira: o cargo dessa carreira que nenhum
+   * outro cargo DA MESMA carreira aponta como `proximoCargoId` em
+   * `cargo_progressao` — ou seja, o início da escada, o cargo com que se
+   * entra vindo de fora (ex. "Associate Architect" antes de "Architect").
+   * Pedido do utilizador: obter isto dinamicamente da tabela Progressão de
+   * cargos em vez de adivinhar pelo menor `lobsExigidos`. Se não houver um
+   * único cargo "sem predecessor" (dados incompletos/circulares), cai para
+   * todos os cargos da carreira — e o desempate é sempre o menor
+   * `lobsExigidos`, como acontecia antes.
+   */
+  private async resolverCargoEntradaCarreira(cargosDaCarreira: Cargo[]): Promise<Cargo | null> {
+    if (cargosDaCarreira.length === 0) return null;
+
+    const idsDaCarreira = cargosDaCarreira.map((c) => c.id);
+    const progressoes = await this.prisma.cargoProgressao.findMany({
+      where: { cargoId: { in: idsDaCarreira }, proximoCargoId: { in: idsDaCarreira } },
+    });
+    const comPredecessorNaCarreira = new Set(progressoes.map((p) => p.proximoCargoId));
+    const candidatosEntrada = cargosDaCarreira.filter((c) => !comPredecessorNaCarreira.has(c.id));
+    const base = candidatosEntrada.length > 0 ? candidatosEntrada : cargosDaCarreira;
+
+    return base.reduce((menor, atual) => ((atual.lobsExigidos ?? 0) < (menor.lobsExigidos ?? 0) ? atual : menor));
   }
 
   /**
@@ -571,21 +611,18 @@ export class GapAnalysisService {
   }
 
   /**
-   * Cobertura de Arquitetos por Área e por Núcleo, numa tabela só (pedido
-   * do utilizador — ver regras junto a `exigidosArquitetos`). Colaboradores
-   * sem área atribuída ficam de fora desta cobertura (não há grupo "Sem
-   * área" aqui, ao contrário de `agruparPorCampo`, porque não faz sentido
-   * pedir um Arquiteto para "nenhures").
-   *
-   * O total de colaboradores de um Núcleo é a SOMA dos colaboradores de
-   * todas as Áreas associadas a esse Núcleo (tabela nucleo_areas — pedido
-   * do utilizador: "cruzar a informação da tabela áreas por núcleo e a
-   * tabela colaboradores"), não o `Colaborador.nucleoId` direto. Um Núcleo
-   * sem nenhuma Área associada não aparece na tabela (nada para somar).
-   * Quando duas Áreas do mesmo Núcleo partilhassem um colaborador (não
-   * deveria acontecer — cada colaborador só tem uma Área — mas a
-   * deduplicação por `colaboradorId` protege contra contagem dupla mesmo
-   * assim).
+   * Cobertura de Arquitetos por combinação Núcleo/Área (pedido do
+   * utilizador — ver regras junto a `exigidosArquitetos`). Uma linha por
+   * par (tabela nucleo_areas), contando só os colaboradores que pertencem
+   * a AMBOS — `Colaborador.areaId` E `Colaborador.nucleoId` a apontar
+   * exatamente para essa Área e esse Núcleo (interseção, não só a Área —
+   * corrigido a pedido do utilizador: "ele está a contar apenas por
+   * área"). Áreas sem nenhum Núcleo associado aparecem numa linha própria
+   * (nucleoNome null) com o total da Área inteira. Um colaborador cuja
+   * Área tem Núcleos associados mas cujo `nucleoId` próprio não bate
+   * certo com nenhum deles não é contado em nenhuma linha — é uma
+   * inconsistência de dados a corrigir em Gestão de Dados, não algo para
+   * a tabela adivinhar.
    */
   private async calcularCoberturaArquitetosDeResumos(
     resumos: ResumoColaboradorDashboard[],
@@ -596,32 +633,14 @@ export class GapAnalysisService {
     const associacoes = await this.prisma.nucleoArea.findMany({
       include: { nucleo: { select: { nome: true } }, area: { select: { nome: true } } },
     });
-    const areasPorNucleo = new Map<string, string[]>();
-    for (const a of associacoes) {
-      if (!areasPorNucleo.has(a.nucleo.nome)) areasPorNucleo.set(a.nucleo.nome, []);
-      areasPorNucleo.get(a.nucleo.nome)!.push(a.area.nome);
-    }
 
-    const porArea = new Map<string, ResumoColaboradorDashboard[]>();
-    for (const r of resumos) {
-      if (!r.areaNome) continue;
-      if (!porArea.has(r.areaNome)) porArea.set(r.areaNome, []);
-      porArea.get(r.areaNome)!.push(r);
-    }
-
-    const calcularLinha = (
-      tipo: 'area' | 'nucleo',
-      nome: string,
-      itens: ResumoColaboradorDashboard[],
-      areasAssociadas: string[],
-    ): CoberturaArquitetos => {
+    const calcularLinha = (nucleoNome: string | null, areaNome: string, itens: ResumoColaboradorDashboard[]): CoberturaArquitetos => {
       const totalColaboradores = itens.length;
       const arquitetos = itens.filter(ehArquiteto).length;
       const exigidos = exigidosArquitetos(totalColaboradores);
       return {
-        tipo,
-        nome,
-        areasAssociadas,
+        nucleoNome,
+        areaNome,
         totalColaboradores,
         arquitetos,
         exigidos,
@@ -630,19 +649,25 @@ export class GapAnalysisService {
       };
     };
 
-    const linhasArea = Array.from(porArea.entries()).map(([nome, itens]) => calcularLinha('area', nome, itens, []));
+    const linhasPar = associacoes.map((a) =>
+      calcularLinha(
+        a.nucleo.nome,
+        a.area.nome,
+        resumos.filter((r) => r.areaNome === a.area.nome && r.nucleoNome === a.nucleo.nome),
+      ),
+    );
 
-    const linhasNucleo = Array.from(areasPorNucleo.entries()).map(([nome, areas]) => {
-      const porColaboradorId = new Map<number, ResumoColaboradorDashboard>();
-      for (const areaNome of areas) {
-        for (const r of porArea.get(areaNome) ?? []) {
-          porColaboradorId.set(r.colaboradorId, r);
-        }
-      }
-      return calcularLinha('nucleo', nome, Array.from(porColaboradorId.values()), [...areas].sort());
-    });
+    const areasComNucleo = new Set(associacoes.map((a) => a.area.nome));
+    const areasSemNucleo = new Set(resumos.filter((r) => r.areaNome && !areasComNucleo.has(r.areaNome)).map((r) => r.areaNome as string));
+    const linhasSemNucleo = Array.from(areasSemNucleo).map((areaNome) =>
+      calcularLinha(
+        null,
+        areaNome,
+        resumos.filter((r) => r.areaNome === areaNome),
+      ),
+    );
 
-    return [...linhasArea, ...linhasNucleo].sort((a, b) => b.defice - a.defice);
+    return [...linhasPar, ...linhasSemNucleo].sort((a, b) => b.defice - a.defice);
   }
 
   private async avaliarLobParaColaborador(

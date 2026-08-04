@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { endpoints } from '../api/endpoints';
 import { Card } from '../components/ui/Card';
+import { Badge } from '../components/ui/Badge';
 import { DataTable } from '../components/ui/DataTable';
 import { PrintButton } from '../components/ui/PrintButton';
 import { Select } from '../components/ui/form';
@@ -65,6 +66,13 @@ export function CandidatosPage() {
         <Card title={`Candidatos a ${data.carreiraNome}`}>
           <p className="mb-3 text-sm text-fiori-text-secondary">
             Cargo de entrada mais acessível: <strong>{data.cargoEntradaNome ?? '—'}</strong> ({data.lobsExigidosEntrada} LOBs exigidas)
+            {data.anosExperienciaMinimaEntrada > 0 && (
+              <>
+                {' '}
+                — exige pelo menos <strong>{data.anosExperienciaMinimaEntrada} anos</strong> de antiguidade (dataAdmissao); sem essa
+                data não é possível confirmar elegibilidade.
+              </>
+            )}
           </p>
           <DataTable
             data={data.candidatos}
@@ -95,6 +103,24 @@ export function CandidatosPage() {
                 sortValue: (c) => c.lobsAtingidos,
               },
               { key: 'gap', header: 'Gap', render: (c) => c.gap, sortValue: (c) => c.gap },
+              {
+                key: 'antiguidade',
+                header: 'Antiguidade',
+                render: (c) => (c.anosExperiencia !== null ? `${c.anosExperiencia} anos` : '—'),
+                sortValue: (c) => c.anosExperiencia ?? -1,
+              },
+              {
+                key: 'elegibilidade',
+                header: 'Elegibilidade',
+                render: (c) =>
+                  c.apto ? (
+                    <Badge status="success">Apto</Badge>
+                  ) : (
+                    <Badge status="warning">Antiguidade insuficiente</Badge>
+                  ),
+                sortValue: (c) => (c.apto ? 1 : 0),
+                searchValue: (c) => (c.apto ? 'apto' : 'antiguidade insuficiente'),
+              },
             ]}
           />
         </Card>

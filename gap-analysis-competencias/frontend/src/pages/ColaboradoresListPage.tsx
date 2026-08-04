@@ -38,6 +38,12 @@ function construirColunas(
       sortValue: (c) => c.managerNome ?? '',
     },
     {
+      key: 'admissao',
+      header: 'Admissão',
+      render: (c) => (c.dataAdmissao ? new Date(c.dataAdmissao).toLocaleDateString('pt-PT') : '—'),
+      sortValue: (c) => c.dataAdmissao ?? '',
+    },
+    {
       key: '__acoes',
       header: '',
       render: (c: ColaboradorResumo) => (

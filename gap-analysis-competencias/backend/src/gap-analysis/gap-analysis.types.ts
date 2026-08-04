@@ -177,10 +177,10 @@ export interface ResumoGrupoDashboard {
  * com menos de 10 não entram em défice (contam com apoio transversal).
  */
 export interface CoberturaArquitetos {
-  tipo: 'area' | 'nucleo';
-  nome: string;
-  /** Só preenchido para tipo 'nucleo' — nomes das Áreas associadas a este Núcleo (ver tabela nucleo_areas). */
-  areasAssociadas: string[];
+  /** null = Área sem nenhum Núcleo associado (tabela nucleo_areas) — linha com o total da Área inteira. */
+  nucleoNome: string | null;
+  areaNome: string;
+  /** Colaboradores cujo areaId E nucleoId apontam exatamente para este par (interseção, não só a Área). */
   totalColaboradores: number;
   arquitetos: number;
   exigidos: number;
@@ -205,6 +205,13 @@ export interface DashboardResponse {
   colaboradoresEmRiscoFuga: ColaboradorEmRisco[];
 }
 
+export interface CandidatoCarreira extends ResumoColaboradorDashboard {
+  /** Anos desde dataAdmissao, arredondado a 1 casa decimal — null se dataAdmissao não estiver preenchida. */
+  anosExperiencia: number | null;
+  /** anosExperiencia >= anosExperienciaMinimaEntrada (ver CandidatosCarreiraResponse) — dado em falta nunca passa. */
+  apto: boolean;
+}
+
 /** Resposta de `GET /gap-analysis/candidatos` — colaboradores fora da carreira-alvo, ordenados por proximidade. */
 export interface CandidatosCarreiraResponse {
   carreiraId: string;
@@ -212,7 +219,9 @@ export interface CandidatosCarreiraResponse {
   cargoEntradaId: string | null;
   cargoEntradaNome: string | null;
   lobsExigidosEntrada: number;
-  candidatos: ResumoColaboradorDashboard[];
+  /** Cargo.anosExperienciaMinimo do cargo de entrada — 0 quando não há mínimo definido. */
+  anosExperienciaMinimaEntrada: number;
+  candidatos: CandidatoCarreira[];
 }
 
 // --- Skill Matrix (heatmap colaboradores × LOBs/competências) ------------

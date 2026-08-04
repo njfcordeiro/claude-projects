@@ -1,15 +1,73 @@
-import { useState } from 'react';
+import { FormEvent, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Pencil } from 'lucide-react';
 import { endpoints } from '../api/endpoints';
+import { ApiError } from '../api/client';
+import { useAuth } from '../auth/useAuth';
+import { ColaboradorResumo } from '../types/api';
 import { Card } from '../components/ui/Card';
 import { ProgressRing } from '../components/ui/ProgressRing';
 import { Badge } from '../components/ui/Badge';
 import { DataTable } from '../components/ui/DataTable';
 import { PrintButton } from '../components/ui/PrintButton';
+import { Modal } from '../components/ui/Modal';
+import { Button, Field, Input } from '../components/ui/form';
 import { LobGapDetail } from '../components/gap/LobGapDetail';
 import { PerfilRadarChart } from '../components/gap/PerfilRadarChart';
 import { PdiSection } from '../components/pdi/PdiSection';
+
+function formatarData(iso: string | null): string {
+  return iso ? new Date(iso).toLocaleDateString('pt-PT') : '—';
+}
+
+/** Editar a data de admissão — locking otimista pela `version` do colaborador, mesmo padrão de EditarCertificacaoModal. */
+function EditarDataAdmissaoModal({ colaborador, onClose }: { colaborador: ColaboradorResumo; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [dataAdmissao, setDataAdmissao] = useState(colaborador.dataAdmissao ?? '');
+  const [erro, setErro] = useState<string | null>(null);
+
+  const guardar = useMutation({
+    mutationFn: () => endpoints.atualizarColaborador(colaborador.id, { dataAdmissao: dataAdmissao || undefined, version: colaborador.version }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['colaborador', colaborador.id] });
+      onClose();
+    },
+    onError: (err) =>
+      setErro(
+        err instanceof ApiError && err.status === 409
+          ? 'Este colaborador foi alterado por outra pessoa entretanto — fecha e reabre para ver os dados atuais.'
+          : err instanceof ApiError
+            ? err.message
+            : 'Não foi possível gravar.',
+      ),
+  });
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setErro(null);
+    guardar.mutate();
+  }
+
+  return (
+    <Modal title="Data de admissão" onClose={onClose}>
+      <form onSubmit={handleSubmit}>
+        <Field label="Data de admissão">
+          <Input type="date" value={dataAdmissao} onChange={(e) => setDataAdmissao(e.target.value)} autoFocus />
+        </Field>
+        {erro && <p className="mb-3 text-sm text-fiori-error">{erro}</p>}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={guardar.isPending}>
+            {guardar.isPending ? 'A gravar…' : 'Gravar'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
 
 /**
  * Ficha do colaborador: competências/certificações e % de prontidão para
@@ -20,7 +78,9 @@ import { PdiSection } from '../components/pdi/PdiSection';
 export function ColaboradorProfilePage() {
   const { id } = useParams<{ id: string }>();
   const colaboradorId = Number(id);
+  const { user } = useAuth();
   const [lobSelecionada, setLobSelecionada] = useState<number | null>(null);
+  const [editarDataAdmissao, setEditarDataAdmissao] = useState(false);
 
   const colaboradorQuery = useQuery({
     queryKey: ['colaborador', colaboradorId],
@@ -75,6 +135,21 @@ export function ColaboradorProfilePage() {
                 {gap.gap === 0 ? <Badge status="success">Pronto</Badge> : <Badge status="warning">Gap de {gap.gap}</Badge>}
               </p>
             )}
+            {colaborador && (
+              <p className="mt-1 flex items-center gap-1.5 text-sm text-fiori-text-secondary">
+                Admissão: {formatarData(colaborador.dataAdmissao)}
+                {user?.role === 'ADMIN_RH' && (
+                  <button
+                    type="button"
+                    onClick={() => setEditarDataAdmissao(true)}
+                    className="no-print text-fiori-text-secondary hover:text-fiori-primary"
+                    title="Editar data de admissão"
+                  >
+                    <Pencil size={13} />
+                  </button>
+                )}
+              </p>
+            )}
           </div>
         </div>
         {semCargo && (
@@ -83,6 +158,10 @@ export function ColaboradorProfilePage() {
           </p>
         )}
       </Card>
+
+      {editarDataAdmissao && colaborador && (
+        <EditarDataAdmissaoModal colaborador={colaborador} onClose={() => setEditarDataAdmissao(false)} />
+      )}
 
       {gap && gap.lobs.length >= 3 && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

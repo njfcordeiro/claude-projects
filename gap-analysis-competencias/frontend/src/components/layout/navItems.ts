@@ -1,4 +1,4 @@
-import { BookOpen, Compass, Database, GraduationCap, Grid3x3, LayoutGrid, ShieldCheck, Target, UserCog, Users } from 'lucide-react';
+import { BookOpen, Compass, Database, GraduationCap, Grid3x3, LayoutGrid, Network, ShieldCheck, Target, UserCog, Users } from 'lucide-react';
 import { PapelUtilizador } from '../../types/api';
 
 export interface NavItem {
@@ -19,6 +19,7 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/dados', label: 'Gestão de Dados', icon: Database, roles: ['ADMIN_RH'] },
   { to: '/atribuicoes', label: 'Atribuição em Massa', icon: UserCog, roles: ['ADMIN_RH'] },
   { to: '/admin', label: 'Administração', icon: ShieldCheck, roles: ['ADMIN_RH'] },
+  { to: '/modelo-dados', label: 'Modelo de Dados', icon: Network, roles: ['ADMIN_RH'] },
   { to: '/como-funciona', label: 'Como Funciona', icon: BookOpen },
 ];
 

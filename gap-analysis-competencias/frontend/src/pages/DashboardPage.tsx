@@ -135,77 +135,54 @@ export function DashboardPage() {
         />
       </Card>
 
-      {data.coberturaArquitetos.length > 0 &&
-        (() => {
-          interface LinhaCobertura {
-            chave: string;
-            nucleoNome: string | null;
-            area: CoberturaArquitetos;
-          }
-
-          const nucleos = data.coberturaArquitetos.filter((c) => c.tipo === 'nucleo');
-          const areas = data.coberturaArquitetos.filter((c) => c.tipo === 'area');
-          const areasComNucleo = new Set(nucleos.flatMap((n) => n.areasAssociadas));
-
-          const linhas: LinhaCobertura[] = [
-            ...nucleos.flatMap((n) =>
-              n.areasAssociadas
-                .map((areaNome) => areas.find((a) => a.nome === areaNome))
-                .filter((a): a is CoberturaArquitetos => a !== undefined)
-                .map((a) => ({ chave: `${n.nome}::${a.nome}`, nucleoNome: n.nome, area: a })),
-            ),
-            ...areas.filter((a) => !areasComNucleo.has(a.nome)).map((a) => ({ chave: `sem-nucleo::${a.nome}`, nucleoNome: null, area: a })),
-          ];
-
-          return (
-            <Card title="Cobertura de Arquitetos por Núcleo/Área">
-              <p className="mb-3 text-xs text-fiori-text-secondary">
-                1 Arquiteto por cada 10 colaboradores, mínimo de 1 por área com 10 ou mais colaboradores. Áreas com menos de 10
-                contam com apoio transversal (não entram em défice). Uma linha por combinação Núcleo/Área (editável em Gestão de
-                Dados → "Áreas por Núcleo") — os números são sempre os da Área. Áreas sem Núcleo associado mostram "—" — ver
-                detalhe em "Como Funciona".
-              </p>
-              <DataTable
-                data={linhas}
-                getRowKey={(l) => l.chave}
-                searchPlaceholder="Pesquisar por área ou núcleo…"
-                emptyMessage="Sem áreas/núcleos com colaboradores atribuídos."
-                columns={[
-                  {
-                    key: 'nucleo',
-                    header: 'Núcleo',
-                    render: (l) => l.nucleoNome ?? '—',
-                    sortValue: (l) => l.nucleoNome ?? '',
-                    searchValue: (l) => l.nucleoNome ?? '',
-                  },
-                  { key: 'area', header: 'Área', render: (l) => l.area.nome, sortValue: (l) => l.area.nome },
-                  {
-                    key: 'colaboradores',
-                    header: 'Colaboradores',
-                    render: (l) => l.area.totalColaboradores,
-                    sortValue: (l) => l.area.totalColaboradores,
-                  },
-                  { key: 'arquitetos', header: 'Arquitetos', render: (l) => l.area.arquitetos, sortValue: (l) => l.area.arquitetos },
-                  { key: 'exigidos', header: 'Exigidos', render: (l) => l.area.exigidos, sortValue: (l) => l.area.exigidos },
-                  {
-                    key: 'estado',
-                    header: 'Estado',
-                    render: (l) =>
-                      l.area.defice > 0 ? (
-                        <Badge status="error">Défice de {l.area.defice}</Badge>
-                      ) : l.area.excesso > 0 ? (
-                        <Badge status="info">Excesso de {l.area.excesso}</Badge>
-                      ) : (
-                        <Badge status="success">Adequado</Badge>
-                      ),
-                    sortValue: (l) => l.area.defice - l.area.excesso,
-                    searchValue: (l) => (l.area.defice > 0 ? 'défice' : l.area.excesso > 0 ? 'excesso' : 'adequado'),
-                  },
-                ]}
-              />
-            </Card>
-          );
-        })()}
+      {data.coberturaArquitetos.length > 0 && (
+        <Card title="Cobertura de Arquitetos por Núcleo/Área">
+          <p className="mb-3 text-xs text-fiori-text-secondary">
+            1 Arquiteto por cada 10 colaboradores, mínimo de 1 por combinação Núcleo/Área com 10 ou mais colaboradores. Combinações
+            com menos de 10 contam com apoio transversal (não entram em défice). Uma linha por combinação Núcleo/Área (editável em
+            Gestão de Dados → "Áreas por Núcleo") — conta só colaboradores que pertencem a essa Área E a esse Núcleo em simultâneo.
+            Áreas sem Núcleo associado mostram "—" e contam todos os colaboradores dessa Área — ver detalhe em "Como Funciona".
+          </p>
+          <DataTable
+            data={data.coberturaArquitetos}
+            getRowKey={(c) => `${c.nucleoNome ?? 'sem-nucleo'}::${c.areaNome}`}
+            searchPlaceholder="Pesquisar por área ou núcleo…"
+            emptyMessage="Sem áreas/núcleos com colaboradores atribuídos."
+            columns={[
+              {
+                key: 'nucleo',
+                header: 'Núcleo',
+                render: (c: CoberturaArquitetos) => c.nucleoNome ?? '—',
+                sortValue: (c) => c.nucleoNome ?? '',
+                searchValue: (c) => c.nucleoNome ?? '',
+              },
+              { key: 'area', header: 'Área', render: (c) => c.areaNome, sortValue: (c) => c.areaNome },
+              {
+                key: 'colaboradores',
+                header: 'Colaboradores',
+                render: (c) => c.totalColaboradores,
+                sortValue: (c) => c.totalColaboradores,
+              },
+              { key: 'arquitetos', header: 'Arquitetos', render: (c) => c.arquitetos, sortValue: (c) => c.arquitetos },
+              { key: 'exigidos', header: 'Exigidos', render: (c) => c.exigidos, sortValue: (c) => c.exigidos },
+              {
+                key: 'estado',
+                header: 'Estado',
+                render: (c) =>
+                  c.defice > 0 ? (
+                    <Badge status="error">Défice de {c.defice}</Badge>
+                  ) : c.excesso > 0 ? (
+                    <Badge status="info">Excesso de {c.excesso}</Badge>
+                  ) : (
+                    <Badge status="success">Adequado</Badge>
+                  ),
+                sortValue: (c) => c.defice - c.excesso,
+                searchValue: (c) => (c.defice > 0 ? 'défice' : c.excesso > 0 ? 'excesso' : 'adequado'),
+              },
+            ]}
+          />
+        </Card>
+      )}
 
       <Card title="Colaboradores">
         <DataTable

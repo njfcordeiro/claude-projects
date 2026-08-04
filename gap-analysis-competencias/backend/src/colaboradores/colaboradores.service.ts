@@ -19,6 +19,7 @@ const SELECT_RESUMO = {
   carreiraId: true,
   categoriaId: true,
   managerId: true,
+  dataAdmissao: true,
   version: true,
   cargo: { select: { nome: true } },
   direcao: { select: { nome: true, relevante: true } },
@@ -49,6 +50,7 @@ function mapearResumo(c: ColaboradorComRelacoes) {
     categoriaId: c.categoriaId,
     managerId: c.managerId,
     managerNome: c.gestor?.nome ?? null,
+    dataAdmissao: c.dataAdmissao ? c.dataAdmissao.toISOString().slice(0, 10) : null,
     version: c.version,
   };
 }
@@ -352,12 +354,12 @@ export class ColaboradoresService {
    */
   async atualizar(id: number, dto: UpdateColaboradorDto, user: AuthenticatedUser) {
     await this.podeEditar(id, user);
-    const { version, ...alteracoes } = dto;
+    const { version, dataAdmissao, ...alteracoes } = dto;
 
     return this.prisma.runAsUser(user.sub, async (tx) => {
       const resultado = await tx.colaborador.updateMany({
         where: { id, version },
-        data: { ...alteracoes, version: { increment: 1 } },
+        data: { ...alteracoes, ...(dataAdmissao !== undefined ? { dataAdmissao: new Date(dataAdmissao) } : {}), version: { increment: 1 } },
       });
 
       if (resultado.count === 0) {
