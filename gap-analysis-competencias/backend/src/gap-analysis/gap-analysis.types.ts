@@ -154,6 +154,8 @@ export interface ResumoColaboradorDashboard {
   cargoNome: string;
   carreiraId: string | null;
   carreiraNome: string | null;
+  nivelGestaoNome: string | null;
+  localTrabalhoNome: string | null;
   lobsExigidos: number;
   lobsAtingidos: number;
   gap: number;
@@ -199,6 +201,8 @@ export interface DashboardResponse {
   porNucleo: ResumoGrupoDashboard[];
   porCargo: ResumoGrupoDashboard[];
   porCarreira: ResumoGrupoDashboard[];
+  porNivelGestao: ResumoGrupoDashboard[];
+  porLocalTrabalho: ResumoGrupoDashboard[];
   coberturaArquitetos: CoberturaArquitetos[];
   colaboradores: ResumoColaboradorDashboard[];
   /** Frases de insight geradas a partir dos agregados acima — ver GapAnalysisService.gerarInsights. */
@@ -258,6 +262,9 @@ export interface SkillMatrixColuna {
 export interface SkillMatrixLinha {
   colaboradorId: number;
   nome: string;
+  direcaoNome: string | null;
+  areaNome: string | null;
+  nucleoNome: string | null;
   /** Chave = String(coluna.id). Dimensão 'lob': prontidaoPercentual 0-100. Dimensão 'competencia': nivelId atual 0-5. */
   valores: Record<string, number>;
 }

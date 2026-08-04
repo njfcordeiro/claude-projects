@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from '../auth/jwt-payload.interface';
 import { AutoCriacaoService } from './auto-criacao.service';
 import { CATALOGO_REGISTRY, CatalogoCampoDef, CatalogoTabelaDef, encontrarTabela } from './catalogo.registry';
+import { adicionarFolhasDeOpcoes } from './excel-referencias.util';
 
 export interface ResumoImportacao {
   criados: number;
@@ -95,17 +96,45 @@ export class CatalogoService {
     }
   }
 
+  /**
+   * O ficheiro de download tem de poder ser reenviado tal e qual no upload
+   * (pedido do utilizador) — por isso as colunas de dados (id/chaves de
+   * relação) ficam exatamente como `importar` as lê. Para cada campo de
+   * relação acrescentamos: (1) uma coluna extra "<Label> — nome atual" logo
+   * a seguir, só para leitura/contexto, ignorada pelo `importar` porque não
+   * bate com nenhuma chave de `def.campos`; e (2) uma sheet "Opções — X" com
+   * todos os id/nome válidos dessa tabela relacionada.
+   */
   async exportar(tabela: string): Promise<Buffer> {
     const def = encontrarTabela(tabela);
-    const select = Object.fromEntries(def.campos.map((c) => [c.key, true]));
+    const select = { ...Object.fromEntries(def.campos.map((c) => [c.key, true])), ...this.construirInclude(def) };
     const linhas: Record<string, unknown>[] = await (this.prisma as any)[def.delegate].findMany({ select });
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet(def.tabela.slice(0, 31));
-    sheet.addRow(def.campos.map((c) => c.key));
-    for (const linha of linhas) {
-      sheet.addRow(def.campos.map((c) => linha[c.key] ?? null));
+
+    const cabecalhos: string[] = [];
+    for (const c of def.campos) {
+      cabecalhos.push(c.key);
+      if (c.tipo === 'relation' && c.relationAccessor) cabecalhos.push(`${c.label} — nome atual`);
     }
+    sheet.addRow(cabecalhos);
+
+    for (const linha of linhas) {
+      const valores: unknown[] = [];
+      for (const c of def.campos) {
+        valores.push(linha[c.key] ?? null);
+        if (c.tipo === 'relation' && c.relationAccessor) {
+          const relacionado = linha[c.relationAccessor] as { nome?: string } | null | undefined;
+          valores.push(relacionado?.nome ?? null);
+        }
+      }
+      sheet.addRow(valores);
+    }
+
+    const tabelasRelacionadas = [...new Set(def.campos.filter((c) => c.tipo === 'relation' && c.relatedTable).map((c) => c.relatedTable!))];
+    await adicionarFolhasDeOpcoes(workbook, this.prisma, tabelasRelacionadas);
+
     const buffer = await workbook.xlsx.writeBuffer();
     return Buffer.from(buffer);
   }

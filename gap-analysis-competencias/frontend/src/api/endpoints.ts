@@ -24,6 +24,7 @@ import {
   RelatorioGapLob,
   ResumoAtribuicao,
   ResumoImportacao,
+  ResumoImportacaoNiveis,
   SenhaTemporariaResponse,
   SkillMatrixResponse,
   UltimaAvaliacao,
@@ -113,5 +114,20 @@ export const endpoints = {
     if (filtros.nucleoId) params.set('nucleoId', String(filtros.nucleoId));
     if (filtros.cargoId) params.set('cargoId', filtros.cargoId);
     return api.get<SkillMatrixResponse>(`/gap-analysis/skill-matrix?${params.toString()}`);
+  },
+  skillMatrixExportar: (filtros: FiltrosOrganizacionais = {}, competenciaIds?: number[]) => {
+    const params = new URLSearchParams();
+    if (filtros.direcaoId) params.set('direcaoId', String(filtros.direcaoId));
+    if (filtros.areaId) params.set('areaId', String(filtros.areaId));
+    if (filtros.nucleoId) params.set('nucleoId', String(filtros.nucleoId));
+    if (filtros.cargoId) params.set('cargoId', filtros.cargoId);
+    if (competenciaIds && competenciaIds.length > 0) params.set('competenciaIds', competenciaIds.join(','));
+    const query = params.toString();
+    return downloadFile(`/gap-analysis/skill-matrix/export${query ? `?${query}` : ''}`, 'niveis-competencia.xlsx');
+  },
+  skillMatrixImportar: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api.postForm<ResumoImportacaoNiveis>('/gap-analysis/skill-matrix/import', form);
   },
 };

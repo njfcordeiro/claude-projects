@@ -13,7 +13,10 @@ import { PrintButton } from '../components/ui/PrintButton';
 import { CoberturaArquitetos, DashboardResponse } from '../types/api';
 
 const DIMENSOES: {
-  chave: keyof Pick<DashboardResponse, 'porDirecao' | 'porArea' | 'porNucleo' | 'porCargo' | 'porCarreira'>;
+  chave: keyof Pick<
+    DashboardResponse,
+    'porDirecao' | 'porArea' | 'porNucleo' | 'porCargo' | 'porCarreira' | 'porNivelGestao' | 'porLocalTrabalho'
+  >;
   label: string;
 }[] = [
   { chave: 'porDirecao', label: 'Direção' },
@@ -21,6 +24,8 @@ const DIMENSOES: {
   { chave: 'porNucleo', label: 'Núcleo' },
   { chave: 'porCargo', label: 'Cargo' },
   { chave: 'porCarreira', label: 'Carreira' },
+  { chave: 'porNivelGestao', label: 'Nível de Gestão' },
+  { chave: 'porLocalTrabalho', label: 'Local de Trabalho' },
 ];
 
 /** Visão geral de gaps por equipa/categoria (docs Prompt 4). ADMIN_RH/VIEWER veem a organização; MANAGER só a sua equipa. */
@@ -108,7 +113,7 @@ export function DashboardPage() {
       <Card
         title={`Prontidão média por ${DIMENSOES.find((d) => d.chave === dimensao)!.label.toLowerCase()}`}
         action={
-          <div className="flex gap-1">
+          <div className="flex flex-wrap gap-1">
             {DIMENSOES.map((d) => (
               <button
                 key={d.chave}
@@ -200,6 +205,20 @@ export function DashboardPage() {
               searchValue: (c) => c.direcaoNome ?? '',
             },
             { key: 'cargo', header: 'Cargo', render: (c) => c.cargoNome, sortValue: (c) => c.cargoNome },
+            {
+              key: 'nivelGestao',
+              header: 'Nível de Gestão',
+              render: (c) => c.nivelGestaoNome ?? '—',
+              sortValue: (c) => c.nivelGestaoNome ?? '',
+              searchValue: (c) => c.nivelGestaoNome ?? '',
+            },
+            {
+              key: 'localTrabalho',
+              header: 'Local de Trabalho',
+              render: (c) => c.localTrabalhoNome ?? '—',
+              sortValue: (c) => c.localTrabalhoNome ?? '',
+              searchValue: (c) => c.localTrabalhoNome ?? '',
+            },
             {
               key: 'prontidao',
               header: 'Prontidão',

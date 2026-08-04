@@ -6,6 +6,11 @@ export class UpdateColaboradorDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  nome?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   cargoId?: string;
 
   @ApiPropertyOptional()
@@ -42,6 +47,16 @@ export class UpdateColaboradorDto {
   @IsOptional()
   @IsInt()
   proximaLobId?: number | null;
+
+  @ApiPropertyOptional({ description: 'Nível de gestão (BUD/BUM/Team Leader/...) — null para limpar.' })
+  @IsOptional()
+  @IsInt()
+  nivelGestaoId?: number | null;
+
+  @ApiPropertyOptional({ description: 'Local de trabalho — null para limpar.' })
+  @IsOptional()
+  @IsInt()
+  localTrabalhoId?: number | null;
 
   @ApiPropertyOptional({ description: 'Formato AAAA-MM-DD.' })
   @IsOptional()

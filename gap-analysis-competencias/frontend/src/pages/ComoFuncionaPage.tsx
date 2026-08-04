@@ -5,6 +5,7 @@ import {
   BookOpen,
   Building2,
   Compass,
+  Grid3x3,
   GraduationCap,
   Layers,
   Lock,
@@ -277,6 +278,20 @@ const REGRAS = [
     texto:
       'Colaborador e a Certificação do colaborador têm um campo "version", incrementado a cada escrita. Um pedido de atualização tem de enviar a versão que leu — se já não bater certo, o backend rejeita em vez de sobrescrever silenciosamente a alteração de outra pessoa.',
     formula: 'PATCH devolve 409 Conflict se version enviada ≠ version atual na base de dados',
+  },
+  {
+    icone: UserCircle,
+    titulo: 'Nível de Gestão e Local de Trabalho',
+    texto:
+      'Dois atributos adicionais do colaborador, editáveis na ficha (secção ADMIN_RH): "Nível de Gestão" (ex. BUD, BUM, Team Leader) e "Local de Trabalho". As opções vêm de duas tabelas de catálogo geridas em Gestão de Dados ("Níveis de Gestão" e "Locais de Trabalho") — não são texto livre. Ambos aparecem como colunas na lista de Colaboradores e no Dashboard, e podem ser usados como dimensão de agrupamento no Dashboard e na Skill Matrix.',
+    formula: 'colaborador.nivelGestaoId → niveis_gestao · colaborador.localTrabalhoId → locais_trabalho',
+  },
+  {
+    icone: Grid3x3,
+    titulo: 'Skill Matrix — edição e importação em massa de níveis',
+    texto:
+      'No separador "Por Competência", clicar numa célula abre o mesmo formulário de avaliação da ficha do colaborador (locking otimista incluído) — disponível para ADMIN_RH e MANAGER (dentro da sua equipa). "Download níveis" exporta exatamente as colunas visíveis (respeitando os filtros ativos) num ficheiro com o id e o nome associado lado a lado (colaboradorId/Colaborador, competenciaId/Competência, nivelId/Nível); reenviar esse mesmo ficheiro em "Upload níveis" só grava uma nova avaliação (histórico append-only) para as linhas cujo nível pedido é diferente do nível atual — reenviar sem alterações não cria ruído no histórico. Os colaboradores podem ainda ser agrupados em blocos por Direção, Área, Núcleo ou Núcleo+Área, tal como as LOBs (separador "Por LOB") são agrupadas visualmente por Área.',
+    formula: 'grava nova avaliação apenas se nivelId do ficheiro ≠ nível atual do colaborador nessa competência',
   },
   {
     icone: Building2,

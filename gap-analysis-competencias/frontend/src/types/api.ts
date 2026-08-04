@@ -36,6 +36,10 @@ export interface ColaboradorResumo {
   managerNome: string | null;
   proximaLobId: number | null;
   proximaLobNome: string | null;
+  nivelGestaoId: number | null;
+  nivelGestaoNome: string | null;
+  localTrabalhoId: number | null;
+  localTrabalhoNome: string | null;
   /** Formato AAAA-MM-DD, null se não preenchida. */
   dataAdmissao: string | null;
   /** Locking otimista — ver docs/02-arquitetura-tecnica.md secção 4.5. */
@@ -52,11 +56,25 @@ export interface CreateColaboradorInput {
   carreiraId?: string;
   categoriaId?: string;
   managerId?: number;
+  proximaLobId?: number;
+  nivelGestaoId?: number;
+  localTrabalhoId?: number;
+  dataAdmissao?: string;
 }
 
 export interface UpdateColaboradorInput {
+  nome?: string;
+  cargoId?: string;
+  direcaoId?: number;
+  nucleoId?: number;
+  areaId?: number;
+  carreiraId?: string;
+  categoriaId?: string;
+  managerId?: number;
   dataAdmissao?: string;
   proximaLobId?: number | null;
+  nivelGestaoId?: number | null;
+  localTrabalhoId?: number | null;
   version: number;
 }
 
@@ -192,6 +210,8 @@ export interface ResumoColaboradorDashboard {
   cargoNome: string;
   carreiraId: string | null;
   carreiraNome: string | null;
+  nivelGestaoNome: string | null;
+  localTrabalhoNome: string | null;
   lobsExigidos: number;
   lobsAtingidos: number;
   gap: number;
@@ -245,6 +265,8 @@ export interface DashboardResponse {
   porNucleo: ResumoGrupoDashboard[];
   porCargo: ResumoGrupoDashboard[];
   porCarreira: ResumoGrupoDashboard[];
+  porNivelGestao: ResumoGrupoDashboard[];
+  porLocalTrabalho: ResumoGrupoDashboard[];
   coberturaArquitetos: CoberturaArquitetos[];
   colaboradores: ResumoColaboradorDashboard[];
   insights: string[];
@@ -304,6 +326,13 @@ export interface ResumoImportacao {
   criados: number;
   atualizados: number;
   avisos: string[];
+  erros: string[];
+}
+
+export interface ResumoImportacaoNiveis {
+  processadas: number;
+  criadas: number;
+  semAlteracao: number;
   erros: string[];
 }
 
@@ -383,6 +412,9 @@ export interface SkillMatrixColuna {
 export interface SkillMatrixLinha {
   colaboradorId: number;
   nome: string;
+  direcaoNome: string | null;
+  areaNome: string | null;
+  nucleoNome: string | null;
   valores: Record<string, number>;
 }
 

@@ -5,7 +5,7 @@ import { Pencil } from 'lucide-react';
 import { endpoints } from '../api/endpoints';
 import { ApiError } from '../api/client';
 import { useAuth } from '../auth/useAuth';
-import { ColaboradorResumo } from '../types/api';
+import { ColaboradorResumo, UpdateColaboradorInput } from '../types/api';
 import { Card } from '../components/ui/Card';
 import { ProgressRing } from '../components/ui/ProgressRing';
 import { Badge } from '../components/ui/Badge';
@@ -143,6 +143,78 @@ function EditarProximaLobModal({ colaborador, onClose }: { colaborador: Colabora
   );
 }
 
+/** Editar um campo de seleção simples (Nível de Gestão / Local de Trabalho) — opções vêm de uma tabela de catálogo, sem filtragem adicional. */
+function EditarCampoSimplesModal({
+  colaborador,
+  titulo,
+  tabela,
+  campo,
+  onClose,
+}: {
+  colaborador: ColaboradorResumo;
+  titulo: string;
+  tabela: 'niveis-gestao' | 'locais-trabalho';
+  campo: 'nivelGestaoId' | 'localTrabalhoId';
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const { data: opcoes } = useQuery({ queryKey: ['catalogo', tabela], queryFn: () => endpoints.catalogoListar(tabela) });
+  const [valor, setValor] = useState(colaborador[campo] != null ? String(colaborador[campo]) : '');
+  const [erro, setErro] = useState<string | null>(null);
+
+  const guardar = useMutation({
+    mutationFn: () =>
+      endpoints.atualizarColaborador(colaborador.id, {
+        [campo]: valor ? Number(valor) : null,
+        version: colaborador.version,
+      } as UpdateColaboradorInput),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['colaborador', colaborador.id] });
+      onClose();
+    },
+    onError: (err) =>
+      setErro(
+        err instanceof ApiError && err.status === 409
+          ? 'Este colaborador foi alterado por outra pessoa entretanto — fecha e reabre para ver os dados atuais.'
+          : err instanceof ApiError
+            ? err.message
+            : 'Não foi possível gravar.',
+      ),
+  });
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setErro(null);
+    guardar.mutate();
+  }
+
+  return (
+    <Modal title={titulo} onClose={onClose}>
+      <form onSubmit={handleSubmit}>
+        <Field label={titulo}>
+          <Select value={valor} onChange={(e) => setValor(e.target.value)} autoFocus>
+            <option value="">— nenhum —</option>
+            {(opcoes ?? []).map((o) => (
+              <option key={String(o.id)} value={String(o.id)}>
+                {String(o.nome)}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        {erro && <p className="mb-3 text-sm text-fiori-error">{erro}</p>}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={guardar.isPending}>
+            {guardar.isPending ? 'A gravar…' : 'Gravar'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 /**
  * Ficha do colaborador: competências/certificações e % de prontidão para
  * o cargo. Organizado por LOB (não há requisitos de competência "soltos"
@@ -156,6 +228,8 @@ export function ColaboradorProfilePage() {
   const [lobSelecionada, setLobSelecionada] = useState<number | null>(null);
   const [editarDataAdmissao, setEditarDataAdmissao] = useState(false);
   const [editarProximaLob, setEditarProximaLob] = useState(false);
+  const [editarNivelGestao, setEditarNivelGestao] = useState(false);
+  const [editarLocalTrabalho, setEditarLocalTrabalho] = useState(false);
 
   const colaboradorQuery = useQuery({
     queryKey: ['colaborador', colaboradorId],
@@ -241,6 +315,32 @@ export function ColaboradorProfilePage() {
                     </button>
                   )}
                 </span>
+                <span className="flex items-center gap-1.5">
+                  Nível de gestão: {colaborador.nivelGestaoNome ?? '—'}
+                  {user?.role === 'ADMIN_RH' && (
+                    <button
+                      type="button"
+                      onClick={() => setEditarNivelGestao(true)}
+                      className="no-print text-fiori-text-secondary hover:text-fiori-primary"
+                      title="Editar nível de gestão"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                  )}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  Local de trabalho: {colaborador.localTrabalhoNome ?? '—'}
+                  {user?.role === 'ADMIN_RH' && (
+                    <button
+                      type="button"
+                      onClick={() => setEditarLocalTrabalho(true)}
+                      className="no-print text-fiori-text-secondary hover:text-fiori-primary"
+                      title="Editar local de trabalho"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                  )}
+                </span>
               </p>
             )}
           </div>
@@ -257,6 +357,24 @@ export function ColaboradorProfilePage() {
       )}
       {editarProximaLob && colaborador && (
         <EditarProximaLobModal colaborador={colaborador} onClose={() => setEditarProximaLob(false)} />
+      )}
+      {editarNivelGestao && colaborador && (
+        <EditarCampoSimplesModal
+          colaborador={colaborador}
+          titulo="Nível de gestão"
+          tabela="niveis-gestao"
+          campo="nivelGestaoId"
+          onClose={() => setEditarNivelGestao(false)}
+        />
+      )}
+      {editarLocalTrabalho && colaborador && (
+        <EditarCampoSimplesModal
+          colaborador={colaborador}
+          titulo="Local de trabalho"
+          tabela="locais-trabalho"
+          campo="localTrabalhoId"
+          onClose={() => setEditarLocalTrabalho(false)}
+        />
       )}
 
       {gap && gap.lobs.length >= 3 && (

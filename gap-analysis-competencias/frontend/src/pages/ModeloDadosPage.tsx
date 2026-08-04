@@ -92,6 +92,32 @@ const TABELAS: TabelaModelo[] = [
   },
   {
     grupo: 'Organização',
+    model: 'NivelGestao',
+    tabela: 'niveis_gestao',
+    campos: [
+      { nome: 'id', tipo: 'Int (PK)' },
+      { nome: 'nome', tipo: 'String', nota: 'único — ex. BUD, BUM, Team Leader' },
+      { nome: 'createdAt / updatedAt', tipo: 'DateTime' },
+    ],
+    relacoes: ['1—N Colaborador.nivelGestaoId'],
+    visibilidade: 'total',
+    visibilidadeTexto: 'Gestão de Dados → "Níveis de Gestão". Editável na ficha do colaborador; dimensão de agrupamento no Dashboard e na Skill Matrix.',
+  },
+  {
+    grupo: 'Organização',
+    model: 'LocalTrabalho',
+    tabela: 'locais_trabalho',
+    campos: [
+      { nome: 'id', tipo: 'Int (PK)' },
+      { nome: 'nome', tipo: 'String', nota: 'único — ex. AMT Centro, HIVE S.Miguel' },
+      { nome: 'createdAt / updatedAt', tipo: 'DateTime' },
+    ],
+    relacoes: ['1—N Colaborador.localTrabalhoId'],
+    visibilidade: 'total',
+    visibilidadeTexto: 'Gestão de Dados → "Locais de Trabalho". Editável na ficha do colaborador.',
+  },
+  {
+    grupo: 'Organização',
     model: 'Carreira',
     tabela: 'carreiras',
     campos: [
@@ -327,6 +353,8 @@ const TABELAS: TabelaModelo[] = [
       { nome: 'direcaoId / nucleoId / areaId', tipo: 'Int?', nota: '→ Direcao / Nucleo / Area, onDelete Restrict' },
       { nome: 'managerId', tipo: 'Int?', nota: '→ Colaborador (auto-relação), onDelete Restrict' },
       { nome: 'proximaLobId', tipo: 'Int?', nota: '→ Lob, onDelete Restrict — "Próxima LOB" visada pelo colaborador' },
+      { nome: 'nivelGestaoId', tipo: 'Int?', nota: '→ NivelGestao, onDelete Restrict' },
+      { nome: 'localTrabalhoId', tipo: 'Int?', nota: '→ LocalTrabalho, onDelete Restrict' },
       { nome: 'eBum', tipo: 'Boolean', nota: 'default false' },
       { nome: 'dataAdmissao', tipo: 'Date?' },
       { nome: 'createdBy / updatedBy', tipo: 'Int?' },
@@ -334,13 +362,13 @@ const TABELAS: TabelaModelo[] = [
       { nome: 'createdAt / updatedAt', tipo: 'DateTime' },
     ],
     relacoes: [
-      'Entidade central — aponta para toda a Organização (Carreira/Categoria/Cargo/Direção/Núcleo/Área) e para a Lob (proximaLobId)',
+      'Entidade central — aponta para toda a Organização (Carreira/Categoria/Cargo/Direção/Núcleo/Área), para a Lob (proximaLobId), NivelGestao e LocalTrabalho',
       '1—1 User (opcional), 1—N subordinados (auto-relação managerId)',
       '1—N ColaboradorCompetencia, ColaboradorCertificacao, ColaboradorLobRecomendacao, PdiItem',
     ],
-    visibilidade: 'parcial',
+    visibilidade: 'total',
     visibilidadeTexto:
-      'Ecrã Colaboradores (lista + ficha): criar, eliminar, upload/download Excel, e agora editar dataAdmissao e proximaLobId diretamente na ficha (ADMIN_RH) — "Anos de experiência" é calculado dinamicamente a partir de dataAdmissao, nunca guardado. Os restantes campos de organização só são editáveis em massa via Excel — não há ainda um formulário de edição individual para cargo/direção/área/núcleo/carreira/categoria/manager. createdBy/updatedBy nunca aparecem na UI.',
+      'Ecrã Colaboradores: criar, editar (todos os campos, com locking otimista por version) e eliminar num modal a partir da lista, upload/download Excel. A ficha do colaborador também permite editar dataAdmissao/proximaLobId/nivelGestaoId/localTrabalhoId diretamente (ADMIN_RH) — "Anos de experiência" é calculado dinamicamente a partir de dataAdmissao, nunca guardado. createdBy/updatedBy nunca aparecem na UI.',
   },
 
   // --- Avaliações ------------------------------------------------------------

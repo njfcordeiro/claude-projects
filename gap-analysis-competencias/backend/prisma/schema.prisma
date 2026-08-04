@@ -40,7 +40,7 @@ enum OrigemAvaliacao {
   SELF
   MANAGER
   FORMAL
-  AVALIACAO_360 @map("360")
+  AVALIACAO_360   @map("360")
   // Valor acrescentado (não estava na v5 do doc) para o import inicial do
   // Excel: a folha Colaboradores&Competências só guarda o nível atual, sem
   // data nem avaliador, por isso não é honesto rotular essas linhas como
@@ -102,7 +102,7 @@ model Direcao {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  colaboradores  Colaborador[]
+  colaboradores   Colaborador[]
   gapAnalysisRuns GapAnalysisRun[]
 
   @@map("direcoes")
@@ -155,6 +155,28 @@ model NucleoArea {
   @@map("nucleo_areas")
 }
 
+model NivelGestao {
+  id        Int      @id
+  nome      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  colaboradores Colaborador[]
+
+  @@map("niveis_gestao")
+}
+
+model LocalTrabalho {
+  id        Int      @id
+  nome      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  colaboradores Colaborador[]
+
+  @@map("locais_trabalho")
+}
+
 model Carreira {
   id        String   @id // código, ex. "ARC"
   nome      String
@@ -195,8 +217,8 @@ model Cargo {
   carreira  Carreira  @relation(fields: [carreiraId], references: [id])
   categoria Categoria @relation(fields: [categoriaId], references: [id])
 
-  colaboradores          Colaborador[]
-  gapAnalysisRuns        GapAnalysisRun[]
+  colaboradores           Colaborador[]
+  gapAnalysisRuns         GapAnalysisRun[]
   gapAnalysisCargoResults GapAnalysisCargoResult[]
 
   progressoesOrigem  CargoProgressao[] @relation("CargoOrigem")
@@ -208,8 +230,8 @@ model Cargo {
 // "Próximo Cargo" no Excel tinha valores tipo "MAN_ASS|ARC_ASS" (mais que
 // um cargo seguinte possível) — bridge em vez de FK simples.
 model CargoProgressao {
-  cargoId         String @map("cargo_id")
-  proximoCargoId  String @map("proximo_cargo_id")
+  cargoId        String @map("cargo_id")
+  proximoCargoId String @map("proximo_cargo_id")
 
   cargo        Cargo @relation("CargoOrigem", fields: [cargoId], references: [id])
   proximoCargo Cargo @relation("CargoDestino", fields: [proximoCargoId], references: [id])
@@ -224,9 +246,9 @@ model Nivel {
   nome      String @unique
   descricao String
 
-  certificacaoRequisitos CertificacaoRequisitoCompetencia[]
-  formacaoRequisitos     FormacaoRequisitoCompetencia[]
-  lobRequisitos          LobRequisitoCompetencia[]
+  certificacaoRequisitos  CertificacaoRequisitoCompetencia[]
+  formacaoRequisitos      FormacaoRequisitoCompetencia[]
+  lobRequisitos           LobRequisitoCompetencia[]
   colaboradorCompetencias ColaboradorCompetencia[]
 
   @@map("niveis")
@@ -245,9 +267,9 @@ model Competencia {
 
   area Area @relation(fields: [areaId], references: [id])
 
-  certificacaoRequisitos CertificacaoRequisitoCompetencia[]
-  formacaoRequisitos     FormacaoRequisitoCompetencia[]
-  lobRequisitos          LobRequisitoCompetencia[]
+  certificacaoRequisitos  CertificacaoRequisitoCompetencia[]
+  formacaoRequisitos      FormacaoRequisitoCompetencia[]
+  lobRequisitos           LobRequisitoCompetencia[]
   colaboradorCompetencias ColaboradorCompetencia[]
   pdiItems                PdiItem[]
 
@@ -261,10 +283,10 @@ model Certificacao {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  requisitosCompetencia CertificacaoRequisitoCompetencia[]
-  lobRequisitos         LobRequisitoCertificacao[]
+  requisitosCompetencia    CertificacaoRequisitoCompetencia[]
+  lobRequisitos            LobRequisitoCertificacao[]
   colaboradorCertificacoes ColaboradorCertificacao[]
-  pdiItems               PdiItem[]
+  pdiItems                 PdiItem[]
 
   @@map("certificacoes")
 }
@@ -272,10 +294,10 @@ model Certificacao {
 // Que competências/níveis uma certificação valida (nem todas as
 // certificações do Excel têm isto preenchido ainda).
 model CertificacaoRequisitoCompetencia {
-  id              Int    @id @default(autoincrement())
-  certificacaoId  String @map("certificacao_id")
-  competenciaId   Int    @map("competencia_id")
-  nivelId         Int    @map("nivel_id")
+  id             Int    @id @default(autoincrement())
+  certificacaoId String @map("certificacao_id")
+  competenciaId  Int    @map("competencia_id")
+  nivelId        Int    @map("nivel_id")
 
   certificacao Certificacao @relation(fields: [certificacaoId], references: [id])
   competencia  Competencia  @relation(fields: [competenciaId], references: [id])
@@ -286,16 +308,16 @@ model CertificacaoRequisitoCompetencia {
 }
 
 model Formacao {
-  id            Int      @id
-  nome          String
-  areaId        Int      @map("area_id")
+  id           Int      @id
+  nome         String
+  areaId       Int      @map("area_id")
   // NOVO (Prompt 3): não existe no Excel de origem — nullable de propósito,
   // para não quebrar as formações já importadas. Usado para desempatar
   // sugestões de formação no motor de gap (ver gap-analysis.logic.ts) —
   // sem isto não há como ordenar por "duração" como pedido.
-  duracaoHoras  Int?     @map("duracao_horas")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  duracaoHoras Int?     @map("duracao_horas")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   area Area @relation(fields: [areaId], references: [id])
 
@@ -333,11 +355,11 @@ model Lob {
 
   area Area @relation(fields: [areaId], references: [id])
 
-  requisitosCompetencia  LobRequisitoCompetencia[]
-  requisitosCertificacao LobRequisitoCertificacao[]
-  recomendacoes          ColaboradorLobRecomendacao[]
-  gapAnalysisLobResults  GapAnalysisLobResult[]
-  colaboradoresComEstaProximaLob Colaborador[] @relation("ProximaLob")
+  requisitosCompetencia          LobRequisitoCompetencia[]
+  requisitosCertificacao         LobRequisitoCertificacao[]
+  recomendacoes                  ColaboradorLobRecomendacao[]
+  gapAnalysisLobResults          GapAnalysisLobResult[]
+  colaboradoresComEstaProximaLob Colaborador[]                @relation("ProximaLob")
 
   @@map("lobs")
 }
@@ -401,53 +423,59 @@ model User {
 }
 
 model Colaborador {
-  id             Int       @id // igual ao "ID Colaborador" do Excel
-  nome           String
-  carreiraId     String?   @map("carreira_id")
-  categoriaId    String?   @map("categoria_id")
-  cargoId        String?   @map("cargo_id")
-  direcaoId      Int?      @map("direcao_id")
-  nucleoId       Int?      @map("nucleo_id")
-  areaId         Int?      @map("area_id")
-  managerId      Int?      @map("manager_id")
+  id              Int       @id // igual ao "ID Colaborador" do Excel
+  nome            String
+  carreiraId      String?   @map("carreira_id")
+  categoriaId     String?   @map("categoria_id")
+  cargoId         String?   @map("cargo_id")
+  direcaoId       Int?      @map("direcao_id")
+  nucleoId        Int?      @map("nucleo_id")
+  areaId          Int?      @map("area_id")
+  managerId       Int?      @map("manager_id")
   // Próxima LOB visada pelo colaborador (pedido do utilizador) — editável
   // manualmente; usada por PdiService.gerar para saber para que LOB
   // sugerir competências/certificações quando preenchida, e na prontidão
   // mostrada em Candidatos a carreira.
-  proximaLobId   Int?      @map("proxima_lob_id")
-  eBum           Boolean   @default(false) @map("e_bum")
-  dataAdmissao   DateTime? @map("data_admissao") @db.Date
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
-  createdBy      Int?      @map("created_by")
-  updatedBy      Int?      @map("updated_by")
+  proximaLobId    Int?      @map("proxima_lob_id")
+  // Nível de gestão do colaborador (ex. BUD/BUM/Team Leader) — pedido do utilizador.
+  nivelGestaoId   Int?      @map("nivel_gestao_id")
+  // Local de trabalho do colaborador — pedido do utilizador.
+  localTrabalhoId Int?      @map("local_trabalho_id")
+  eBum            Boolean   @default(false) @map("e_bum")
+  dataAdmissao    DateTime? @map("data_admissao") @db.Date
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  createdBy       Int?      @map("created_by")
+  updatedBy       Int?      @map("updated_by")
   // Locking otimista (NOVO): incrementado a cada UPDATE. Um pedido de
   // escrita tem de enviar a versão que leu; se já não bater certo com a
   // versão atual, a escrita é rejeitada com 409 em vez de sobrescrever
   // silenciosamente a alteração de outro utilizador — ver
   // ColaboradoresService.atualizarComLock e
   // docs/02-arquitetura-tecnica.md secção 4.5.
-  version        Int       @default(0)
+  version         Int       @default(0)
 
   // onDelete: Restrict em todas — sem isto, o default do Prisma para FK
   // opcional é SET NULL, que deixaria eliminar (ex.) uma Direção com
   // colaboradores atribuídos e simplesmente desligar essa atribuição em
   // silêncio, sem aviso nenhum. Ver pedido do utilizador.
-  carreira  Carreira?  @relation(fields: [carreiraId], references: [id], onDelete: Restrict)
-  categoria Categoria? @relation(fields: [categoriaId], references: [id], onDelete: Restrict)
-  cargo     Cargo?     @relation(fields: [cargoId], references: [id], onDelete: Restrict)
-  direcao   Direcao?   @relation(fields: [direcaoId], references: [id], onDelete: Restrict)
-  nucleo    Nucleo?    @relation(fields: [nucleoId], references: [id], onDelete: Restrict)
-  area      Area?      @relation(fields: [areaId], references: [id], onDelete: Restrict)
-  proximaLob Lob?      @relation("ProximaLob", fields: [proximaLobId], references: [id], onDelete: Restrict)
+  carreira      Carreira?      @relation(fields: [carreiraId], references: [id], onDelete: Restrict)
+  categoria     Categoria?     @relation(fields: [categoriaId], references: [id], onDelete: Restrict)
+  cargo         Cargo?         @relation(fields: [cargoId], references: [id], onDelete: Restrict)
+  direcao       Direcao?       @relation(fields: [direcaoId], references: [id], onDelete: Restrict)
+  nucleo        Nucleo?        @relation(fields: [nucleoId], references: [id], onDelete: Restrict)
+  area          Area?          @relation(fields: [areaId], references: [id], onDelete: Restrict)
+  proximaLob    Lob?           @relation("ProximaLob", fields: [proximaLobId], references: [id], onDelete: Restrict)
+  nivelGestao   NivelGestao?   @relation(fields: [nivelGestaoId], references: [id], onDelete: Restrict)
+  localTrabalho LocalTrabalho? @relation(fields: [localTrabalhoId], references: [id], onDelete: Restrict)
 
   gestor       Colaborador?  @relation("Gestao", fields: [managerId], references: [id], onDelete: Restrict)
   subordinados Colaborador[] @relation("Gestao")
 
   user User?
 
-  competencias    ColaboradorCompetencia[]
-  certificacoes   ColaboradorCertificacao[]
+  competencias     ColaboradorCompetencia[]
+  certificacoes    ColaboradorCertificacao[]
   lobRecomendacoes ColaboradorLobRecomendacao[]
   pdiItems         PdiItem[]
 
@@ -467,14 +495,14 @@ model Colaborador {
 // resolvido pela view colaborador_competencia_atual (ver migration.sql),
 // nunca por mutação desta tabela.
 model ColaboradorCompetencia {
-  id             Int              @id @default(autoincrement())
-  colaboradorId  Int              @map("colaborador_id")
-  competenciaId  Int              @map("competencia_id")
-  nivelId        Int              @map("nivel_id")
-  dataAvaliacao  DateTime         @map("data_avaliacao") @db.Date
-  avaliadoPor    Int?             @map("avaliado_por")
-  origem         OrigemAvaliacao
-  createdAt      DateTime         @default(now()) @map("created_at")
+  id            Int             @id @default(autoincrement())
+  colaboradorId Int             @map("colaborador_id")
+  competenciaId Int             @map("competencia_id")
+  nivelId       Int             @map("nivel_id")
+  dataAvaliacao DateTime        @map("data_avaliacao") @db.Date
+  avaliadoPor   Int?            @map("avaliado_por")
+  origem        OrigemAvaliacao
+  createdAt     DateTime        @default(now()) @map("created_at")
 
   colaborador Colaborador @relation(fields: [colaboradorId], references: [id])
   competencia Competencia @relation(fields: [competenciaId], references: [id])
@@ -558,14 +586,14 @@ model PdiItem {
 // ---------------------------------------------------------------------
 
 model GapAnalysisRun {
-  id                  Int           @id @default(autoincrement())
-  scopeType           AmbitoAnalise @map("scope_type")
-  scopeDirecaoId      Int?          @map("scope_direcao_id")
-  scopeCargoId        String?       @map("scope_cargo_id")
-  scopeColaboradorId  Int?          @map("scope_colaborador_id")
-  runDate             DateTime      @default(now()) @map("run_date")
-  createdBy           Int           @map("created_by")
-  status              EstadoAnalise @default(DRAFT)
+  id                 Int           @id @default(autoincrement())
+  scopeType          AmbitoAnalise @map("scope_type")
+  scopeDirecaoId     Int?          @map("scope_direcao_id")
+  scopeCargoId       String?       @map("scope_cargo_id")
+  scopeColaboradorId Int?          @map("scope_colaborador_id")
+  runDate            DateTime      @default(now()) @map("run_date")
+  createdBy          Int           @map("created_by")
+  status             EstadoAnalise @default(DRAFT)
 
   scopeDirecao     Direcao?     @relation(fields: [scopeDirecaoId], references: [id])
   scopeCargo       Cargo?       @relation(fields: [scopeCargoId], references: [id])
@@ -597,13 +625,13 @@ model GapAnalysisLobResult {
 }
 
 model GapAnalysisCargoResult {
-  id             Int @id @default(autoincrement())
-  runId          Int @map("run_id")
-  colaboradorId  Int @map("colaborador_id")
-  cargoId        String @map("cargo_id")
-  lobsExigidos   Int @map("lobs_exigidos")
-  lobsAtingidos  Int @map("lobs_atingidos")
-  gap            Int // lobs_exigidos - lobs_atingidos
+  id            Int    @id @default(autoincrement())
+  runId         Int    @map("run_id")
+  colaboradorId Int    @map("colaborador_id")
+  cargoId       String @map("cargo_id")
+  lobsExigidos  Int    @map("lobs_exigidos")
+  lobsAtingidos Int    @map("lobs_atingidos")
+  gap           Int // lobs_exigidos - lobs_atingidos
 
   run         GapAnalysisRun @relation(fields: [runId], references: [id])
   colaborador Colaborador    @relation(fields: [colaboradorId], references: [id])

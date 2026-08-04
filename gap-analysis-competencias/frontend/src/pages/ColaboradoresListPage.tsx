@@ -1,10 +1,10 @@
 import { FormEvent, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Download, Plus, Trash2, Upload } from 'lucide-react';
+import { Download, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import { endpoints } from '../api/endpoints';
 import { ApiError } from '../api/client';
-import { ColaboradorResumo, ResumoImportacao } from '../types/api';
+import { ColaboradorResumo, CreateColaboradorInput, ResumoImportacao, UpdateColaboradorInput } from '../types/api';
 import { Card } from '../components/ui/Card';
 import { DataTable, DataTableColumn } from '../components/ui/DataTable';
 import { Modal } from '../components/ui/Modal';
@@ -20,8 +20,8 @@ function ehRelevante(c: ColaboradorResumo): boolean {
 }
 
 function construirColunas(
-  navigate: (path: string) => void,
   eliminar: (id: number) => void,
+  editar: (c: ColaboradorResumo) => void,
 ): DataTableColumn<ColaboradorResumo>[] {
   return [
     { key: 'id', header: 'ID', render: (c) => c.id, sortValue: (c) => c.id },
@@ -51,20 +51,47 @@ function construirColunas(
       searchValue: (c) => c.proximaLobNome ?? '',
     },
     {
+      key: 'nivelGestao',
+      header: 'Nível de Gestão',
+      render: (c) => c.nivelGestaoNome ?? '—',
+      sortValue: (c) => c.nivelGestaoNome ?? '',
+      searchValue: (c) => c.nivelGestaoNome ?? '',
+    },
+    {
+      key: 'localTrabalho',
+      header: 'Local de Trabalho',
+      render: (c) => c.localTrabalhoNome ?? '—',
+      sortValue: (c) => c.localTrabalhoNome ?? '',
+      searchValue: (c) => c.localTrabalhoNome ?? '',
+    },
+    {
       key: '__acoes',
       header: '',
       render: (c: ColaboradorResumo) => (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (window.confirm(`Eliminar ${c.nome}?`)) eliminar(c.id);
-          }}
-          className="no-print text-fiori-text-secondary hover:text-fiori-error"
-          aria-label="Eliminar"
-        >
-          <Trash2 size={15} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              editar(c);
+            }}
+            className="no-print text-fiori-text-secondary hover:text-fiori-primary"
+            aria-label="Editar"
+          >
+            <Pencil size={15} />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (window.confirm(`Eliminar ${c.nome}?`)) eliminar(c.id);
+            }}
+            className="no-print text-fiori-text-secondary hover:text-fiori-error"
+            aria-label="Eliminar"
+          >
+            <Trash2 size={15} />
+          </button>
+        </div>
       ),
     },
   ];
@@ -77,6 +104,7 @@ export function ColaboradoresListPage() {
   const [searchParams] = useSearchParams();
   const { data, isLoading, error } = useQuery({ queryKey: ['colaboradores'], queryFn: endpoints.colaboradores });
   const [modalAberto, setModalAberto] = useState(false);
+  const [colaboradorEmEdicao, setColaboradorEmEdicao] = useState<ColaboradorResumo | null>(null);
   const [relatorioImportacao, setRelatorioImportacao] = useState<ResumoImportacao | null>(null);
   const [filtro, setFiltro] = useState<FiltroRelevancia>('todos');
   const [agrupamento, setAgrupamento] = useState<Agrupamento>('nenhum');
@@ -134,7 +162,7 @@ export function ColaboradoresListPage() {
   if (isLoading) return <p className="text-sm text-fiori-text-secondary">A carregar…</p>;
   if (error) return <p className="text-sm text-fiori-error">Não foi possível carregar os colaboradores.</p>;
 
-  const colunas = construirColunas(navigate, eliminar.mutate);
+  const colunas = construirColunas(eliminar.mutate, setColaboradorEmEdicao);
 
   return (
     <div className="space-y-4">
@@ -237,29 +265,200 @@ export function ColaboradoresListPage() {
       )}
 
       {modalAberto && <CriarColaboradorModal onClose={() => setModalAberto(false)} />}
+      {colaboradorEmEdicao && (
+        <EditarColaboradorModal colaborador={colaboradorEmEdicao} onClose={() => setColaboradorEmEdicao(null)} />
+      )}
       {relatorioImportacao && <UploadReportModal resumo={relatorioImportacao} onClose={() => setRelatorioImportacao(null)} />}
     </div>
   );
 }
 
-function CriarColaboradorModal({ onClose }: { onClose: () => void }) {
-  const queryClient = useQueryClient();
+/** Todos os campos editáveis do colaborador (pedido do utilizador: "todos os campos possíveis"), como strings de formulário — convertidos aos tipos certos só no submit de cada modal. */
+interface ValoresColaborador {
+  nome: string;
+  cargoId: string;
+  direcaoId: string;
+  areaId: string;
+  nucleoId: string;
+  carreiraId: string;
+  categoriaId: string;
+  managerId: string;
+  proximaLobId: string;
+  nivelGestaoId: string;
+  localTrabalhoId: string;
+  dataAdmissao: string;
+}
+
+const VALORES_VAZIOS: ValoresColaborador = {
+  nome: '',
+  cargoId: '',
+  direcaoId: '',
+  areaId: '',
+  nucleoId: '',
+  carreiraId: '',
+  categoriaId: '',
+  managerId: '',
+  proximaLobId: '',
+  nivelGestaoId: '',
+  localTrabalhoId: '',
+  dataAdmissao: '',
+};
+
+/** Conjunto de campos partilhado pelos modais de criar/editar colaborador — evita duplicar 9 <Select>/<Input> em cada um. */
+function ColaboradorCamposEditor({
+  valores,
+  onChange,
+}: {
+  valores: ValoresColaborador;
+  onChange: <K extends keyof ValoresColaborador>(campo: K, valor: string) => void;
+}) {
   const { data: cargos } = useQuery({ queryKey: ['catalogo', 'cargos'], queryFn: () => endpoints.catalogoListar('cargos') });
   const { data: direcoes } = useQuery({ queryKey: ['catalogo', 'direcoes'], queryFn: () => endpoints.catalogoListar('direcoes') });
+  const { data: areas } = useQuery({ queryKey: ['catalogo', 'areas'], queryFn: () => endpoints.catalogoListar('areas') });
+  const { data: nucleos } = useQuery({ queryKey: ['catalogo', 'nucleos'], queryFn: () => endpoints.catalogoListar('nucleos') });
+  const { data: carreiras } = useQuery({ queryKey: ['catalogo', 'carreiras'], queryFn: () => endpoints.catalogoListar('carreiras') });
+  const { data: categorias } = useQuery({ queryKey: ['catalogo', 'categorias'], queryFn: () => endpoints.catalogoListar('categorias') });
+  const { data: lobs } = useQuery({ queryKey: ['lobs'], queryFn: () => endpoints.lobs() });
+  const { data: niveisGestao } = useQuery({ queryKey: ['catalogo', 'niveis-gestao'], queryFn: () => endpoints.catalogoListar('niveis-gestao') });
+  const { data: locaisTrabalho } = useQuery({
+    queryKey: ['catalogo', 'locais-trabalho'],
+    queryFn: () => endpoints.catalogoListar('locais-trabalho'),
+  });
+
+  return (
+    <>
+      <Field label="Nome">
+        <Input value={valores.nome} onChange={(e) => onChange('nome', e.target.value)} required autoFocus />
+      </Field>
+      <Field label="Cargo">
+        <Select value={valores.cargoId} onChange={(e) => onChange('cargoId', e.target.value)}>
+          <option value="">— selecionar —</option>
+          {(cargos ?? []).map((c) => (
+            <option key={String(c.id)} value={String(c.id)}>
+              {String(c.nome)}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field label="Direção">
+        <Select value={valores.direcaoId} onChange={(e) => onChange('direcaoId', e.target.value)}>
+          <option value="">— selecionar —</option>
+          {(direcoes ?? []).map((d) => (
+            <option key={String(d.id)} value={String(d.id)}>
+              {String(d.nome)}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field label="Área">
+        <Select value={valores.areaId} onChange={(e) => onChange('areaId', e.target.value)}>
+          <option value="">— selecionar —</option>
+          {(areas ?? []).map((a) => (
+            <option key={String(a.id)} value={String(a.id)}>
+              {String(a.nome)}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field label="Núcleo">
+        <Select value={valores.nucleoId} onChange={(e) => onChange('nucleoId', e.target.value)}>
+          <option value="">— selecionar —</option>
+          {(nucleos ?? []).map((n) => (
+            <option key={String(n.id)} value={String(n.id)}>
+              {String(n.nome)}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field label="Carreira">
+        <Select value={valores.carreiraId} onChange={(e) => onChange('carreiraId', e.target.value)}>
+          <option value="">— selecionar —</option>
+          {(carreiras ?? []).map((c) => (
+            <option key={String(c.id)} value={String(c.id)}>
+              {String(c.nome)}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field label="Categoria">
+        <Select value={valores.categoriaId} onChange={(e) => onChange('categoriaId', e.target.value)}>
+          <option value="">— selecionar —</option>
+          {(categorias ?? []).map((c) => (
+            <option key={String(c.id)} value={String(c.id)}>
+              {String(c.nome)}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field label="ID do gestor">
+        <Input type="number" value={valores.managerId} onChange={(e) => onChange('managerId', e.target.value)} />
+      </Field>
+      <Field label="Próxima LOB">
+        <Select value={valores.proximaLobId} onChange={(e) => onChange('proximaLobId', e.target.value)}>
+          <option value="">— nenhuma —</option>
+          {(lobs ?? []).map((l) => (
+            <option key={l.id} value={String(l.id)}>
+              {l.nome}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field label="Nível de gestão">
+        <Select value={valores.nivelGestaoId} onChange={(e) => onChange('nivelGestaoId', e.target.value)}>
+          <option value="">— nenhum —</option>
+          {(niveisGestao ?? []).map((n) => (
+            <option key={String(n.id)} value={String(n.id)}>
+              {String(n.nome)}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field label="Local de trabalho">
+        <Select value={valores.localTrabalhoId} onChange={(e) => onChange('localTrabalhoId', e.target.value)}>
+          <option value="">— nenhum —</option>
+          {(locaisTrabalho ?? []).map((l) => (
+            <option key={String(l.id)} value={String(l.id)}>
+              {String(l.nome)}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field label="Data de admissão">
+        <Input type="date" value={valores.dataAdmissao} onChange={(e) => onChange('dataAdmissao', e.target.value)} />
+      </Field>
+    </>
+  );
+}
+
+function CriarColaboradorModal({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient();
   const [id, setId] = useState('');
-  const [nome, setNome] = useState('');
-  const [cargoId, setCargoId] = useState('');
-  const [direcaoId, setDirecaoId] = useState('');
+  const [valores, setValores] = useState<ValoresColaborador>(VALORES_VAZIOS);
   const [erro, setErro] = useState<string | null>(null);
 
+  function onChange<K extends keyof ValoresColaborador>(campo: K, valor: string) {
+    setValores((v) => ({ ...v, [campo]: valor }));
+  }
+
   const criar = useMutation({
-    mutationFn: () =>
-      endpoints.criarColaborador({
+    mutationFn: () => {
+      const dto: CreateColaboradorInput = {
         id: Number(id),
-        nome,
-        cargoId: cargoId || undefined,
-        direcaoId: direcaoId ? Number(direcaoId) : undefined,
-      }),
+        nome: valores.nome,
+        cargoId: valores.cargoId || undefined,
+        direcaoId: valores.direcaoId ? Number(valores.direcaoId) : undefined,
+        areaId: valores.areaId ? Number(valores.areaId) : undefined,
+        nucleoId: valores.nucleoId ? Number(valores.nucleoId) : undefined,
+        carreiraId: valores.carreiraId || undefined,
+        categoriaId: valores.categoriaId || undefined,
+        managerId: valores.managerId ? Number(valores.managerId) : undefined,
+        proximaLobId: valores.proximaLobId ? Number(valores.proximaLobId) : undefined,
+        nivelGestaoId: valores.nivelGestaoId ? Number(valores.nivelGestaoId) : undefined,
+        localTrabalhoId: valores.localTrabalhoId ? Number(valores.localTrabalhoId) : undefined,
+        dataAdmissao: valores.dataAdmissao || undefined,
+      };
+      return endpoints.criarColaborador(dto);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['colaboradores'] });
       onClose();
@@ -277,31 +476,9 @@ function CriarColaboradorModal({ onClose }: { onClose: () => void }) {
     <Modal title="Novo colaborador" onClose={onClose}>
       <form onSubmit={handleSubmit}>
         <Field label="ID">
-          <Input type="number" value={id} onChange={(e) => setId(e.target.value)} required autoFocus />
+          <Input type="number" value={id} onChange={(e) => setId(e.target.value)} required />
         </Field>
-        <Field label="Nome">
-          <Input value={nome} onChange={(e) => setNome(e.target.value)} required />
-        </Field>
-        <Field label="Cargo">
-          <Select value={cargoId} onChange={(e) => setCargoId(e.target.value)}>
-            <option value="">— selecionar —</option>
-            {(cargos ?? []).map((c) => (
-              <option key={String(c.id)} value={String(c.id)}>
-                {String(c.nome)}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Direção">
-          <Select value={direcaoId} onChange={(e) => setDirecaoId(e.target.value)}>
-            <option value="">— selecionar —</option>
-            {(direcoes ?? []).map((d) => (
-              <option key={String(d.id)} value={String(d.id)}>
-                {String(d.nome)}
-              </option>
-            ))}
-          </Select>
-        </Field>
+        <ColaboradorCamposEditor valores={valores} onChange={onChange} />
         {erro && <p className="mb-3 text-sm text-fiori-error">{erro}</p>}
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>
@@ -309,6 +486,90 @@ function CriarColaboradorModal({ onClose }: { onClose: () => void }) {
           </Button>
           <Button type="submit" disabled={criar.isPending}>
             {criar.isPending ? 'A criar…' : 'Criar'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/** Edita um colaborador existente — mesmo padrão de locking otimista por `version` das restantes escritas (ver EditarProximaLobModal na ficha do colaborador). */
+function EditarColaboradorModal({ colaborador, onClose }: { colaborador: ColaboradorResumo; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [valores, setValores] = useState<ValoresColaborador>({
+    nome: colaborador.nome,
+    cargoId: colaborador.cargoId ?? '',
+    direcaoId: colaborador.direcaoId != null ? String(colaborador.direcaoId) : '',
+    areaId: colaborador.areaId != null ? String(colaborador.areaId) : '',
+    nucleoId: colaborador.nucleoId != null ? String(colaborador.nucleoId) : '',
+    carreiraId: colaborador.carreiraId ?? '',
+    categoriaId: colaborador.categoriaId ?? '',
+    managerId: colaborador.managerId != null ? String(colaborador.managerId) : '',
+    proximaLobId: colaborador.proximaLobId != null ? String(colaborador.proximaLobId) : '',
+    nivelGestaoId: colaborador.nivelGestaoId != null ? String(colaborador.nivelGestaoId) : '',
+    localTrabalhoId: colaborador.localTrabalhoId != null ? String(colaborador.localTrabalhoId) : '',
+    dataAdmissao: colaborador.dataAdmissao ?? '',
+  });
+  const [erro, setErro] = useState<string | null>(null);
+
+  function onChange<K extends keyof ValoresColaborador>(campo: K, valor: string) {
+    setValores((v) => ({ ...v, [campo]: valor }));
+  }
+
+  const guardar = useMutation({
+    mutationFn: () => {
+      const dto: UpdateColaboradorInput = {
+        nome: valores.nome,
+        cargoId: valores.cargoId || undefined,
+        direcaoId: valores.direcaoId ? Number(valores.direcaoId) : undefined,
+        areaId: valores.areaId ? Number(valores.areaId) : undefined,
+        nucleoId: valores.nucleoId ? Number(valores.nucleoId) : undefined,
+        carreiraId: valores.carreiraId || undefined,
+        categoriaId: valores.categoriaId || undefined,
+        managerId: valores.managerId ? Number(valores.managerId) : undefined,
+        proximaLobId: valores.proximaLobId ? Number(valores.proximaLobId) : null,
+        nivelGestaoId: valores.nivelGestaoId ? Number(valores.nivelGestaoId) : null,
+        localTrabalhoId: valores.localTrabalhoId ? Number(valores.localTrabalhoId) : null,
+        dataAdmissao: valores.dataAdmissao || undefined,
+        version: colaborador.version,
+      };
+      return endpoints.atualizarColaborador(colaborador.id, dto);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['colaboradores'] });
+      queryClient.invalidateQueries({ queryKey: ['colaborador', colaborador.id] });
+      onClose();
+    },
+    onError: (err) =>
+      setErro(
+        err instanceof ApiError && err.status === 409
+          ? 'Este colaborador foi alterado por outra pessoa entretanto — fecha e reabre para ver os dados atuais.'
+          : err instanceof ApiError
+            ? err.message
+            : 'Não foi possível gravar.',
+      ),
+  });
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setErro(null);
+    guardar.mutate();
+  }
+
+  return (
+    <Modal title={`Editar: ${colaborador.nome}`} onClose={onClose}>
+      <form onSubmit={handleSubmit}>
+        <Field label="ID">
+          <Input value={colaborador.id} disabled />
+        </Field>
+        <ColaboradorCamposEditor valores={valores} onChange={onChange} />
+        {erro && <p className="mb-3 text-sm text-fiori-error">{erro}</p>}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={guardar.isPending}>
+            {guardar.isPending ? 'A gravar…' : 'Gravar'}
           </Button>
         </div>
       </form>

@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { Cargo, PapelUtilizador, Prisma } from '@prisma/client';
+import { Cargo, OrigemAvaliacao, PapelUtilizador, Prisma } from '@prisma/client';
+import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
 import { ColaboradoresService } from '../colaboradores/colaboradores.service';
 import { AuthenticatedUser } from '../auth/jwt-payload.interface';
@@ -172,6 +173,8 @@ export class GapAnalysisService {
         porNucleo: [],
         porCargo: [],
         porCarreira: [],
+        porNivelGestao: [],
+        porLocalTrabalho: [],
         coberturaArquitetos: [],
         colaboradores: [],
         insights: [],
@@ -185,6 +188,8 @@ export class GapAnalysisService {
     const porNucleo = this.agruparPorCampo(resumos, (r) => r.nucleoNome ?? 'Sem núcleo');
     const porCargo = this.agruparPorCampo(resumos, (r) => r.cargoNome);
     const porCarreira = this.agruparPorCampo(resumos, (r) => r.carreiraNome ?? 'Sem carreira');
+    const porNivelGestao = this.agruparPorCampo(resumos, (r) => r.nivelGestaoNome ?? 'Sem nível de gestão');
+    const porLocalTrabalho = this.agruparPorCampo(resumos, (r) => r.localTrabalhoNome ?? 'Sem local de trabalho');
     const carreiraArquiteto = await this.resolverCarreiraArquiteto();
     const coberturaArquitetos = await this.calcularCoberturaArquitetosDeResumos(resumos, carreiraArquiteto?.id ?? null);
     const colaboradoresEmRiscoFuga = await this.calcularRiscoFuga(resumos);
@@ -198,6 +203,8 @@ export class GapAnalysisService {
       porNucleo,
       porCargo,
       porCarreira,
+      porNivelGestao,
+      porLocalTrabalho,
       coberturaArquitetos,
       colaboradores: [...resumos].sort((a, b) => a.prontidaoMedia - b.prontidaoMedia),
       insights: this.gerarInsights(resumos, porDirecao, porArea, competenciasCriticas, colaboradoresEmRiscoFuga),
@@ -225,7 +232,17 @@ export class GapAnalysisService {
       ...(filtros.cargoId ? { cargoId: filtros.cargoId } : {}),
     };
 
-    const colaboradores = await this.prisma.colaborador.findMany({ where, select: { id: true, nome: true }, orderBy: { nome: 'asc' } });
+    const colaboradores = await this.prisma.colaborador.findMany({
+      where,
+      select: {
+        id: true,
+        nome: true,
+        direcao: { select: { nome: true } },
+        area: { select: { nome: true } },
+        nucleo: { select: { nome: true } },
+      },
+      orderBy: { nome: 'asc' },
+    });
     if (colaboradores.length === 0) return { dimensao, colunas: [], linhas: [] };
     const ids = colaboradores.map((c) => c.id);
 
@@ -254,7 +271,14 @@ export class GapAnalysisService {
           const resultado = calcularGapLob(lob, requisitosCompetencia, requisitosCertificacao, niveisAtuais, certsColaborador);
           valores[String(lob.id)] = resultado.prontidaoPercentual;
         }
-        return { colaboradorId: c.id, nome: c.nome, valores };
+        return {
+          colaboradorId: c.id,
+          nome: c.nome,
+          direcaoNome: c.direcao?.nome ?? null,
+          areaNome: c.area?.nome ?? null,
+          nucleoNome: c.nucleo?.nome ?? null,
+          valores,
+        };
       });
 
       return { dimensao, colunas, linhas };
@@ -280,10 +304,141 @@ export class GapAnalysisService {
       for (const comp of competencias) {
         valores[String(comp.id)] = niveisAtuais.get(comp.id) ?? 0;
       }
-      return { colaboradorId: c.id, nome: c.nome, valores };
+      return {
+        colaboradorId: c.id,
+        nome: c.nome,
+        direcaoNome: c.direcao?.nome ?? null,
+        areaNome: c.area?.nome ?? null,
+        nucleoNome: c.nucleo?.nome ?? null,
+        valores,
+      };
     });
 
     return { dimensao, colunas, linhas };
+  }
+
+  /**
+   * Ficheiro de download/upload de níveis de competência (pedido do
+   * utilizador, ecrã Skill Matrix) — formato "longo" (uma linha por
+   * colaborador×competência), com o id e o nome/texto associado lado a
+   * lado em cada coluna-chave, mais uma sheet de referência com as opções
+   * válidas de Nível. Reaproveita `obterSkillMatrix('competencia', ...)`
+   * para respeitar exatamente os mesmos filtros de linhas usados no ecrã;
+   * `competenciaIds`, se indicado, restringe às colunas (competências)
+   * atualmente visíveis no ecrã (filtro de colunas).
+   */
+  async exportarNiveisCompetencia(
+    filtros: FiltrosOrganizacionais,
+    competenciaIds: number[] | undefined,
+    user: AuthenticatedUser,
+  ): Promise<Buffer> {
+    const matriz = await this.obterSkillMatrix('competencia', filtros, user);
+    const colunas =
+      competenciaIds && competenciaIds.length > 0 ? matriz.colunas.filter((c) => competenciaIds.includes(c.id)) : matriz.colunas;
+    const niveis = await this.prisma.nivel.findMany({ orderBy: { id: 'asc' } });
+    const nomeNivel = new Map(niveis.map((n) => [n.id, n.nome]));
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('niveis-competencia');
+    sheet.addRow(['colaboradorId', 'Colaborador', 'competenciaId', 'Competência', 'nivelId', 'Nível — nome atual']);
+    for (const linha of matriz.linhas) {
+      for (const col of colunas) {
+        const nivelId = linha.valores[String(col.id)] ?? 0;
+        sheet.addRow([linha.colaboradorId, linha.nome, col.id, col.nome, nivelId, nomeNivel.get(nivelId) ?? String(nivelId)]);
+      }
+    }
+
+    const opcoes = workbook.addWorksheet('Opções — Nível');
+    opcoes.addRow(['id', 'nome']);
+    for (const n of niveis) opcoes.addRow([n.id, n.nome]);
+
+    return Buffer.from(await workbook.xlsx.writeBuffer());
+  }
+
+  /**
+   * Round-trip do ficheiro acima: para cada linha (colaboradorId,
+   * competenciaId, nivelId), só grava uma nova avaliação (append-only,
+   * origem FORMAL — mesmo padrão de `AtribuicoesService.atribuirCompetencia`)
+   * se o nível pedido for diferente do nível atual, para não poluir o
+   * histórico com reavaliações idênticas quando o utilizador reenvia o
+   * mesmo ficheiro sem alterações. As colunas "— nome atual"/"Competência"
+   * são só contexto e são ignoradas aqui (só lemos por cabeçalho exato).
+   */
+  async importarNiveisCompetencia(
+    buffer: Buffer,
+    user: AuthenticatedUser,
+  ): Promise<{ processadas: number; criadas: number; semAlteracao: number; erros: string[] }> {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+    const sheet = workbook.worksheets[0];
+    if (!sheet) throw new BadRequestException('Ficheiro sem folhas.');
+
+    const cabecalho = (sheet.getRow(1).values as unknown[]).map((v) => (v == null ? null : String(v).trim()));
+    const idxColaborador = cabecalho.findIndex((h) => h === 'colaboradorId');
+    const idxCompetencia = cabecalho.findIndex((h) => h === 'competenciaId');
+    const idxNivel = cabecalho.findIndex((h) => h === 'nivelId');
+    if (idxColaborador === -1 || idxCompetencia === -1 || idxNivel === -1) {
+      throw new BadRequestException('Ficheiro sem as colunas obrigatórias: colaboradorId, competenciaId, nivelId.');
+    }
+
+    const ler = (linha: ExcelJS.Row, idx: number): unknown => {
+      const v = linha.getCell(idx).value;
+      return v && typeof v === 'object' && 'result' in v ? (v as { result: unknown }).result : v;
+    };
+
+    const linhasBrutas: { r: number; colaboradorId: number; competenciaId: number; nivelId: number }[] = [];
+    for (let r = 2; r <= sheet.rowCount; r++) {
+      const linha = sheet.getRow(r);
+      if (linha.values == null || (Array.isArray(linha.values) && linha.values.length === 0)) continue;
+      const colaboradorId = ler(linha, idxColaborador);
+      const competenciaId = ler(linha, idxCompetencia);
+      const nivelId = ler(linha, idxNivel);
+      if (colaboradorId == null || competenciaId == null || nivelId == null) continue;
+      linhasBrutas.push({ r, colaboradorId: Number(colaboradorId), competenciaId: Number(competenciaId), nivelId: Number(nivelId) });
+    }
+
+    const resumo = { processadas: linhasBrutas.length, criadas: 0, semAlteracao: 0, erros: [] as string[] };
+    if (linhasBrutas.length === 0) return resumo;
+
+    const idsColaboradores = [...new Set(linhasBrutas.map((l) => l.colaboradorId))];
+    const niveisAtuais = await this.buscarNiveisAtuaisEmLote(idsColaboradores);
+
+    for (const linha of linhasBrutas) {
+      try {
+        if (!Number.isInteger(linha.nivelId) || linha.nivelId < 0 || linha.nivelId > 5) {
+          throw new Error(`nível inválido: "${linha.nivelId}" (tem de ser um inteiro 0-5).`);
+        }
+        const atual = niveisAtuais.get(linha.colaboradorId)?.get(linha.competenciaId) ?? 0;
+        if (atual === linha.nivelId) {
+          resumo.semAlteracao++;
+          continue;
+        }
+
+        await this.prisma.runAsUser(user.sub, (tx) =>
+          tx.colaboradorCompetencia.create({
+            data: {
+              colaboradorId: linha.colaboradorId,
+              competenciaId: linha.competenciaId,
+              nivelId: linha.nivelId,
+              dataAvaliacao: new Date(),
+              avaliadoPor: user.sub,
+              origem: OrigemAvaliacao.FORMAL,
+            },
+          }),
+        );
+        resumo.criadas++;
+      } catch (err) {
+        const mensagem =
+          err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003'
+            ? 'colaborador ou competência inválidos.'
+            : err instanceof Error
+              ? err.message
+              : 'erro desconhecido.';
+        resumo.erros.push(`Linha ${linha.r}: ${mensagem}`);
+      }
+    }
+
+    return resumo;
   }
 
   /**
@@ -451,6 +606,8 @@ export class GapAnalysisService {
         area: { select: { nome: true } },
         nucleo: { select: { nome: true } },
         carreira: { select: { nome: true } },
+        nivelGestao: { select: { nome: true } },
+        localTrabalho: { select: { nome: true } },
       },
     });
 
@@ -522,6 +679,8 @@ export class GapAnalysisService {
         cargoNome: cargo?.nome ?? c.cargoId!,
         carreiraId: c.carreiraId,
         carreiraNome: c.carreira?.nome ?? null,
+        nivelGestaoNome: c.nivelGestao?.nome ?? null,
+        localTrabalhoNome: c.localTrabalho?.nome ?? null,
         lobsExigidos,
         lobsAtingidos,
         gap: Math.max(0, lobsExigidos - lobsAtingidos),

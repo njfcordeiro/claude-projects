@@ -4,6 +4,7 @@ import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from '../auth/jwt-payload.interface';
 import { AutoCriacaoService } from '../catalogo/auto-criacao.service';
+import { adicionarFolhasDeOpcoes } from '../catalogo/excel-referencias.util';
 import { CreateColaboradorDto } from './dto/create-colaborador.dto';
 import { UpdateColaboradorDto } from './dto/update-colaborador.dto';
 import { CreateAvaliacaoDto } from './dto/create-avaliacao.dto';
@@ -20,6 +21,8 @@ const SELECT_RESUMO = {
   categoriaId: true,
   managerId: true,
   proximaLobId: true,
+  nivelGestaoId: true,
+  localTrabalhoId: true,
   dataAdmissao: true,
   version: true,
   cargo: { select: { nome: true } },
@@ -28,6 +31,8 @@ const SELECT_RESUMO = {
   nucleo: { select: { nome: true, relevante: true } },
   gestor: { select: { nome: true } },
   proximaLob: { select: { nome: true } },
+  nivelGestao: { select: { nome: true } },
+  localTrabalho: { select: { nome: true } },
 } satisfies Prisma.ColaboradorSelect;
 
 type ColaboradorComRelacoes = Prisma.ColaboradorGetPayload<{ select: typeof SELECT_RESUMO }>;
@@ -54,6 +59,10 @@ function mapearResumo(c: ColaboradorComRelacoes) {
     managerNome: c.gestor?.nome ?? null,
     proximaLobId: c.proximaLobId,
     proximaLobNome: c.proximaLob?.nome ?? null,
+    nivelGestaoId: c.nivelGestaoId,
+    nivelGestaoNome: c.nivelGestao?.nome ?? null,
+    localTrabalhoId: c.localTrabalhoId,
+    localTrabalhoNome: c.localTrabalho?.nome ?? null,
     dataAdmissao: c.dataAdmissao ? c.dataAdmissao.toISOString().slice(0, 10) : null,
     version: c.version,
   };
@@ -70,6 +79,8 @@ const COLUNAS_IMPORT_EXPORT = [
   'carreiraId',
   'categoriaId',
   'managerId',
+  'nivelGestaoId',
+  'localTrabalhoId',
   'eBum',
   'dataAdmissao',
 ] as const;
@@ -104,8 +115,14 @@ export class ColaboradoresService {
 
   /** Cria um colaborador novo — `id` é fornecido pelo cliente (replica o "ID Colaborador" do Excel, não é autoincrement). */
   async criar(dto: CreateColaboradorDto, autor: AuthenticatedUser) {
+    const { dataAdmissao, ...resto } = dto;
     try {
-      const criado = await this.prisma.runAsUser(autor.sub, (tx) => tx.colaborador.create({ data: dto, select: SELECT_RESUMO }));
+      const criado = await this.prisma.runAsUser(autor.sub, (tx) =>
+        tx.colaborador.create({
+          data: { ...resto, ...(dataAdmissao ? { dataAdmissao: new Date(dataAdmissao) } : {}) },
+          select: SELECT_RESUMO,
+        }),
+      );
       return mapearResumo(criado);
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
@@ -138,18 +155,36 @@ export class ColaboradoresService {
   }
 
   /** Exporta todos os colaboradores para .xlsx — ver round-trip de import abaixo. */
+  /**
+   * Ver comentário equivalente em `CatalogoService.exportar`: as colunas de
+   * `COLUNAS_IMPORT_EXPORT` ficam inalteradas para o round-trip (download
+   * = ficheiro de upload); as colunas "— nome atual" são só contexto e são
+   * ignoradas por `importar` (não batem com nenhuma chave conhecida). As
+   * sheets de referência trazem as opções válidas de cada relação.
+   */
   async exportar(): Promise<Buffer> {
     const linhas = await this.prisma.colaborador.findMany({
       select: {
         id: true,
         nome: true,
         cargoId: true,
+        cargo: { select: { nome: true } },
         direcaoId: true,
+        direcao: { select: { nome: true } },
         nucleoId: true,
+        nucleo: { select: { nome: true } },
         areaId: true,
+        area: { select: { nome: true } },
         carreiraId: true,
+        carreira: { select: { nome: true } },
         categoriaId: true,
+        categoria: { select: { nome: true } },
         managerId: true,
+        gestor: { select: { nome: true } },
+        nivelGestaoId: true,
+        nivelGestao: { select: { nome: true } },
+        localTrabalhoId: true,
+        localTrabalho: { select: { nome: true } },
         eBum: true,
         dataAdmissao: true,
       },
@@ -158,22 +193,68 @@ export class ColaboradoresService {
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('colaboradores');
-    sheet.addRow(COLUNAS_IMPORT_EXPORT);
+    sheet.addRow([
+      'id',
+      'nome',
+      'cargoId',
+      'Cargo — nome atual',
+      'direcaoId',
+      'Direção — nome atual',
+      'nucleoId',
+      'Núcleo — nome atual',
+      'areaId',
+      'Área — nome atual',
+      'carreiraId',
+      'Carreira — nome atual',
+      'categoriaId',
+      'Categoria — nome atual',
+      'managerId',
+      'Gestor — nome atual',
+      'nivelGestaoId',
+      'Nível de Gestão — nome atual',
+      'localTrabalhoId',
+      'Local de Trabalho — nome atual',
+      'eBum',
+      'dataAdmissao',
+    ]);
     for (const l of linhas) {
       sheet.addRow([
         l.id,
         l.nome,
         l.cargoId,
+        l.cargo?.nome ?? null,
         l.direcaoId,
+        l.direcao?.nome ?? null,
         l.nucleoId,
+        l.nucleo?.nome ?? null,
         l.areaId,
+        l.area?.nome ?? null,
         l.carreiraId,
+        l.carreira?.nome ?? null,
         l.categoriaId,
+        l.categoria?.nome ?? null,
         l.managerId,
+        l.gestor?.nome ?? null,
+        l.nivelGestaoId,
+        l.nivelGestao?.nome ?? null,
+        l.localTrabalhoId,
+        l.localTrabalho?.nome ?? null,
         l.eBum,
         l.dataAdmissao ? l.dataAdmissao.toISOString().slice(0, 10) : null,
       ]);
     }
+
+    await adicionarFolhasDeOpcoes(workbook, this.prisma, [
+      'cargos',
+      'direcoes',
+      'nucleos',
+      'areas',
+      'carreiras',
+      'categorias',
+      'niveis-gestao',
+      'locais-trabalho',
+    ]);
+
     return Buffer.from(await workbook.xlsx.writeBuffer());
   }
 
@@ -254,6 +335,8 @@ export class ColaboradoresService {
       ['nucleoId', 'nucleos'],
       ['carreiraId', 'carreiras'],
       ['categoriaId', 'categorias'],
+      ['nivelGestaoId', 'niveis-gestao'],
+      ['localTrabalhoId', 'locais-trabalho'],
     ];
     for (const [campo, tabela] of relacoesAutoCriaveis) {
       const valor = bruto[campo];

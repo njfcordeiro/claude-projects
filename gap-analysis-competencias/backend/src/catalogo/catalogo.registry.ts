@@ -97,6 +97,20 @@ export const CATALOGO_REGISTRY: CatalogoTabelaDef[] = [
     ],
   },
   {
+    tabela: 'niveis-gestao',
+    label: 'Níveis de Gestão',
+    delegate: 'nivelGestao',
+    identityFields: ['id'],
+    campos: [campo('id', 'ID', 'int'), campo('nome', 'Nome', 'string')],
+  },
+  {
+    tabela: 'locais-trabalho',
+    label: 'Locais de Trabalho',
+    delegate: 'localTrabalho',
+    identityFields: ['id'],
+    campos: [campo('id', 'ID', 'int'), campo('nome', 'Nome', 'string')],
+  },
+  {
     tabela: 'carreiras',
     label: 'Carreiras',
     delegate: 'carreira',
