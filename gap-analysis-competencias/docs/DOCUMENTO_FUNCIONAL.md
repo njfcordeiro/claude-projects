@@ -32,9 +32,11 @@ colaborador. Todos os outros casos são só leitura.
    Direção/Área/Núcleo; criar/editar/eliminar.
 3. **Ficha do colaborador** — dados pessoais e organizacionais (incl. data de admissão, anos de
    antiguidade calculados dinamicamente), avaliações de competências, certificações, gráfico
-   radar da skill matrix, "Próxima LOB" (escolha manual), **Objetivos de LOB** (sugestões
-   automáticas + recomendações do BUD), Plano de Desenvolvimento Individual, botão
-   imprimir/exportar PDF.
+   radar da skill matrix, "Próxima LOB" (escolha manual), quadro de LOBs (por omissão só da área
+   do colaborador, com opção de ver todas) lado a lado com o Detalhe da LOB selecionada —
+   competências/certificações em falta com sugestões de Formação, Certificação e **Projetos** (ver
+   §4.3-A), **Objetivos de LOB** (sugestões automáticas + recomendações do BUD), Plano de
+   Desenvolvimento Individual, botão imprimir/exportar PDF.
 4. **LOBs** — catálogo de linhas de negócio, requisitos de competências/certificações por LOB.
 5. **Formações** — catálogo de formações disponíveis para colmatar lacunas.
 6. **Candidatos a carreira** — para uma carreira escolhida (ex. Arquiteto), lista ordenada de
@@ -73,8 +75,20 @@ certificação obrigatória (em falta ou expirada bloqueia sempre, independentem
 "Gerar sugestões" cria um item por competência/certificação em falta em cada LOB-objetivo ativa
 (sem duplicar itens já existentes). No ecrã, os itens aparecem separados em 3 grupos, por esta
 ordem: **Recomendadas pelo BUD**, **Sugeridas pelo sistema**, e **Outras competências** (itens
-adicionados manualmente, ou cuja LOB de origem deixou de ser um objetivo atual). Itens podem ser
+adicionados manualmente, ou cuja LOB de origem deixou de ser um objetivo atual); dentro dos dois
+primeiros grupos, os itens aparecem ainda sub-agrupados pela LOB de origem. Itens podem ser
 adicionados/eliminados manualmente e o estado acompanhado (Pendente/Em curso/Concluído).
+
+### 4.3-A Projetos — via alternativa para subir de nível
+Além de Formações e Certificações, o sistema sugere participação em **Projetos** para colmatar uma
+lacuna de competência. Um Projeto tem uma ou mais **Vertentes**, cada uma ligada a uma competência
+específica. Ao registar a participação de um colaborador num projeto, escolhe-se em quais
+vertentes ele participou (no mínimo uma — é assim que se indica quais competências vão ser
+desenvolvidas); cada vertente escolhida sobe sempre **+1 nível** na sua competência, capado ao
+nível máximo da escala — ao contrário de Formação/Certificação, que levam a um nível fixo. Um
+colaborador só participa num dado projeto **uma única vez**; depois de registada a participação,
+esse projeto deixa de aparecer como sugestão. As sugestões de projeto aparecem junto de cada
+competência em falta no Detalhe da LOB, ao lado das de Formação e Certificação.
 
 ### 4.4 Candidatos a carreira
 Para a carreira-alvo, calcula-se o cargo de entrada (menor `lobsExigidos`) e ordena-se os

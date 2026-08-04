@@ -75,9 +75,24 @@ export interface CertificacaoCandidata {
   jaPossui: boolean;
 }
 
+/**
+ * Vertente de Projeto candidata para subir de nível numa competência —
+ * diferente de Formação/Certificação (que levam a um nível X fixo), uma
+ * vertente concluída dá sempre +1 nível (capado ao nível máximo da
+ * escala). Só aparecem vertentes de projetos em que o colaborador ainda
+ * não participou (cada projeto só conta uma vez).
+ */
+export interface ProjetoVertenteCandidata {
+  projetoId: number;
+  projetoNome: string;
+  vertenteId: number;
+  vertenteNome: string;
+}
+
 export interface SugestoesCompetencia {
   formacoes: FormacaoCandidata[];
   certificacoes: CertificacaoCandidata[];
+  projetos: ProjetoVertenteCandidata[];
 }
 
 export interface RelatorioGapCompetencia extends GapCompetencia {

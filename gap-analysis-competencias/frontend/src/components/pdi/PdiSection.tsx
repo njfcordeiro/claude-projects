@@ -202,27 +202,52 @@ export function PdiSection({ colaboradorId }: { colaboradorId: number }) {
           const grupoSistema = itens.filter((i) => i.lobId !== null && !budLobIds.has(i.lobId) && autoLobIds.has(i.lobId));
           const grupoOutras = itens.filter((i) => i.lobId === null || (!budLobIds.has(i.lobId) && !autoLobIds.has(i.lobId)));
 
-          const grupos: { titulo: string; itens: PdiItem[] }[] = [
-            { titulo: 'Recomendadas pelo BUD', itens: grupoBud },
-            { titulo: 'Sugeridas pelo sistema', itens: grupoSistema },
-            { titulo: 'Outras competências', itens: grupoOutras },
-          ].filter((g) => g.itens.length > 0);
+          // Pedido do utilizador: dentro de BUD/Sistema, sub-agrupar por LOB
+          // objetivo — "Outras" não tem LOB objetivo por definição, fica plana.
+          function porLob(lista: PdiItem[]) {
+            const mapa = new Map<string, PdiItem[]>();
+            for (const item of lista) {
+              const nome = item.lob?.nome ?? 'Sem LOB';
+              if (!mapa.has(nome)) mapa.set(nome, []);
+              mapa.get(nome)!.push(item);
+            }
+            return Array.from(mapa.entries())
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([lobNome, subItens]) => ({ lobNome, itens: subItens }));
+          }
+
+          const grupos: { titulo: string; subgrupos: { lobNome: string | null; itens: PdiItem[] }[] }[] = [
+            { titulo: 'Recomendadas pelo BUD', subgrupos: porLob(grupoBud) },
+            { titulo: 'Sugeridas pelo sistema', subgrupos: porLob(grupoSistema) },
+            { titulo: 'Outras competências', subgrupos: grupoOutras.length > 0 ? [{ lobNome: null, itens: grupoOutras }] : [] },
+          ].filter((g) => g.subgrupos.length > 0);
 
           return (
             <div className="space-y-5">
               {grupos.map((grupo) => (
                 <div key={grupo.titulo}>
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-fiori-text-secondary">{grupo.titulo}</p>
-                  <div className="space-y-2">
-                    {grupo.itens.map((item) => (
-                      <ItemPdi
-                        key={item.id}
-                        item={item}
-                        onAtualizar={(estado) => atualizar.mutate({ itemId: item.id, estado })}
-                        onEliminar={() => {
-                          if (window.confirm('Remover este item do PDI?')) eliminar.mutate(item.id);
-                        }}
-                      />
+                  <div className="space-y-3">
+                    {grupo.subgrupos.map((sub) => (
+                      <div key={sub.lobNome ?? '_'}>
+                        {sub.lobNome !== null && (
+                          <p className="mb-1.5 border-l-2 border-fiori-primary pl-2 text-xs font-semibold text-fiori-primary">
+                            LOB: {sub.lobNome}
+                          </p>
+                        )}
+                        <div className="space-y-2">
+                          {sub.itens.map((item) => (
+                            <ItemPdi
+                              key={item.id}
+                              item={item}
+                              onAtualizar={(estado) => atualizar.mutate({ itemId: item.id, estado })}
+                              onEliminar={() => {
+                                if (window.confirm('Remover este item do PDI?')) eliminar.mutate(item.id);
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </div>

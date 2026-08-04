@@ -11,6 +11,7 @@ import { UsersModule } from './users/users.module';
 import { CatalogoModule } from './catalogo/catalogo.module';
 import { AtribuicoesModule } from './atribuicoes/atribuicoes.module';
 import { PdiModule } from './pdi/pdi.module';
+import { ProjetosModule } from './projetos/projetos.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { PdiModule } from './pdi/pdi.module';
     CatalogoModule,
     AtribuicoesModule,
     PdiModule,
+    ProjetosModule,
     HealthModule,
   ],
 })

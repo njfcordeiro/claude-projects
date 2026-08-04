@@ -9,6 +9,7 @@ import {
   GraduationCap,
   Layers,
   Lock,
+  Puzzle,
   Sparkles,
   Star,
   Target,
@@ -261,11 +262,25 @@ const REGRAS = [
     formula: 'auto = até 3 LOBs da Área, não atingidas, ordenadas por prontidão desc · bud = recomendações do gestor/ADMIN_RH (sem restrição de Área)',
   },
   {
+    icone: Layers,
+    titulo: 'Quadro de LOBs — filtro por Área',
+    texto:
+      'Na ficha do colaborador, o quadro de LOBs mostra, por omissão, só as LOBs da Área do colaborador — um seletor "Área do colaborador" / "Todas as LOBs" alterna para ver o catálogo completo. Sem Área definida, mostra sempre todas. O quadro fica lado a lado com o Detalhe da LOB selecionada, num ecrã largo o suficiente.',
+    formula: 'lobsExibidas = todasAsLobs SE mostrarTodas OU colaborador sem área, senão lobs.filter(lob.areaId === colaborador.areaId)',
+  },
+  {
     icone: Sparkles,
     titulo: 'PDI — sugestões automáticas',
     texto:
-      '"Gerar sugestões" já não visa uma única LOB: percorre TODOS os objetivos de LOB ativos do colaborador (sistema + BUD, ver "Objetivos de LOB" acima) e sugere o que estiver em falta em cada uma, sem duplicar entre elas. No PDI, os itens aparecem separados em 3 grupos, por esta ordem: "Recomendadas pelo BUD", "Sugeridas pelo sistema" e "Outras competências" (itens manuais, ou cuja LOB de origem já não é um objetivo atual). Se uma LOB for, ao mesmo tempo, sugestão do sistema e recomendação do BUD, os seus itens contam para o grupo BUD. Qualquer item — gerado ou adicionado manualmente — pode ser eliminado, e "Gerar sugestões" pode ser chamado de novo a qualquer momento (não duplica o que já existe).',
-    formula: 'itens sugeridos = ⋃ᴸᴼᴮ∈objetivos { competências/certificações em falta nessa LOB }, sem duplicados · grupo do item = BUD, senão Sistema, senão Outras',
+      '"Gerar sugestões" já não visa uma única LOB: percorre TODOS os objetivos de LOB ativos do colaborador (sistema + BUD, ver "Objetivos de LOB" acima) e sugere o que estiver em falta em cada uma, sem duplicar entre elas. No PDI, os itens aparecem separados em 3 grupos, por esta ordem: "Recomendadas pelo BUD", "Sugeridas pelo sistema" e "Outras competências" (itens manuais, ou cuja LOB de origem já não é um objetivo atual); dentro de "Recomendadas pelo BUD" e "Sugeridas pelo sistema", os itens aparecem ainda sub-agrupados pela LOB de origem. Se uma LOB for, ao mesmo tempo, sugestão do sistema e recomendação do BUD, os seus itens contam para o grupo BUD. Qualquer item — gerado ou adicionado manualmente — pode ser eliminado, e "Gerar sugestões" pode ser chamado de novo a qualquer momento (não duplica o que já existe).',
+    formula: 'itens sugeridos = ⋃ᴸᴼᴮ∈objetivos { competências/certificações em falta nessa LOB }, sem duplicados · grupo do item = BUD, senão Sistema, senão Outras · sub-agrupado por LOB dentro de BUD/Sistema',
+  },
+  {
+    icone: Puzzle,
+    titulo: 'Projetos — subir de nível por participação',
+    texto:
+      'Via alternativa a Formação/Certificação para o colaborador subir de nível numa competência. Um Projeto (catálogo, gerido em Gestão de Dados) tem uma ou mais Vertentes, cada uma ligada a UMA competência. Ao registar a participação de um colaborador num projeto, escolhe-se em quais vertentes participou (no mínimo uma, pode ser mais do que uma) — é assim que se indica quais competências vão ser desenvolvidas por essa participação. Cada vertente escolhida sobe sempre +1 nível na sua competência (nunca leva a um nível fixo, ao contrário de Formação/Certificação), capado ao nível máximo da escala (0-5). Um colaborador só participa num dado projeto uma única vez — depois de registada a participação, esse projeto deixa de ser sugerido. As vertentes disponíveis aparecem como sugestão junto de cada competência em falta na Ficha do Colaborador (Detalhe da LOB), ao lado de Formações e Certificações.',
+    formula: 'nível novo = mín(nível atual + 1, nível máximo da escala) por cada vertente escolhida · 1 participação por colaborador+projeto',
   },
   {
     icone: AlertTriangle,

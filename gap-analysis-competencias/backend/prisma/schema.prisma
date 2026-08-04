@@ -47,6 +47,11 @@ enum OrigemAvaliacao {
   // SELF/MANAGER/FORMAL — ver docs/01-modelo-dados.md secção 5.1 e o
   // comentário em scripts/import-excel.ts.
   IMPORTADO_EXCEL @map("importado_excel")
+  // Subida automática de nível por participação num Projeto (ver
+  // ColaboradorProjeto) — pedido do utilizador: cada projeto concluído dá
+  // +1 nível (capado ao nível máximo da escala) em cada competência das
+  // vertentes em que o colaborador participou.
+  PROJETO
 
   @@map("origem_avaliacao")
 }
@@ -118,6 +123,7 @@ model Area {
   competencias  Competencia[]
   lobs          Lob[]
   formacoes     Formacao[]
+  projetos      Projeto[]
   colaboradores Colaborador[]
   nucleos       NucleoArea[]
 
@@ -270,6 +276,7 @@ model Competencia {
   certificacaoRequisitos  CertificacaoRequisitoCompetencia[]
   formacaoRequisitos      FormacaoRequisitoCompetencia[]
   lobRequisitos           LobRequisitoCompetencia[]
+  projetoVertentes        ProjetoVertente[]
   colaboradorCompetencias ColaboradorCompetencia[]
   pdiItems                PdiItem[]
 
@@ -339,6 +346,80 @@ model FormacaoRequisitoCompetencia {
 
   @@unique([formacaoId, competenciaId])
   @@map("formacao_requisito_competencia")
+}
+
+// ---------------------------------------------------------------------
+// Projetos — pedido do utilizador: via alternativa a Formação/Certificação
+// para o colaborador subir de nível numa competência. Um Projeto tem uma
+// ou mais Vertentes, cada uma ligada a UMA competência (é assim que se
+// "indica quais competências serão desenvolvidas" ao registar a
+// participação — ver ColaboradorProjeto/ColaboradorProjetoVertente). Ao
+// contrário de Formação/Certificação (que levam a um nível X fixo), cada
+// vertente concluída dá sempre +1 nível, capado ao nível máximo da escala.
+// ---------------------------------------------------------------------
+
+model Projeto {
+  id        Int      @id
+  nome      String
+  areaId    Int?     @map("area_id")
+  descricao String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  area Area? @relation(fields: [areaId], references: [id])
+
+  vertentes     ProjetoVertente[]
+  participacoes ColaboradorProjeto[]
+
+  @@map("projetos")
+}
+
+model ProjetoVertente {
+  id            Int    @id @default(autoincrement())
+  projetoId     Int    @map("projeto_id")
+  competenciaId Int    @map("competencia_id")
+  nome          String
+
+  projeto     Projeto     @relation(fields: [projetoId], references: [id])
+  competencia Competencia @relation(fields: [competenciaId], references: [id])
+
+  participacoes ColaboradorProjetoVertente[]
+
+  @@unique([projetoId, competenciaId])
+  @@map("projeto_vertentes")
+}
+
+// Participação de um colaborador num Projeto — pedido do utilizador: cada
+// colaborador só participa num dado Projeto uma única vez (@@unique abaixo),
+// mas escolhe, nessa única participação, em quais Vertentes participou
+// (mínimo 1, ver ColaboradorProjetoVertente) — não é obrigatório ter feito
+// todas as vertentes do projeto.
+model ColaboradorProjeto {
+  id               Int      @id @default(autoincrement())
+  colaboradorId    Int      @map("colaborador_id")
+  projetoId        Int      @map("projeto_id")
+  dataParticipacao DateTime @default(now()) @map("data_participacao") @db.Date
+  createdAt        DateTime @default(now()) @map("created_at")
+  createdBy        Int?     @map("created_by")
+
+  colaborador Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
+  projeto     Projeto     @relation(fields: [projetoId], references: [id])
+
+  vertentes ColaboradorProjetoVertente[]
+
+  @@unique([colaboradorId, projetoId])
+  @@map("colaborador_projeto")
+}
+
+model ColaboradorProjetoVertente {
+  colaboradorProjetoId Int @map("colaborador_projeto_id")
+  vertenteId           Int @map("vertente_id")
+
+  colaboradorProjeto ColaboradorProjeto @relation(fields: [colaboradorProjetoId], references: [id], onDelete: Cascade)
+  vertente           ProjetoVertente    @relation(fields: [vertenteId], references: [id])
+
+  @@id([colaboradorProjetoId, vertenteId])
+  @@map("colaborador_projeto_vertente")
 }
 
 // ---------------------------------------------------------------------
@@ -490,10 +571,11 @@ model Colaborador {
   // avaliações, certificações, recomendações, PDI, snapshots) — não fazem
   // sentido órfãos, por isso desaparecem com ele em vez de bloquear a
   // eliminação.
-  competencias     ColaboradorCompetencia[]
-  certificacoes    ColaboradorCertificacao[]
-  lobRecomendacoes ColaboradorLobRecomendacao[]
-  pdiItems         PdiItem[]
+  competencias         ColaboradorCompetencia[]
+  certificacoes        ColaboradorCertificacao[]
+  lobRecomendacoes     ColaboradorLobRecomendacao[]
+  pdiItems             PdiItem[]
+  projetosParticipados ColaboradorProjeto[]
 
   gapAnalysisRunsScope    GapAnalysisRun[]
   gapAnalysisLobResults   GapAnalysisLobResult[]

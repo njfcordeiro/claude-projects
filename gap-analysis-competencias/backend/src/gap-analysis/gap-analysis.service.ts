@@ -18,6 +18,7 @@ import {
   FiltrosOrganizacionais,
   FormacaoCandidata,
   PreparacaoCertificacao,
+  ProjetoVertenteCandidata,
   RelatorioGapCargo,
   RelatorioGapLob,
   RequisitoCertificacaoInput,
@@ -72,7 +73,7 @@ export class GapAnalysisService {
       this.buscarCertificacoesColaborador(colaboradorId),
     ]);
 
-    return this.avaliarLobParaColaborador(lob, niveisAtuais, certsColaborador);
+    return this.avaliarLobParaColaborador(lob, niveisAtuais, certsColaborador, colaboradorId);
   }
 
   async avaliarColaboradorCargo(colaboradorId: number, user: AuthenticatedUser): Promise<RelatorioGapCargo> {
@@ -904,6 +905,7 @@ export class GapAnalysisService {
     lob: Awaited<ReturnType<GapAnalysisService['buscarLobComRequisitos']>>,
     niveisAtuais: Map<number, number>,
     certsColaborador: Map<string, CertificacaoColaboradorInput>,
+    colaboradorId: number,
   ): Promise<RelatorioGapLob> {
     const requisitosCompetencia = this.mapearRequisitosCompetencia(lob.requisitosCompetencia);
     const requisitosCertificacao = this.mapearRequisitosCertificacao(lob.requisitosCertificacao);
@@ -914,15 +916,15 @@ export class GapAnalysisService {
       resultado.competencias.map(async (gap) => ({
         ...gap,
         sugestoes: gap.cumprido
-          ? { formacoes: [], certificacoes: [] }
-          : await this.sugerirParaCompetencia(gap.competenciaId, gap.nivelAtual, gap.nivelExigido, certsColaborador),
+          ? { formacoes: [], certificacoes: [], projetos: [] }
+          : await this.sugerirParaCompetencia(gap.competenciaId, gap.nivelAtual, gap.nivelExigido, certsColaborador, colaboradorId),
       })),
     );
 
     const certificacoes = await Promise.all(
       resultado.certificacoes.map(async (gap) => ({
         ...gap,
-        preparacao: gap.cumprido ? [] : await this.prepararCertificacao(gap.certificacaoId, niveisAtuais, certsColaborador),
+        preparacao: gap.cumprido ? [] : await this.prepararCertificacao(gap.certificacaoId, niveisAtuais, certsColaborador, colaboradorId),
       })),
     );
 
@@ -934,10 +936,13 @@ export class GapAnalysisService {
     nivelAtual: number,
     nivelNecessario: number,
     certsColaborador: Map<string, CertificacaoColaboradorInput>,
+    colaboradorId: number,
   ): Promise<SugestoesCompetencia> {
-    const [formacoesReq, certsReq] = await Promise.all([
+    const [formacoesReq, certsReq, vertentesReq, projetosParticipados] = await Promise.all([
       this.prisma.formacaoRequisitoCompetencia.findMany({ where: { competenciaId }, include: { formacao: true } }),
       this.prisma.certificacaoRequisitoCompetencia.findMany({ where: { competenciaId }, include: { certificacao: true } }),
+      this.prisma.projetoVertente.findMany({ where: { competenciaId }, include: { projeto: true } }),
+      this.prisma.colaboradorProjeto.findMany({ where: { colaboradorId }, select: { projetoId: true } }),
     ]);
 
     const formacoesCandidatas: FormacaoCandidata[] = formacoesReq.map((f) => ({
@@ -953,9 +958,22 @@ export class GapAnalysisService {
       jaPossui: certsColaborador.has(c.certificacao.id),
     }));
 
+    // Um projeto só conta uma vez por colaborador (ver ProjetosService) —
+    // uma vez participado, nenhuma das suas vertentes volta a ser sugerida.
+    const projetosJaFeitos = new Set(projetosParticipados.map((p) => p.projetoId));
+    const projetosCandidatos: ProjetoVertenteCandidata[] = vertentesReq
+      .filter((v) => !projetosJaFeitos.has(v.projetoId))
+      .map((v) => ({
+        projetoId: v.projeto.id,
+        projetoNome: v.projeto.nome,
+        vertenteId: v.id,
+        vertenteNome: v.nome,
+      }));
+
     return {
       formacoes: ordenarFormacoes(formacoesCandidatas, nivelAtual, nivelNecessario),
       certificacoes: ordenarCertificacoes(certsCandidatas, nivelAtual, nivelNecessario),
+      projetos: projetosCandidatos,
     };
   }
 
@@ -963,6 +981,7 @@ export class GapAnalysisService {
     certificacaoId: string,
     niveisAtuais: Map<number, number>,
     certsColaborador: Map<string, CertificacaoColaboradorInput>,
+    colaboradorId: number,
   ): Promise<PreparacaoCertificacao[]> {
     const competenciasValidadas = await this.prisma.certificacaoRequisitoCompetencia.findMany({
       where: { certificacaoId },
@@ -972,7 +991,7 @@ export class GapAnalysisService {
     return Promise.all(
       competenciasValidadas.map(async (c) => {
         const nivelAtual = niveisAtuais.get(c.competenciaId) ?? 0;
-        const { formacoes } = await this.sugerirParaCompetencia(c.competenciaId, nivelAtual, c.nivelId, certsColaborador);
+        const { formacoes } = await this.sugerirParaCompetencia(c.competenciaId, nivelAtual, c.nivelId, certsColaborador, colaboradorId);
         return {
           competenciaId: c.competenciaId,
           competenciaNome: c.competencia.nome,

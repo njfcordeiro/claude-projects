@@ -51,7 +51,8 @@ uma lista de LOBs específicas), `CargoProgressao`, `NivelGestao` (BUD/BUM/Team 
 ### 3.2 Catálogo de competências
 `Nivel` (escala 0–5), `Competencia` (por Área), `Certificacao` (+ `CertificacaoRequisitoCompetencia`),
 `Formacao` (+ `FormacaoRequisitoCompetencia`), `Lob` (por Área, com `pontosMinimos` — o motor de
-gap real) + `LobRequisitoCompetencia` / `LobRequisitoCertificacao`.
+gap real) + `LobRequisitoCompetencia` / `LobRequisitoCertificacao`, `Projeto` (+ `ProjetoVertente`,
+cada vertente ligada a uma Competência — ver §7-A).
 
 ### 3.3 Pessoas
 - `User` — conta de acesso (email, hash, `role`, `colaboradorId?`).
@@ -67,7 +68,10 @@ gap real) + `LobRequisitoCompetencia` / `LobRequisitoCertificacao`.
 - `ColaboradorLobRecomendacao` — recomendação de LOB para um colaborador; campo `bud` marca
   recomendação manual de um gestor/ADMIN_RH (ver §7).
 - `PdiItem` — item de plano de desenvolvimento (competência/certificação/formação em falta),
-  `estado` (Pendente/Em curso/Concluído), `origem` (Automático/Manual).
+  `estado` (Pendente/Em curso/Concluído), `origem` (Automático/Manual), `lobId` (LOB de origem —
+  usada para agrupar o PDI por BUD/Sistema/Outras, ver §7).
+- `ColaboradorProjeto` (+ `ColaboradorProjetoVertente`) — participação de um colaborador num
+  Projeto (única por colaborador+projeto), com as vertentes efetivamente feitas — ver §7-A.
 - `GapAnalysisRun`, `GapAnalysisLobResult`, `GapAnalysisCargoResult` — histórico de execuções do
   motor de gap.
 - `AuditLog` — populado por trigger de BD a partir de `app.current_user_id`; regista operação,
@@ -86,6 +90,7 @@ gap real) + `LobRequisitoCompetencia` / `LobRequisitoCertificacao`.
 | `formacoes` | `GET /formacoes` | qualquer autenticado |
 | `catalogo` | `GET/POST/PATCH/DELETE /catalogo/:tabela`, `GET .../export`, `POST .../import`, `GET /catalogo/meta` | leitura: qualquer autenticado; escrita: ADMIN_RH |
 | `atribuicoes` | `POST /atribuicoes` (atribuição em massa de competências/formações) | ADMIN_RH |
+| `projetos` | `GET/POST/DELETE /colaboradores/:id/projetos` (participação), `GET /projetos/:id/vertentes` | leitura de vertentes: qualquer autenticado; participação: mesmo RBAC de `colaboradores` |
 | `users` | CRUD de contas (`/users`) | ADMIN_RH |
 | `health` | `GET /health` | público |
 
@@ -136,7 +141,23 @@ não estão ligadas a um cargo específico, `Cargo.lobsExigidos` é só uma cont
 competência/certificação em falta em qualquer uma delas, gravando `lobId` (a LOB de origem) em
 cada item criado. A classificação BUD/Sistema/Outras mostrada no frontend é sempre derivada ao
 vivo, cruzando `lobId` com os objetivos de LOB atuais — nunca guardada como texto, para nunca
-ficar desatualizada se um objetivo mudar de origem ou deixar de existir.
+ficar desatualizada se um objetivo mudar de origem ou deixar de existir; dentro de BUD/Sistema, o
+frontend sub-agrupa ainda por `item.lob.nome`.
+
+## 7-A. Projetos (via alternativa a Formação/Certificação)
+
+`Projeto` tem uma ou mais `ProjetoVertente`, cada uma ligada a **uma** Competência — é assim que se
+"indica quais competências serão desenvolvidas" ao registar uma participação. `ProjetosService.
+registarParticipacao` (transação): valida que as vertentes escolhidas (mín. 1) pertencem ao
+projeto indicado e que o colaborador ainda não participou nesse projeto (`ColaboradorProjeto` tem
+`@@unique([colaboradorId, projetoId])` — cada projeto só conta uma vez), depois cria a
+participação e, para cada vertente escolhida, insere uma nova `ColaboradorCompetencia` com
+`nivelId = min(nivelAtual + 1, nivelMáximo)` e `origem = PROJETO` — o nível máximo é lido ao vivo
+de `MAX(niveis.id)`, nunca fixo no código. Usa o mesmo `pg_advisory_xact_lock` de
+`ColaboradoresService.criarAvaliacao` para serializar subidas de nível concorrentes na mesma
+competência. `GapAnalysisService.sugerirParaCompetencia` inclui, para cada competência em falta,
+as vertentes de projetos ainda não feitos pelo colaborador (`sugestoes.projetos`), ao lado das
+sugestões de formação/certificação já existentes.
 
 ## 8. Frontend
 
@@ -145,6 +166,9 @@ ficar desatualizada se um objetivo mudar de origem ou deixar de existir.
   reutilizáveis em `src/components/ui/` (`Badge`, `DataTable`, `Card`, `form.tsx`, etc.).
 - **Responsividade**: `SideNav` fixo ≥ `md`, `MobileNavDrawer` (hambúrguer) abaixo disso;
   `DataTable` muda para modo cartão em ecrãs pequenos.
+- **Ficha do colaborador**: o quadro de LOBs (estreito, só nome+%) fica lado a lado com o Detalhe
+  da LOB selecionada (`grid-cols-[320px_1fr]` em ecrãs largos); por omissão mostra só as LOBs da
+  área do colaborador, com um seletor para ver todas.
 - **Routing**: `react-router-dom` 7, rotas protegidas por papel (`ProtectedRoute
   allowedRoles={[...]}`), lista única de navegação partilhada (`navItems.ts`) entre desktop e
   mobile.

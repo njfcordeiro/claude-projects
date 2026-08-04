@@ -3,12 +3,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pencil } from 'lucide-react';
 import { endpoints } from '../../api/endpoints';
 import { useAuth } from '../../auth/useAuth';
+import { ProjetoVertenteCandidata } from '../../types/api';
 import { Badge } from '../ui/Badge';
 import { Tag } from '../ui/Tag';
 import { NivelPill } from './NivelPill';
 import { SugestoesLista } from './SugestoesLista';
 import { AvaliarCompetenciaModal } from './AvaliarCompetenciaModal';
 import { EditarCertificacaoModal } from './EditarCertificacaoModal';
+import { RegistarParticipacaoProjetoModal } from './RegistarParticipacaoProjetoModal';
 
 /** Relatório completo de uma LOB para um colaborador — competências e certificações, com sugestões para os gaps. */
 export function LobGapDetail({ colaboradorId, lobId }: { colaboradorId: number; lobId: number }) {
@@ -21,6 +23,7 @@ export function LobGapDetail({ colaboradorId, lobId }: { colaboradorId: number; 
 
   const [competenciaEmEdicao, setCompetenciaEmEdicao] = useState<{ id: number; nome: string } | null>(null);
   const [certificacaoEmEdicao, setCertificacaoEmEdicao] = useState<{ id: string; nome: string } | null>(null);
+  const [participacaoEmEdicao, setParticipacaoEmEdicao] = useState<ProjetoVertenteCandidata | null>(null);
 
   // "Admin RH edita tudo, Gestor edita a sua equipa" — o backend reforça o
   // RBAC fino de verdade (ver ColaboradoresService.podeEditar); isto só
@@ -31,8 +34,16 @@ export function LobGapDetail({ colaboradorId, lobId }: { colaboradorId: number; 
   function aoGuardarComSucesso() {
     queryClient.invalidateQueries({ queryKey: ['gap-lob', colaboradorId, lobId] });
     queryClient.invalidateQueries({ queryKey: ['gap-cargo', colaboradorId] });
+    // Atingir/deixar de atingir uma LOB muda as sugestões automáticas de "Objetivos de LOB".
+    queryClient.invalidateQueries({ queryKey: ['objetivos-lob', colaboradorId] });
     setCompetenciaEmEdicao(null);
     setCertificacaoEmEdicao(null);
+  }
+
+  function aoRegistarParticipacaoComSucesso() {
+    aoGuardarComSucesso();
+    queryClient.invalidateQueries({ queryKey: ['projetos', colaboradorId] });
+    setParticipacaoEmEdicao(null);
   }
 
   if (isLoading) return <p className="text-sm text-fiori-text-secondary">A calcular…</p>;
@@ -77,7 +88,12 @@ export function LobGapDetail({ colaboradorId, lobId }: { colaboradorId: number; 
               </div>
               {!c.cumprido && (
                 <div className="mt-2 border-t border-fiori-border pt-2">
-                  <SugestoesLista formacoes={c.sugestoes.formacoes} certificacoes={c.sugestoes.certificacoes} />
+                  <SugestoesLista
+                    formacoes={c.sugestoes.formacoes}
+                    certificacoes={c.sugestoes.certificacoes}
+                    projetos={c.sugestoes.projetos}
+                    onRegistrarProjeto={podeEditar ? (vertente) => setParticipacaoEmEdicao(vertente) : undefined}
+                  />
                 </div>
               )}
             </div>
@@ -154,6 +170,16 @@ export function LobGapDetail({ colaboradorId, lobId }: { colaboradorId: number; 
           certificacaoNome={certificacaoEmEdicao.nome}
           onClose={() => setCertificacaoEmEdicao(null)}
           onSuccess={aoGuardarComSucesso}
+        />
+      )}
+      {participacaoEmEdicao && (
+        <RegistarParticipacaoProjetoModal
+          colaboradorId={colaboradorId}
+          projetoId={participacaoEmEdicao.projetoId}
+          projetoNome={participacaoEmEdicao.projetoNome}
+          vertenteIdInicial={participacaoEmEdicao.vertenteId}
+          onClose={() => setParticipacaoEmEdicao(null)}
+          onSuccess={aoRegistarParticipacaoComSucesso}
         />
       )}
     </div>

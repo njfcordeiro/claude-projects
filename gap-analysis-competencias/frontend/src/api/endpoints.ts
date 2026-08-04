@@ -20,7 +20,10 @@ import {
   MeResponse,
   ObjetivosLobResponse,
   PapelUtilizador,
+  ParticipacaoProjeto,
   PdiItem,
+  ProjetoVertenteDetalhe,
+  RegistarParticipacaoProjetoInput,
   RelatorioGapCargo,
   RelatorioGapLob,
   ResumoAtribuicao,
@@ -113,6 +116,14 @@ export const endpoints = {
     api.post<ObjetivosLobResponse>(`/colaboradores/${colaboradorId}/objetivos-lob`, { lobId }),
   removerObjetivoLob: (colaboradorId: number, lobId: number) =>
     api.delete<ObjetivosLobResponse>(`/colaboradores/${colaboradorId}/objetivos-lob/${lobId}`),
+
+  // --- Participação em Projetos -------------------------------------------
+  projetosListar: (colaboradorId: number) => api.get<ParticipacaoProjeto[]>(`/colaboradores/${colaboradorId}/projetos`),
+  projetosRegistarParticipacao: (colaboradorId: number, dto: RegistarParticipacaoProjetoInput) =>
+    api.post<ParticipacaoProjeto>(`/colaboradores/${colaboradorId}/projetos`, dto),
+  projetosEliminarParticipacao: (colaboradorId: number, projetoId: number) =>
+    api.delete<void>(`/colaboradores/${colaboradorId}/projetos/${projetoId}`),
+  projetoVertentes: (projetoId: number) => api.get<ProjetoVertenteDetalhe[]>(`/projetos/${projetoId}/vertentes`),
 
   // --- Skill Matrix -----------------------------------------------------------
   skillMatrix: (dimensao: DimensaoSkillMatrix, filtros: FiltrosOrganizacionais = {}) => {

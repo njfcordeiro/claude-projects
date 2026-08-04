@@ -117,6 +117,31 @@ export interface UpsertCertificacaoInput {
   version?: number;
 }
 
+// --- Participação em Projetos (backend/src/projetos) ------------------------
+
+export interface ParticipacaoProjeto {
+  id: number;
+  colaboradorId: number;
+  projetoId: number;
+  dataParticipacao: string;
+  projeto: { nome: string };
+  vertentes: { vertente: { id: number; nome: string; competencia: { nome: string } } }[];
+}
+
+export interface RegistarParticipacaoProjetoInput {
+  projetoId: number;
+  vertenteIds: number[];
+}
+
+/** Todas as vertentes de um Projeto (catálogo) — usado pelo modal "Registar participação" para escolher mais do que a vertente que originou o clique. */
+export interface ProjetoVertenteDetalhe {
+  id: number;
+  projetoId: number;
+  competenciaId: number;
+  nome: string;
+  competencia: { nome: string };
+}
+
 /** Corpo de uma resposta 409 — ver ApiError.body em api/client.ts. */
 export interface ConflitoResponse<T> {
   message: string;
@@ -139,6 +164,14 @@ export interface CertificacaoCandidata {
   jaPossui: boolean;
 }
 
+/** Vertente de Projeto candidata — participar dá sempre +1 nível (capado ao máximo da escala), ao contrário de Formação/Certificação. */
+export interface ProjetoVertenteCandidata {
+  projetoId: number;
+  projetoNome: string;
+  vertenteId: number;
+  vertenteNome: string;
+}
+
 export interface RelatorioGapCompetencia {
   competenciaId: number;
   competenciaNome: string;
@@ -148,7 +181,7 @@ export interface RelatorioGapCompetencia {
   pontosPossiveis: number;
   pontosObtidos: number;
   cumprido: boolean;
-  sugestoes: { formacoes: FormacaoCandidata[]; certificacoes: CertificacaoCandidata[] };
+  sugestoes: { formacoes: FormacaoCandidata[]; certificacoes: CertificacaoCandidata[]; projetos: ProjetoVertenteCandidata[] };
 }
 
 export interface PreparacaoCertificacao {

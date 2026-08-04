@@ -214,6 +214,29 @@ export const CATALOGO_REGISTRY: CatalogoTabelaDef[] = [
     ],
   },
   {
+    tabela: 'projetos',
+    label: 'Projetos',
+    delegate: 'projeto',
+    identityFields: ['id'],
+    campos: [
+      campo('id', 'ID', 'int'),
+      campo('nome', 'Nome', 'string'),
+      campo('areaId', 'Área', 'relation', false, { relatedTable: 'areas', relationAccessor: 'area' }),
+      campo('descricao', 'Descrição', 'string', false),
+    ],
+  },
+  {
+    tabela: 'projeto-vertentes',
+    label: 'Vertentes de projeto',
+    delegate: 'projetoVertente',
+    identityFields: ['projetoId', 'competenciaId'],
+    campos: [
+      campo('projetoId', 'Projeto', 'relation', true, { relatedTable: 'projetos', relationAccessor: 'projeto' }),
+      campo('competenciaId', 'Competência', 'relation', true, { relatedTable: 'competencias', relationAccessor: 'competencia' }),
+      campo('nome', 'Nome da vertente', 'string'),
+    ],
+  },
+  {
     tabela: 'lobs',
     label: 'LOBs',
     delegate: 'lob',
