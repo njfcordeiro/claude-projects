@@ -254,11 +254,18 @@ const REGRAS = [
       'apto = aptoAntiguidade E aptoLOBs · aptoAntiguidade = anosExperienciaMinimo do cargo-alvo = 0 OU antiguidade ≥ esse mínimo · aptoLOBs = lobsAtingidas ≥ lobsExigidas do cargo-alvo',
   },
   {
+    icone: Target,
+    titulo: 'Objetivos de LOB',
+    texto:
+      'Cada colaborador tem até 3 LOBs sugeridas automaticamente pelo sistema — da sua própria Área, ainda não atingidas, pela maior % de prontidão (as mais próximas de serem alcançadas entram primeiro) — sempre calculadas ao vivo na ficha, nunca guardadas, por isso nunca ficam desatualizadas. A qualquer uma delas soma-se as LOBs recomendadas manualmente pelo BUD (o gestor direto do colaborador, ou ADMIN_RH — mesma permissão de escrita do resto da ficha): sem limite de quantidade, e sem obrigação de pertencerem à Área do colaborador. Todas em conjunto formam os "objetivos de LOB" desse colaborador.',
+    formula: 'auto = até 3 LOBs da Área, não atingidas, ordenadas por prontidão desc · bud = recomendações do gestor/ADMIN_RH (sem restrição de Área)',
+  },
+  {
     icone: Sparkles,
     titulo: 'PDI — sugestões automáticas',
     texto:
-      '"Gerar sugestões" visa sempre UMA única LOB por chamada — nunca mistura competências/certificações de LOBs diferentes. Usa a "Próxima LOB" do colaborador se estiver preenchida; senão, escolhe automaticamente a LOB da própria Área do colaborador em que está mais perto de a atingir (maior prontidão, ainda não atingida). Só sugere o que estiver em falta nessa LOB. Qualquer item — gerado ou adicionado manualmente — pode ser eliminado, e "Gerar sugestões" pode ser chamado de novo a qualquer momento (não duplica o que já existe).',
-    formula: 'LOB alvo = Próxima LOB do colaborador, senão máx(prontidão) entre as LOBs da Área ainda não atingidas',
+      '"Gerar sugestões" já não visa uma única LOB: percorre TODOS os objetivos de LOB ativos do colaborador (sistema + BUD, ver "Objetivos de LOB" acima) e sugere o que estiver em falta em cada uma, sem duplicar entre elas. Cada sugestão indica de que LOB e de que origem (Sistema ou BUD) resultou. Qualquer item — gerado ou adicionado manualmente — pode ser eliminado, e "Gerar sugestões" pode ser chamado de novo a qualquer momento (não duplica o que já existe).',
+    formula: 'itens sugeridos = ⋃ᴸᴼᴮ∈objetivos { competências/certificações em falta nessa LOB }, sem duplicados',
   },
   {
     icone: AlertTriangle,

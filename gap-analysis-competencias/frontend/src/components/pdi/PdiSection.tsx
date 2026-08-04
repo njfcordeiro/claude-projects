@@ -102,6 +102,7 @@ function AdicionarPdiItemModal({ colaboradorId, onClose }: { colaboradorId: numb
 export function PdiSection({ colaboradorId }: { colaboradorId: number }) {
   const queryClient = useQueryClient();
   const { data: itens, isLoading } = useQuery({ queryKey: ['pdi', colaboradorId], queryFn: () => endpoints.pdiListar(colaboradorId) });
+  const { data: objetivos } = useQuery({ queryKey: ['objetivos-lob', colaboradorId], queryFn: () => endpoints.objetivosLob(colaboradorId) });
   const [aAdicionar, setAAdicionar] = useState(false);
 
   const gerar = useMutation({
@@ -143,6 +144,14 @@ export function PdiSection({ colaboradorId }: { colaboradorId: number }) {
         </div>
       }
     >
+      {objetivos && (objetivos.auto.length > 0 || objetivos.bud.length > 0) && (
+        <p className="mb-3 text-xs text-fiori-text-secondary">
+          Baseado em {objetivos.auto.length + objetivos.bud.length} objetivo{objetivos.auto.length + objetivos.bud.length === 1 ? '' : 's'} de LOB
+          atual{objetivos.auto.length + objetivos.bud.length === 1 ? '' : 'is'}:{' '}
+          {[...objetivos.auto.map((o) => `${o.lobNome} (sistema)`), ...objetivos.bud.map((o) => `${o.lobNome} (BUD)`)].join(', ')}.
+        </p>
+      )}
+
       {isLoading ? (
         <p className="text-sm text-fiori-text-secondary">A carregar…</p>
       ) : !itens || itens.length === 0 ? (

@@ -18,6 +18,7 @@ import {
   LobDetalhe,
   LobResumo,
   MeResponse,
+  ObjetivosLobResponse,
   PapelUtilizador,
   PdiItem,
   RelatorioGapCargo,
@@ -105,6 +106,13 @@ export const endpoints = {
   pdiAtualizar: (colaboradorId: number, itemId: number, dto: UpdatePdiItemInput) =>
     api.patch<PdiItem>(`/colaboradores/${colaboradorId}/pdi/${itemId}`, dto),
   pdiEliminar: (colaboradorId: number, itemId: number) => api.delete<void>(`/colaboradores/${colaboradorId}/pdi/${itemId}`),
+
+  // --- Objetivos de LOB -------------------------------------------------------
+  objetivosLob: (colaboradorId: number) => api.get<ObjetivosLobResponse>(`/colaboradores/${colaboradorId}/objetivos-lob`),
+  adicionarObjetivoLob: (colaboradorId: number, lobId: number) =>
+    api.post<ObjetivosLobResponse>(`/colaboradores/${colaboradorId}/objetivos-lob`, { lobId }),
+  removerObjetivoLob: (colaboradorId: number, lobId: number) =>
+    api.delete<ObjetivosLobResponse>(`/colaboradores/${colaboradorId}/objetivos-lob/${lobId}`),
 
   // --- Skill Matrix -----------------------------------------------------------
   skillMatrix: (dimensao: DimensaoSkillMatrix, filtros: FiltrosOrganizacionais = {}) => {

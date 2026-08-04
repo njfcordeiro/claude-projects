@@ -402,6 +402,23 @@ export interface CreatePdiItemInput {
   certificacaoId?: string;
 }
 
+// --- Objetivos de LOB (backend/src/pdi/lob-objetivos) ----------------------
+
+export interface ObjetivoLob {
+  lobId: number;
+  lobNome: string;
+  areaId: number;
+  areaNome: string;
+  prontidaoPercentual: number;
+}
+
+export interface ObjetivosLobResponse {
+  /** Até 3 LOBs da área do colaborador, ainda não atingidas, pela maior prontidão — calculado ao vivo. */
+  auto: ObjetivoLob[];
+  /** Recomendadas manualmente pelo BUD (gestor direto) ou ADMIN_RH. */
+  bud: ObjetivoLob[];
+}
+
 // --- Skill Matrix (backend/src/gap-analysis) ------------------------------
 
 export type DimensaoSkillMatrix = 'lob' | 'competencia';

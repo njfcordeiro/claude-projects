@@ -16,6 +16,7 @@ import { Button, Field, Input, Select } from '../components/ui/form';
 import { LobGapDetail } from '../components/gap/LobGapDetail';
 import { PerfilRadarChart } from '../components/gap/PerfilRadarChart';
 import { PdiSection } from '../components/pdi/PdiSection';
+import { ObjetivosLobSection } from '../components/pdi/ObjetivosLobSection';
 
 function formatarData(iso: string | null): string {
   return iso ? new Date(iso).toLocaleDateString('pt-PT') : '—';
@@ -559,6 +560,8 @@ export function ColaboradorProfilePage() {
           </Card>
         </div>
       )}
+
+      <ObjetivosLobSection colaboradorId={colaboradorId} />
 
       <PdiSection colaboradorId={colaboradorId} />
     </div>

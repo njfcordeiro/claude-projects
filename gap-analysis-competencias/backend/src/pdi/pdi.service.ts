@@ -6,6 +6,7 @@ import { GapAnalysisService } from '../gap-analysis/gap-analysis.service';
 import { AuthenticatedUser } from '../auth/jwt-payload.interface';
 import { CreatePdiItemDto } from './dto/create-pdi-item.dto';
 import { UpdatePdiItemDto } from './dto/update-pdi-item.dto';
+import { LobObjetivosService } from './lob-objetivos.service';
 
 const INCLUDE_ITEM = {
   competencia: { select: { nome: true } },
@@ -29,11 +30,10 @@ interface CandidatoPdi {
  * `gerar` outra vez não duplica itens já existentes (mesma competência ou
  * certificação em falta), mesmo que ainda estejam pendentes.
  *
- * Pedido do utilizador: as sugestões automáticas visam sempre UMA única
- * LOB por chamada a `gerar` (nunca várias LOBs misturadas) — a "Próxima
- * LOB" do colaborador se estiver preenchida, senão a LOB da própria Área
- * do colaborador em que está mais perto de atingir (maior prontidão,
- * ainda não atingida).
+ * As sugestões automáticas passam a cobrir TODOS os "objetivos de LOB"
+ * ativos do colaborador (LobObjetivosService.listarLobsAlvo — união de até
+ * 3 sugestões do sistema e das recomendações do BUD), não apenas uma única
+ * LOB. Cada item gerado indica de qual LOB-objetivo veio.
  */
 @Injectable()
 export class PdiService {
@@ -41,6 +41,7 @@ export class PdiService {
     private readonly prisma: PrismaService,
     private readonly colaboradores: ColaboradoresService,
     private readonly gapAnalysis: GapAnalysisService,
+    private readonly lobObjetivos: LobObjetivosService,
   ) {}
 
   async listar(colaboradorId: number, user: AuthenticatedUser) {
@@ -54,20 +55,17 @@ export class PdiService {
 
   async gerar(colaboradorId: number, user: AuthenticatedUser) {
     await this.colaboradores.podeEditar(colaboradorId, user);
-    const colaborador = await this.colaboradores.obterComVerificacaoDeAcesso(colaboradorId, user);
 
-    const gapCargo = await this.gapAnalysis.avaliarColaboradorCargo(colaboradorId, user);
-
-    const lobAlvo =
-      colaborador.proximaLobId !== null
-        ? gapCargo.lobs.find((l) => l.lobId === colaborador.proximaLobId)
-        : gapCargo.lobs
-            .filter((l) => l.areaId === colaborador.areaId && !l.atingido)
-            .sort((a, b) => b.prontidaoPercentual - a.prontidaoPercentual)[0];
+    const { auto, bud } = await this.lobObjetivos.listar(colaboradorId, user);
+    const origemPorLob = new Map<number, string>();
+    for (const o of auto) origemPorLob.set(o.lobId, 'Sistema');
+    for (const o of bud) origemPorLob.set(o.lobId, 'BUD');
+    const lobsAlvo = [...auto, ...bud].filter((o, i, arr) => arr.findIndex((x) => x.lobId === o.lobId) === i);
 
     const candidatos = new Map<string, CandidatoPdi>();
-    if (lobAlvo) {
+    for (const lobAlvo of lobsAlvo) {
       const detalhe = await this.gapAnalysis.avaliarColaboradorLob(colaboradorId, lobAlvo.lobId, user);
+      const origem = origemPorLob.get(lobAlvo.lobId) ?? 'Sistema';
 
       for (const c of detalhe.competencias) {
         if (c.cumprido) continue;
@@ -77,7 +75,7 @@ export class PdiService {
           competenciaId: c.competenciaId,
           certificacaoId: null,
           formacaoId: c.sugestoes.formacoes[0]?.formacaoId ?? null,
-          descricao: `Reforçar competência "${c.competenciaNome}" (nível atual ${c.nivelAtual} → exigido ${c.nivelExigido}) para a LOB "${detalhe.lobNome}".`,
+          descricao: `Reforçar competência "${c.competenciaNome}" (nível atual ${c.nivelAtual} → exigido ${c.nivelExigido}) para a LOB "${detalhe.lobNome}". Objetivo: ${detalhe.lobNome} · ${origem}.`,
         });
       }
 
@@ -90,7 +88,7 @@ export class PdiService {
           competenciaId: null,
           certificacaoId: cert.certificacaoId,
           formacaoId: formacaoSugerida?.formacaoId ?? null,
-          descricao: `Obter a certificação "${cert.certificacaoNome}" — exigida pela LOB "${detalhe.lobNome}".`,
+          descricao: `Obter a certificação "${cert.certificacaoNome}" — exigida pela LOB "${detalhe.lobNome}". Objetivo: ${detalhe.lobNome} · ${origem}.`,
         });
       }
     }
