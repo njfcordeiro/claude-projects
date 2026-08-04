@@ -124,6 +124,14 @@ export interface ResumoGapLob {
   pontosMinimos: number;
   prontidaoPercentual: number;
   atingido: boolean;
+  /** Todas as competências obrigatórias desta LOB estão cumpridas. */
+  competenciasObrigatoriasCumpridas: boolean;
+  /** pontosObtidos >= pontosMinimos (independente de obrigatórias). */
+  pontosMinimosCumpridos: boolean;
+  /** Nº de certificações obrigatórias exigidas por esta LOB. */
+  certificacoesObrigatoriasTotal: number;
+  /** Nº dessas certificações obrigatórias que o colaborador não cumpre (em falta ou expirada). */
+  certificacoesObrigatoriasEmFalta: number;
 }
 
 export interface RelatorioGapCargo {

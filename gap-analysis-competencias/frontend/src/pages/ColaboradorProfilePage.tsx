@@ -5,6 +5,7 @@ import { endpoints } from '../api/endpoints';
 import { Card } from '../components/ui/Card';
 import { ProgressRing } from '../components/ui/ProgressRing';
 import { Badge } from '../components/ui/Badge';
+import { DataTable } from '../components/ui/DataTable';
 import { PrintButton } from '../components/ui/PrintButton';
 import { LobGapDetail } from '../components/gap/LobGapDetail';
 import { PerfilRadarChart } from '../components/gap/PerfilRadarChart';
@@ -103,33 +104,80 @@ export function ColaboradorProfilePage() {
       )}
 
       {gap && gap.lobs.length > 0 && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <Card title="LOBs" className="lg:col-span-1">
-            <div className="space-y-1">
-              {gap.lobs.map((l) => (
-                <button
-                  key={l.lobId}
-                  type="button"
-                  onClick={() => setLobSelecionada(l.lobId)}
-                  className={`flex w-full items-center justify-between rounded px-3 py-2 text-left text-sm ${
-                    lobSelecionada === l.lobId ? 'bg-fiori-primary-bg text-fiori-primary' : 'hover:bg-fiori-canvas'
-                  }`}
-                >
-                  <span>{l.lobNome}</span>
-                  <span className="flex items-center gap-2">
-                    <span className="text-xs text-fiori-text-secondary">{l.prontidaoPercentual}%</span>
-                    {l.atingido ? <Badge status="success">Atingida</Badge> : <Badge status="warning">Gap</Badge>}
-                  </span>
-                </button>
-              ))}
-            </div>
+        <div className="space-y-4">
+          <Card title="LOBs">
+            <DataTable
+              data={gap.lobs}
+              getRowKey={(l) => l.lobId}
+              onRowClick={(l) => setLobSelecionada(l.lobId)}
+              searchPlaceholder="Pesquisar por LOB…"
+              columns={[
+                {
+                  key: 'lob',
+                  header: 'LOB',
+                  render: (l) => (
+                    <span className={lobSelecionada === l.lobId ? 'font-medium text-fiori-primary' : 'text-fiori-text'}>
+                      {l.lobNome}
+                    </span>
+                  ),
+                  sortValue: (l) => l.lobNome,
+                },
+                {
+                  key: 'competencias',
+                  header: 'Competências',
+                  render: (l) => (
+                    <div className="space-y-0.5 text-xs">
+                      <div className={l.competenciasObrigatoriasCumpridas ? 'text-fiori-success' : 'text-fiori-error'}>
+                        {l.competenciasObrigatoriasCumpridas ? 'Obrigatórias cumpridas' : 'Obrigatórias em falta'}
+                      </div>
+                      <div className={l.pontosMinimosCumpridos ? 'text-fiori-success' : 'text-fiori-error'}>
+                        Pontos: {l.pontosObtidos}/{l.pontosMinimos}
+                      </div>
+                    </div>
+                  ),
+                  sortValue: (l) => (l.competenciasObrigatoriasCumpridas && l.pontosMinimosCumpridos ? 1 : 0),
+                  searchValue: (l) => (l.competenciasObrigatoriasCumpridas ? 'obrigatórias cumpridas' : 'obrigatórias em falta'),
+                },
+                {
+                  key: 'certificacoes',
+                  header: 'Certificações',
+                  render: (l) =>
+                    l.certificacoesObrigatoriasTotal === 0 ? (
+                      <span className="text-xs text-fiori-text-secondary">Sem obrigatórias</span>
+                    ) : (
+                      <div className="text-xs">
+                        <span className={l.certificacoesObrigatoriasEmFalta === 0 ? 'text-fiori-success' : 'text-fiori-error'}>
+                          {l.certificacoesObrigatoriasTotal - l.certificacoesObrigatoriasEmFalta}/{l.certificacoesObrigatoriasTotal} obrigatórias
+                        </span>
+                        {l.certificacoesObrigatoriasEmFalta > 0 && (
+                          <span className="ml-1 text-fiori-error">({l.certificacoesObrigatoriasEmFalta} em falta)</span>
+                        )}
+                      </div>
+                    ),
+                  sortValue: (l) => l.certificacoesObrigatoriasEmFalta,
+                  searchValue: (l) => (l.certificacoesObrigatoriasEmFalta > 0 ? 'em falta' : 'obrigatórias cumpridas'),
+                },
+                {
+                  key: 'total',
+                  header: 'Total',
+                  render: (l) => (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-fiori-text-secondary">{l.prontidaoPercentual}%</span>
+                      {l.atingido ? <Badge status="success">Atingida</Badge> : <Badge status="warning">Gap</Badge>}
+                    </div>
+                  ),
+                  sortValue: (l) => (l.atingido ? 1 : 0),
+                  searchValue: (l) => (l.atingido ? 'atingida' : 'gap'),
+                },
+              ]}
+            />
           </Card>
 
-          <Card title="Detalhe da LOB" className="lg:col-span-2">
+          <Card title="Detalhe da LOB">
             {lobSelecionada ? (
               <LobGapDetail colaboradorId={colaboradorId} lobId={lobSelecionada} />
             ) : (
-              <p className="text-sm text-fiori-text-secondary">Seleciona uma LOB à esquerda para ver competências, certificações e sugestões.</p>
+              <p className="text-sm text-fiori-text-secondary">Seleciona uma LOB no quadro acima para ver competências, certificações e sugestões.</p>
             )}
           </Card>
         </div>

@@ -97,6 +97,7 @@ export class GapAnalysisService {
       const requisitosCompetencia = this.mapearRequisitosCompetencia(lob.requisitosCompetencia);
       const requisitosCertificacao = this.mapearRequisitosCertificacao(lob.requisitosCertificacao);
       const resultado = calcularGapLob(lob, requisitosCompetencia, requisitosCertificacao, niveisAtuais, certsColaborador);
+      const certificacoesObrigatorias = resultado.certificacoes.filter((c) => c.obrigatorio);
       return {
         lobId: resultado.lobId,
         lobNome: resultado.lobNome,
@@ -106,6 +107,10 @@ export class GapAnalysisService {
         pontosMinimos: resultado.pontosMinimos,
         prontidaoPercentual: resultado.prontidaoPercentual,
         atingido: resultado.atingido,
+        competenciasObrigatoriasCumpridas: resultado.competencias.every((c) => !c.obrigatorio || c.cumprido),
+        pontosMinimosCumpridos: resultado.pontosObtidos >= resultado.pontosMinimos,
+        certificacoesObrigatoriasTotal: certificacoesObrigatorias.length,
+        certificacoesObrigatoriasEmFalta: certificacoesObrigatorias.filter((c) => !c.cumprido).length,
       };
     });
 
