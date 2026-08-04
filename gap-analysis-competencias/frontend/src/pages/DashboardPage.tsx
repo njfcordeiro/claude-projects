@@ -164,8 +164,9 @@ export function DashboardPage() {
             <Card title="Cobertura de Arquitetos por Núcleo/Área">
               <p className="mb-3 text-xs text-fiori-text-secondary">
                 1 Arquiteto por cada 10 colaboradores, mínimo de 1 por área/núcleo com 10 ou mais colaboradores. Áreas/núcleos com
-                menos de 10 contam com apoio transversal (não entram em défice). Cada Núcleo mostra por baixo, indentadas, as Áreas a
-                que está associado (editável em Gestão de Dados → "Áreas por Núcleo") — ver detalhe em "Como Funciona".
+                menos de 10 contam com apoio transversal (não entram em défice). O total de cada Núcleo é a soma dos colaboradores das
+                Áreas a que está associado (editável em Gestão de Dados → "Áreas por Núcleo") — mostradas indentadas por baixo. Um
+                Núcleo sem nenhuma Área associada não aparece na tabela — ver detalhe em "Como Funciona".
               </p>
               <div className="overflow-x-auto rounded border border-fiori-border bg-fiori-surface">
                 <table className="fiori-table">

@@ -321,9 +321,15 @@ export class GapAnalysisService {
       const { resumos: resumosOrg } = await this.calcularResumos(whereOrg);
       const cobertura = await this.calcularCoberturaArquitetosDeResumos(resumosOrg, carreiraArquiteto.id);
       const areasDeficit = new Set(cobertura.filter((c) => c.tipo === 'area' && c.defice > 0).map((c) => c.nome));
-      const nucleosDeficit = new Set(cobertura.filter((c) => c.tipo === 'nucleo' && c.defice > 0).map((c) => c.nome));
+      // Défice de Núcleo é calculado por soma das Áreas associadas (ver
+      // calcularCoberturaArquitetosDeResumos) — por isso um colaborador
+      // "pertence" a um Núcleo em défice através da sua Área, não do
+      // Colaborador.nucleoId direto.
+      const areasDeNucleoEmDefice = new Set(
+        cobertura.filter((c) => c.tipo === 'nucleo' && c.defice > 0).flatMap((c) => c.areasAssociadas),
+      );
       const emDefice = (r: (typeof candidatos)[number]) =>
-        (r.areaNome !== null && areasDeficit.has(r.areaNome)) || (r.nucleoNome !== null && nucleosDeficit.has(r.nucleoNome));
+        r.areaNome !== null && (areasDeficit.has(r.areaNome) || areasDeNucleoEmDefice.has(r.areaNome));
 
       candidatos.sort((a, b) => {
         const aPrioridade = emDefice(a) ? 1 : 0;
@@ -562,12 +568,19 @@ export class GapAnalysisService {
   /**
    * Cobertura de Arquitetos por Área e por Núcleo, numa tabela só (pedido
    * do utilizador — ver regras junto a `exigidosArquitetos`). Colaboradores
-   * sem área/núcleo atribuído ficam de fora desta cobertura (não há grupo
-   * "Sem área/núcleo" aqui, ao contrário de `agruparPorCampo`, porque não
-   * faz sentido pedir um Arquiteto para "nenhures"). Cada linha de Núcleo
-   * traz as Áreas a que está associado (tabela nucleo_areas) só como
-   * contexto — essa associação não influencia o cálculo, que continua a
-   * usar Colaborador.areaId/nucleoId diretamente.
+   * sem área atribuída ficam de fora desta cobertura (não há grupo "Sem
+   * área" aqui, ao contrário de `agruparPorCampo`, porque não faz sentido
+   * pedir um Arquiteto para "nenhures").
+   *
+   * O total de colaboradores de um Núcleo é a SOMA dos colaboradores de
+   * todas as Áreas associadas a esse Núcleo (tabela nucleo_areas — pedido
+   * do utilizador: "cruzar a informação da tabela áreas por núcleo e a
+   * tabela colaboradores"), não o `Colaborador.nucleoId` direto. Um Núcleo
+   * sem nenhuma Área associada não aparece na tabela (nada para somar).
+   * Quando duas Áreas do mesmo Núcleo partilhassem um colaborador (não
+   * deveria acontecer — cada colaborador só tem uma Área — mas a
+   * deduplicação por `colaboradorId` protege contra contagem dupla mesmo
+   * assim).
    */
   private async calcularCoberturaArquitetosDeResumos(
     resumos: ResumoColaboradorDashboard[],
@@ -584,34 +597,47 @@ export class GapAnalysisService {
       areasPorNucleo.get(a.nucleo.nome)!.push(a.area.nome);
     }
 
-    const porGrupo = (tipo: 'area' | 'nucleo', chave: (r: ResumoColaboradorDashboard) => string | null): CoberturaArquitetos[] => {
-      const grupos = new Map<string, ResumoColaboradorDashboard[]>();
-      for (const r of resumos) {
-        const nome = chave(r);
-        if (!nome) continue;
-        if (!grupos.has(nome)) grupos.set(nome, []);
-        grupos.get(nome)!.push(r);
-      }
-      return Array.from(grupos.entries()).map(([nome, itens]) => {
-        const totalColaboradores = itens.length;
-        const arquitetos = itens.filter(ehArquiteto).length;
-        const exigidos = exigidosArquitetos(totalColaboradores);
-        return {
-          tipo,
-          nome,
-          areasAssociadas: tipo === 'nucleo' ? (areasPorNucleo.get(nome) ?? []).sort() : [],
-          totalColaboradores,
-          arquitetos,
-          exigidos,
-          defice: Math.max(0, exigidos - arquitetos),
-          excesso: Math.max(0, arquitetos - exigidos),
-        };
-      });
+    const porArea = new Map<string, ResumoColaboradorDashboard[]>();
+    for (const r of resumos) {
+      if (!r.areaNome) continue;
+      if (!porArea.has(r.areaNome)) porArea.set(r.areaNome, []);
+      porArea.get(r.areaNome)!.push(r);
+    }
+
+    const calcularLinha = (
+      tipo: 'area' | 'nucleo',
+      nome: string,
+      itens: ResumoColaboradorDashboard[],
+      areasAssociadas: string[],
+    ): CoberturaArquitetos => {
+      const totalColaboradores = itens.length;
+      const arquitetos = itens.filter(ehArquiteto).length;
+      const exigidos = exigidosArquitetos(totalColaboradores);
+      return {
+        tipo,
+        nome,
+        areasAssociadas,
+        totalColaboradores,
+        arquitetos,
+        exigidos,
+        defice: Math.max(0, exigidos - arquitetos),
+        excesso: Math.max(0, arquitetos - exigidos),
+      };
     };
 
-    return [...porGrupo('area', (r) => r.areaNome), ...porGrupo('nucleo', (r) => r.nucleoNome)].sort(
-      (a, b) => b.defice - a.defice,
-    );
+    const linhasArea = Array.from(porArea.entries()).map(([nome, itens]) => calcularLinha('area', nome, itens, []));
+
+    const linhasNucleo = Array.from(areasPorNucleo.entries()).map(([nome, areas]) => {
+      const porColaboradorId = new Map<number, ResumoColaboradorDashboard>();
+      for (const areaNome of areas) {
+        for (const r of porArea.get(areaNome) ?? []) {
+          porColaboradorId.set(r.colaboradorId, r);
+        }
+      }
+      return calcularLinha('nucleo', nome, Array.from(porColaboradorId.values()), [...areas].sort());
+    });
+
+    return [...linhasArea, ...linhasNucleo].sort((a, b) => b.defice - a.defice);
   }
 
   private async avaliarLobParaColaborador(

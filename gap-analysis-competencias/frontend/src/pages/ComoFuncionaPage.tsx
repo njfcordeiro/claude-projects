@@ -274,7 +274,7 @@ const REGRAS = [
     icone: Building2,
     titulo: 'Cobertura de Arquitetos por Área/Núcleo',
     texto:
-      'Regra de dimensionamento pedida para o quadro "Cobertura de Arquitetos" no Dashboard: cada Área/Núcleo precisa de Arquitetos proporcionalmente à sua dimensão. Áreas/Núcleos pequenos não entram em défice — assume-se que são cobertos por Arquitetos de outras áreas ("apoio transversal"). Quando uma Área/Núcleo está em défice, os seus colaboradores passam à frente na lista de Candidatos à carreira de Arquiteto, antes do critério de gap/prontidão.',
+      'Regra de dimensionamento pedida para o quadro "Cobertura de Arquitetos" no Dashboard: cada Área/Núcleo precisa de Arquitetos proporcionalmente à sua dimensão. Áreas/Núcleos pequenos não entram em défice — assume-se que são cobertos por Arquitetos de outras áreas ("apoio transversal"). O total de colaboradores de um Núcleo cruza a tabela "Áreas por Núcleo" com a de Colaboradores: é a soma dos colaboradores de todas as Áreas associadas a esse Núcleo (um Núcleo sem nenhuma Área associada não aparece no quadro). Quando uma Área/Núcleo está em défice, os seus colaboradores passam à frente na lista de Candidatos à carreira de Arquiteto, antes do critério de gap/prontidão.',
     formula:
       'exigidos = 0 se colaboradores < 10, senão max(1, arredondar para cima de colaboradores/10) · défice = max(0, exigidos − arquitetos)',
   },
