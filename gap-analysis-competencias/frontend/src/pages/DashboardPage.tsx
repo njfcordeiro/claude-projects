@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Lightbulb } from 'lucide-react';
@@ -137,75 +137,72 @@ export function DashboardPage() {
 
       {data.coberturaArquitetos.length > 0 &&
         (() => {
+          interface LinhaCobertura {
+            chave: string;
+            nucleoNome: string | null;
+            area: CoberturaArquitetos;
+          }
+
           const nucleos = data.coberturaArquitetos.filter((c) => c.tipo === 'nucleo');
-          const areasPorNome = new Map(data.coberturaArquitetos.filter((c) => c.tipo === 'area').map((a) => [a.nome, a]));
+          const areas = data.coberturaArquitetos.filter((c) => c.tipo === 'area');
           const areasComNucleo = new Set(nucleos.flatMap((n) => n.areasAssociadas));
-          const areasSemNucleo = data.coberturaArquitetos.filter((c) => c.tipo === 'area' && !areasComNucleo.has(c.nome));
 
-          const grupos: { chave: string; nucleo: CoberturaArquitetos | null; areas: CoberturaArquitetos[] }[] = [
-            ...nucleos.map((n) => ({
-              chave: n.nome,
-              nucleo: n,
-              areas: n.areasAssociadas.map((nome) => areasPorNome.get(nome)).filter((a): a is CoberturaArquitetos => a !== undefined),
-            })),
-            ...(areasSemNucleo.length > 0 ? [{ chave: '__sem-nucleo__', nucleo: null, areas: areasSemNucleo }] : []),
+          const linhas: LinhaCobertura[] = [
+            ...nucleos.flatMap((n) =>
+              n.areasAssociadas
+                .map((areaNome) => areas.find((a) => a.nome === areaNome))
+                .filter((a): a is CoberturaArquitetos => a !== undefined)
+                .map((a) => ({ chave: `${n.nome}::${a.nome}`, nucleoNome: n.nome, area: a })),
+            ),
+            ...areas.filter((a) => !areasComNucleo.has(a.nome)).map((a) => ({ chave: `sem-nucleo::${a.nome}`, nucleoNome: null, area: a })),
           ];
-
-          const estadoBadge = (c: CoberturaArquitetos) =>
-            c.defice > 0 ? (
-              <Badge status="error">Défice de {c.defice}</Badge>
-            ) : c.excesso > 0 ? (
-              <Badge status="info">Excesso de {c.excesso}</Badge>
-            ) : (
-              <Badge status="success">Adequado</Badge>
-            );
 
           return (
             <Card title="Cobertura de Arquitetos por Núcleo/Área">
               <p className="mb-3 text-xs text-fiori-text-secondary">
-                1 Arquiteto por cada 10 colaboradores, mínimo de 1 por área/núcleo com 10 ou mais colaboradores. Áreas/núcleos com
-                menos de 10 contam com apoio transversal (não entram em défice). O total de cada Núcleo é a soma dos colaboradores das
-                Áreas a que está associado (editável em Gestão de Dados → "Áreas por Núcleo") — mostradas indentadas por baixo. Um
-                Núcleo sem nenhuma Área associada não aparece na tabela — ver detalhe em "Como Funciona".
+                1 Arquiteto por cada 10 colaboradores, mínimo de 1 por área com 10 ou mais colaboradores. Áreas com menos de 10
+                contam com apoio transversal (não entram em défice). Uma linha por combinação Núcleo/Área (editável em Gestão de
+                Dados → "Áreas por Núcleo") — os números são sempre os da Área. Áreas sem Núcleo associado mostram "—" — ver
+                detalhe em "Como Funciona".
               </p>
-              <div className="overflow-x-auto rounded border border-fiori-border bg-fiori-surface">
-                <table className="fiori-table">
-                  <thead>
-                    <tr>
-                      <th>Nome</th>
-                      <th>Colaboradores</th>
-                      <th>Arquitetos</th>
-                      <th>Exigidos</th>
-                      <th>Estado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {grupos.map((grupo) => (
-                      <Fragment key={grupo.chave}>
-                        <tr className="bg-fiori-canvas font-semibold text-fiori-text">
-                          <td>
-                            {grupo.nucleo ? grupo.nucleo.nome : 'Sem núcleo associado'}
-                            <span className="ml-1.5 text-xs font-normal text-fiori-text-secondary">— Núcleo</span>
-                          </td>
-                          <td>{grupo.nucleo ? grupo.nucleo.totalColaboradores : <span className="text-fiori-text-secondary">—</span>}</td>
-                          <td>{grupo.nucleo ? grupo.nucleo.arquitetos : <span className="text-fiori-text-secondary">—</span>}</td>
-                          <td>{grupo.nucleo ? grupo.nucleo.exigidos : <span className="text-fiori-text-secondary">—</span>}</td>
-                          <td>{grupo.nucleo ? estadoBadge(grupo.nucleo) : <span className="text-fiori-text-secondary">—</span>}</td>
-                        </tr>
-                        {grupo.areas.map((a) => (
-                          <tr key={`${grupo.chave}-${a.nome}`}>
-                            <td className="border-l-2 border-fiori-border pl-5 text-fiori-text-secondary">{a.nome}</td>
-                            <td>{a.totalColaboradores}</td>
-                            <td>{a.arquitetos}</td>
-                            <td>{a.exigidos}</td>
-                            <td>{estadoBadge(a)}</td>
-                          </tr>
-                        ))}
-                      </Fragment>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DataTable
+                data={linhas}
+                getRowKey={(l) => l.chave}
+                searchPlaceholder="Pesquisar por área ou núcleo…"
+                emptyMessage="Sem áreas/núcleos com colaboradores atribuídos."
+                columns={[
+                  {
+                    key: 'nucleo',
+                    header: 'Núcleo',
+                    render: (l) => l.nucleoNome ?? '—',
+                    sortValue: (l) => l.nucleoNome ?? '',
+                    searchValue: (l) => l.nucleoNome ?? '',
+                  },
+                  { key: 'area', header: 'Área', render: (l) => l.area.nome, sortValue: (l) => l.area.nome },
+                  {
+                    key: 'colaboradores',
+                    header: 'Colaboradores',
+                    render: (l) => l.area.totalColaboradores,
+                    sortValue: (l) => l.area.totalColaboradores,
+                  },
+                  { key: 'arquitetos', header: 'Arquitetos', render: (l) => l.area.arquitetos, sortValue: (l) => l.area.arquitetos },
+                  { key: 'exigidos', header: 'Exigidos', render: (l) => l.area.exigidos, sortValue: (l) => l.area.exigidos },
+                  {
+                    key: 'estado',
+                    header: 'Estado',
+                    render: (l) =>
+                      l.area.defice > 0 ? (
+                        <Badge status="error">Défice de {l.area.defice}</Badge>
+                      ) : l.area.excesso > 0 ? (
+                        <Badge status="info">Excesso de {l.area.excesso}</Badge>
+                      ) : (
+                        <Badge status="success">Adequado</Badge>
+                      ),
+                    sortValue: (l) => l.area.defice - l.area.excesso,
+                    searchValue: (l) => (l.area.defice > 0 ? 'défice' : l.area.excesso > 0 ? 'excesso' : 'adequado'),
+                  },
+                ]}
+              />
             </Card>
           );
         })()}
