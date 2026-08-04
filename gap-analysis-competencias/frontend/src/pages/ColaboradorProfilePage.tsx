@@ -492,7 +492,7 @@ export function ColaboradorProfilePage() {
           const lobsExibidas = efetivoTodas ? gap.lobs : gap.lobs.filter((l) => l.areaId === colaborador?.areaId);
 
           return (
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_1fr] lg:items-start">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
               <Card
                 title="LOBs"
                 action={

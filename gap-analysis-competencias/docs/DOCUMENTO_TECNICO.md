@@ -166,9 +166,9 @@ sugestões de formação/certificação já existentes.
   reutilizáveis em `src/components/ui/` (`Badge`, `DataTable`, `Card`, `form.tsx`, etc.).
 - **Responsividade**: `SideNav` fixo ≥ `md`, `MobileNavDrawer` (hambúrguer) abaixo disso;
   `DataTable` muda para modo cartão em ecrãs pequenos.
-- **Ficha do colaborador**: o quadro de LOBs (estreito, só nome+%) fica lado a lado com o Detalhe
-  da LOB selecionada (`grid-cols-[320px_1fr]` em ecrãs largos); por omissão mostra só as LOBs da
-  área do colaborador, com um seletor para ver todas.
+- **Ficha do colaborador**: o quadro de LOBs (simplificado, só nome+%) fica lado a lado com o
+  Detalhe da LOB selecionada, cada um a 50% da largura (`grid-cols-2` em ecrãs largos); por
+  omissão mostra só as LOBs da área do colaborador, com um seletor para ver todas.
 - **Routing**: `react-router-dom` 7, rotas protegidas por papel (`ProtectedRoute
   allowedRoles={[...]}`), lista única de navegação partilhada (`navItems.ts`) entre desktop e
   mobile.
