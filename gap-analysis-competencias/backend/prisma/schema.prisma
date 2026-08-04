@@ -119,6 +119,7 @@ model Area {
   lobs          Lob[]
   formacoes     Formacao[]
   colaboradores Colaborador[]
+  nucleos       NucleoArea[]
 
   @@map("areas")
 }
@@ -132,8 +133,26 @@ model Nucleo {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   colaboradores Colaborador[]
+  areas         NucleoArea[]
 
   @@map("nucleos")
+}
+
+// Associação muitos-para-muitos Núcleo↔Área (pedido do utilizador: "associar
+// áreas" a um núcleo) — bridge sem PK própria, mesmo padrão de
+// CargoProgressao. Sem onDelete explícito: o default do Prisma para FK
+// obrigatória é Restrict, por isso eliminar uma Área/Núcleo com associações
+// ativas bloqueia até a associação ser removida primeiro (nunca cascade
+// silencioso — ver nota em Colaborador sobre este mesmo princípio).
+model NucleoArea {
+  nucleoId Int @map("nucleo_id")
+  areaId   Int @map("area_id")
+
+  nucleo Nucleo @relation(fields: [nucleoId], references: [id])
+  area   Area   @relation(fields: [areaId], references: [id])
+
+  @@id([nucleoId, areaId])
+  @@map("nucleo_areas")
 }
 
 model Carreira {

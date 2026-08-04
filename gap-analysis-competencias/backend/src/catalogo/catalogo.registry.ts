@@ -87,6 +87,16 @@ export const CATALOGO_REGISTRY: CatalogoTabelaDef[] = [
     ],
   },
   {
+    tabela: 'nucleo-areas',
+    label: 'Áreas por Núcleo',
+    delegate: 'nucleoArea',
+    identityFields: ['nucleoId', 'areaId'],
+    campos: [
+      campo('nucleoId', 'Núcleo', 'relation', true, { relatedTable: 'nucleos', relationAccessor: 'nucleo' }),
+      campo('areaId', 'Área', 'relation', true, { relatedTable: 'areas', relationAccessor: 'area' }),
+    ],
+  },
+  {
     tabela: 'carreiras',
     label: 'Carreiras',
     delegate: 'carreira',

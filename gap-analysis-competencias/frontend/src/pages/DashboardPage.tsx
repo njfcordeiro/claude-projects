@@ -136,21 +136,68 @@ export function DashboardPage() {
       </Card>
 
       {data.coberturaArquitetos.length > 0 && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Card title="Cobertura de Arquitetos por Área">
-            <p className="mb-3 text-xs text-fiori-text-secondary">
-              1 Arquiteto por cada 10 colaboradores, mínimo de 1 por área com 10 ou mais colaboradores. Áreas com menos de 10 contam com
-              apoio transversal (não entram em défice). Ver detalhe em "Como Funciona".
-            </p>
-            <TabelaCoberturaArquitetos dados={data.coberturaArquitetos.filter((c) => c.tipo === 'area')} />
-          </Card>
-          <Card title="Cobertura de Arquitetos por Núcleo">
-            <p className="mb-3 text-xs text-fiori-text-secondary">
-              Mesma regra, aplicada por núcleo em vez de área — ver detalhe em "Como Funciona".
-            </p>
-            <TabelaCoberturaArquitetos dados={data.coberturaArquitetos.filter((c) => c.tipo === 'nucleo')} />
-          </Card>
-        </div>
+        <Card title="Cobertura de Arquitetos por Área/Núcleo">
+          <p className="mb-3 text-xs text-fiori-text-secondary">
+            1 Arquiteto por cada 10 colaboradores, mínimo de 1 por área/núcleo com 10 ou mais colaboradores. Áreas/núcleos com menos de
+            10 contam com apoio transversal (não entram em défice). Um Núcleo pode estar associado a várias Áreas (editável em Gestão
+            de Dados → "Áreas por Núcleo") — ver detalhe em "Como Funciona".
+          </p>
+          <DataTable
+            data={data.coberturaArquitetos}
+            getRowKey={(c) => `${c.tipo}-${c.nome}`}
+            searchPlaceholder="Pesquisar por área ou núcleo…"
+            emptyMessage="Sem áreas/núcleos com colaboradores atribuídos."
+            columns={[
+              {
+                key: 'tipo',
+                header: 'Tipo',
+                render: (c: CoberturaArquitetos) => (c.tipo === 'area' ? 'Área' : 'Núcleo'),
+                sortValue: (c) => c.tipo,
+                searchValue: (c) => (c.tipo === 'area' ? 'área' : 'núcleo'),
+              },
+              { key: 'nome', header: 'Nome', render: (c) => c.nome, sortValue: (c) => c.nome },
+              {
+                key: 'areas',
+                header: 'Área(s) associadas',
+                render: (c) =>
+                  c.areasAssociadas.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {c.areasAssociadas.map((a) => (
+                        <span key={a} className="rounded border border-fiori-border bg-fiori-canvas px-1.5 py-0.5 text-xs text-fiori-text-secondary">
+                          {a}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    '—'
+                  ),
+                searchValue: (c) => c.areasAssociadas.join(' '),
+              },
+              {
+                key: 'colaboradores',
+                header: 'Colaboradores',
+                render: (c) => c.totalColaboradores,
+                sortValue: (c) => c.totalColaboradores,
+              },
+              { key: 'arquitetos', header: 'Arquitetos', render: (c) => c.arquitetos, sortValue: (c) => c.arquitetos },
+              { key: 'exigidos', header: 'Exigidos', render: (c) => c.exigidos, sortValue: (c) => c.exigidos },
+              {
+                key: 'estado',
+                header: 'Estado',
+                render: (c) =>
+                  c.defice > 0 ? (
+                    <Badge status="error">Défice de {c.defice}</Badge>
+                  ) : c.excesso > 0 ? (
+                    <Badge status="info">Excesso de {c.excesso}</Badge>
+                  ) : (
+                    <Badge status="success">Adequado</Badge>
+                  ),
+                sortValue: (c) => c.defice - c.excesso,
+                searchValue: (c) => (c.defice > 0 ? 'défice' : c.excesso > 0 ? 'excesso' : 'adequado'),
+              },
+            ]}
+          />
+        </Card>
       )}
 
       <Card title="Colaboradores">
@@ -196,36 +243,5 @@ export function DashboardPage() {
         />
       </Card>
     </div>
-  );
-}
-
-function TabelaCoberturaArquitetos({ dados }: { dados: CoberturaArquitetos[] }) {
-  return (
-    <DataTable
-      data={dados}
-      getRowKey={(c) => c.nome}
-      searchPlaceholder="Pesquisar…"
-      emptyMessage="Sem dados para mostrar."
-      columns={[
-        { key: 'nome', header: 'Nome', render: (c) => c.nome, sortValue: (c) => c.nome },
-        { key: 'colaboradores', header: 'Colaboradores', render: (c) => c.totalColaboradores, sortValue: (c) => c.totalColaboradores },
-        { key: 'arquitetos', header: 'Arquitetos', render: (c) => c.arquitetos, sortValue: (c) => c.arquitetos },
-        { key: 'exigidos', header: 'Exigidos', render: (c) => c.exigidos, sortValue: (c) => c.exigidos },
-        {
-          key: 'estado',
-          header: 'Estado',
-          render: (c) =>
-            c.defice > 0 ? (
-              <Badge status="error">Défice de {c.defice}</Badge>
-            ) : c.excesso > 0 ? (
-              <Badge status="info">Excesso de {c.excesso}</Badge>
-            ) : (
-              <Badge status="success">Adequado</Badge>
-            ),
-          sortValue: (c) => c.defice - c.excesso,
-          searchValue: (c) => (c.defice > 0 ? 'défice' : c.excesso > 0 ? 'excesso' : 'adequado'),
-        },
-      ]}
-    />
   );
 }

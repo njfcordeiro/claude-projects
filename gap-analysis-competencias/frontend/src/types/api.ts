@@ -212,6 +212,8 @@ export interface ResumoGrupoDashboard {
 export interface CoberturaArquitetos {
   tipo: 'area' | 'nucleo';
   nome: string;
+  /** Só preenchido para tipo 'nucleo' — nomes das Áreas associadas a este Núcleo. */
+  areasAssociadas: string[];
   totalColaboradores: number;
   arquitetos: number;
   exigidos: number;

@@ -180,7 +180,7 @@ export class GapAnalysisService {
     const porCargo = this.agruparPorCampo(resumos, (r) => r.cargoNome);
     const porCarreira = this.agruparPorCampo(resumos, (r) => r.carreiraNome ?? 'Sem carreira');
     const carreiraArquiteto = await this.resolverCarreiraArquiteto();
-    const coberturaArquitetos = this.calcularCoberturaArquitetosDeResumos(resumos, carreiraArquiteto?.id ?? null);
+    const coberturaArquitetos = await this.calcularCoberturaArquitetosDeResumos(resumos, carreiraArquiteto?.id ?? null);
     const colaboradoresEmRiscoFuga = await this.calcularRiscoFuga(resumos);
 
     return {
@@ -319,7 +319,7 @@ export class GapAnalysisService {
           ? { managerId: user.colaboradorId ?? -1, cargoId: { not: null } }
           : { cargoId: { not: null } };
       const { resumos: resumosOrg } = await this.calcularResumos(whereOrg);
-      const cobertura = this.calcularCoberturaArquitetosDeResumos(resumosOrg, carreiraArquiteto.id);
+      const cobertura = await this.calcularCoberturaArquitetosDeResumos(resumosOrg, carreiraArquiteto.id);
       const areasDeficit = new Set(cobertura.filter((c) => c.tipo === 'area' && c.defice > 0).map((c) => c.nome));
       const nucleosDeficit = new Set(cobertura.filter((c) => c.tipo === 'nucleo' && c.defice > 0).map((c) => c.nome));
       const emDefice = (r: (typeof candidatos)[number]) =>
@@ -560,17 +560,29 @@ export class GapAnalysisService {
   }
 
   /**
-   * Cobertura de Arquitetos por Área e por Núcleo — ver regras junto a
-   * `exigidosArquitetos`. Colaboradores sem área/núcleo atribuído ficam de
-   * fora desta cobertura (não há grupo "Sem área/núcleo" aqui, ao
-   * contrário de `agruparPorCampo`, porque não faz sentido pedir um
-   * Arquiteto para "nenhures").
+   * Cobertura de Arquitetos por Área e por Núcleo, numa tabela só (pedido
+   * do utilizador — ver regras junto a `exigidosArquitetos`). Colaboradores
+   * sem área/núcleo atribuído ficam de fora desta cobertura (não há grupo
+   * "Sem área/núcleo" aqui, ao contrário de `agruparPorCampo`, porque não
+   * faz sentido pedir um Arquiteto para "nenhures"). Cada linha de Núcleo
+   * traz as Áreas a que está associado (tabela nucleo_areas) só como
+   * contexto — essa associação não influencia o cálculo, que continua a
+   * usar Colaborador.areaId/nucleoId diretamente.
    */
-  private calcularCoberturaArquitetosDeResumos(
+  private async calcularCoberturaArquitetosDeResumos(
     resumos: ResumoColaboradorDashboard[],
     carreiraArquitetoId: string | null,
-  ): CoberturaArquitetos[] {
+  ): Promise<CoberturaArquitetos[]> {
     const ehArquiteto = (r: ResumoColaboradorDashboard) => carreiraArquitetoId !== null && r.carreiraId === carreiraArquitetoId;
+
+    const associacoes = await this.prisma.nucleoArea.findMany({
+      include: { nucleo: { select: { nome: true } }, area: { select: { nome: true } } },
+    });
+    const areasPorNucleo = new Map<string, string[]>();
+    for (const a of associacoes) {
+      if (!areasPorNucleo.has(a.nucleo.nome)) areasPorNucleo.set(a.nucleo.nome, []);
+      areasPorNucleo.get(a.nucleo.nome)!.push(a.area.nome);
+    }
 
     const porGrupo = (tipo: 'area' | 'nucleo', chave: (r: ResumoColaboradorDashboard) => string | null): CoberturaArquitetos[] => {
       const grupos = new Map<string, ResumoColaboradorDashboard[]>();
@@ -587,6 +599,7 @@ export class GapAnalysisService {
         return {
           tipo,
           nome,
+          areasAssociadas: tipo === 'nucleo' ? (areasPorNucleo.get(nome) ?? []).sort() : [],
           totalColaboradores,
           arquitetos,
           exigidos,
