@@ -21,6 +21,17 @@ function ehRelevante(c: ColaboradorResumo): boolean {
   return c.direcaoRelevante || c.areaRelevante || c.nucleoRelevante;
 }
 
+/** Opções de filtro derivadas dos próprios colaboradores (só o que existe realmente aparece), ordenadas por nome. */
+function opcoesDistintas(pares: [id: number | string | null, nome: string | null][]): { id: string; nome: string }[] {
+  const mapa = new Map<string, string>();
+  for (const [id, nome] of pares) {
+    if (id != null && nome != null) mapa.set(String(id), nome);
+  }
+  return Array.from(mapa.entries())
+    .map(([id, nome]) => ({ id, nome }))
+    .sort((a, b) => a.nome.localeCompare(b.nome));
+}
+
 function construirColunas(
   eliminar: (id: number) => void,
   editar: (c: ColaboradorResumo) => void,
@@ -118,6 +129,10 @@ export function ColaboradoresListPage() {
   const [filtro, setFiltro] = useState<FiltroRelevancia>('todos');
   const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>('todos');
   const [agrupamento, setAgrupamento] = useState<Agrupamento>('nenhum');
+  const [filtroDirecaoId, setFiltroDirecaoId] = useState('');
+  const [filtroAreaId, setFiltroAreaId] = useState('');
+  const [filtroNucleoId, setFiltroNucleoId] = useState('');
+  const [filtroCargoId, setFiltroCargoId] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const eliminar = useMutation({
@@ -142,14 +157,23 @@ export function ColaboradoresListPage() {
     if (file) importar.mutate(file);
   }
 
+  const opcoesDirecao = useMemo(() => opcoesDistintas((data ?? []).map((c) => [c.direcaoId, c.direcaoNome])), [data]);
+  const opcoesArea = useMemo(() => opcoesDistintas((data ?? []).map((c) => [c.areaId, c.areaNome])), [data]);
+  const opcoesNucleo = useMemo(() => opcoesDistintas((data ?? []).map((c) => [c.nucleoId, c.nucleoNome])), [data]);
+  const opcoesCargo = useMemo(() => opcoesDistintas((data ?? []).map((c) => [c.cargoId, c.cargoNome])), [data]);
+
   const dadosFiltrados = useMemo(() => {
     let base = data ?? [];
     if (filtro === 'relevantes') base = base.filter(ehRelevante);
     else if (filtro === 'outros') base = base.filter((c) => !ehRelevante(c));
     if (filtroEstado === 'ativos') base = base.filter((c) => c.ativo);
     else if (filtroEstado === 'inativos') base = base.filter((c) => !c.ativo);
+    if (filtroDirecaoId) base = base.filter((c) => String(c.direcaoId) === filtroDirecaoId);
+    if (filtroAreaId) base = base.filter((c) => String(c.areaId) === filtroAreaId);
+    if (filtroNucleoId) base = base.filter((c) => String(c.nucleoId) === filtroNucleoId);
+    if (filtroCargoId) base = base.filter((c) => c.cargoId === filtroCargoId);
     return base;
-  }, [data, filtro, filtroEstado]);
+  }, [data, filtro, filtroEstado, filtroDirecaoId, filtroAreaId, filtroNucleoId, filtroCargoId]);
 
   const grupos = useMemo(() => {
     if (agrupamento === 'nenhum') return null;
@@ -266,6 +290,50 @@ export function ColaboradoresListPage() {
                 </button>
               ))}
             </div>
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-fiori-text-secondary">Direção</p>
+            <Select value={filtroDirecaoId} onChange={(e) => setFiltroDirecaoId(e.target.value)} className="w-auto">
+              <option value="">Todas</option>
+              {opcoesDirecao.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.nome}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-fiori-text-secondary">Área</p>
+            <Select value={filtroAreaId} onChange={(e) => setFiltroAreaId(e.target.value)} className="w-auto">
+              <option value="">Todas</option>
+              {opcoesArea.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.nome}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-fiori-text-secondary">Núcleo</p>
+            <Select value={filtroNucleoId} onChange={(e) => setFiltroNucleoId(e.target.value)} className="w-auto">
+              <option value="">Todos</option>
+              {opcoesNucleo.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.nome}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-fiori-text-secondary">Cargo</p>
+            <Select value={filtroCargoId} onChange={(e) => setFiltroCargoId(e.target.value)} className="w-auto">
+              <option value="">Todos</option>
+              {opcoesCargo.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.nome}
+                </option>
+              ))}
+            </Select>
           </div>
         </div>
       </Card>
