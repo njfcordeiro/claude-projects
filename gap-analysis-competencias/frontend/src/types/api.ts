@@ -223,7 +223,8 @@ export interface ResumoGapLob {
   pontosMinimos: number;
   prontidaoPercentual: number;
   atingido: boolean;
-  competenciasObrigatoriasCumpridas: boolean;
+  competenciasObrigatoriasTotal: number;
+  competenciasObrigatoriasEmFalta: number;
   pontosMinimosCumpridos: boolean;
   certificacoesObrigatoriasTotal: number;
   certificacoesObrigatoriasEmFalta: number;

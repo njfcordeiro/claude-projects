@@ -533,6 +533,44 @@ export function ColaboradorProfilePage() {
                       sortValue: (l) => l.lobNome,
                     },
                     {
+                      key: 'competencias',
+                      header: 'Competências obrig.',
+                      render: (l) =>
+                        l.competenciasObrigatoriasTotal === 0 ? (
+                          <span className="text-xs text-fiori-text-secondary">Sem obrigatórias</span>
+                        ) : (
+                          <span className={`text-xs tabular-nums ${l.competenciasObrigatoriasEmFalta === 0 ? 'text-fiori-success' : 'text-fiori-error'}`}>
+                            {l.competenciasObrigatoriasTotal - l.competenciasObrigatoriasEmFalta}/{l.competenciasObrigatoriasTotal}
+                          </span>
+                        ),
+                      sortValue: (l) => l.competenciasObrigatoriasEmFalta,
+                      searchValue: (l) => (l.competenciasObrigatoriasEmFalta > 0 ? 'em falta' : 'obrigatórias cumpridas'),
+                    },
+                    {
+                      key: 'pontos',
+                      header: 'Pontos',
+                      render: (l) => (
+                        <span className={`text-xs tabular-nums ${l.pontosMinimosCumpridos ? 'text-fiori-success' : 'text-fiori-error'}`}>
+                          {l.pontosObtidos}/{l.pontosMinimos}
+                        </span>
+                      ),
+                      sortValue: (l) => l.pontosObtidos - l.pontosMinimos,
+                    },
+                    {
+                      key: 'certificacoes',
+                      header: 'Certificações obrig.',
+                      render: (l) =>
+                        l.certificacoesObrigatoriasTotal === 0 ? (
+                          <span className="text-xs text-fiori-text-secondary">Sem obrigatórias</span>
+                        ) : (
+                          <span className={`text-xs tabular-nums ${l.certificacoesObrigatoriasEmFalta === 0 ? 'text-fiori-success' : 'text-fiori-error'}`}>
+                            {l.certificacoesObrigatoriasTotal - l.certificacoesObrigatoriasEmFalta}/{l.certificacoesObrigatoriasTotal}
+                          </span>
+                        ),
+                      sortValue: (l) => l.certificacoesObrigatoriasEmFalta,
+                      searchValue: (l) => (l.certificacoesObrigatoriasEmFalta > 0 ? 'em falta' : 'obrigatórias cumpridas'),
+                    },
+                    {
                       key: 'total',
                       header: 'Total',
                       render: (l) => (
