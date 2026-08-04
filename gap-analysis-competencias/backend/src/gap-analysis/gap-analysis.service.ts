@@ -162,6 +162,7 @@ export class GapAnalysisService {
         : { cargoId: { not: null } };
 
     const { resumos, competenciasCriticas } = await this.calcularResumos(where);
+    const alertasGestorInativo = await this.detectarGestoresInativosComEquipaAtiva();
 
     if (resumos.length === 0) {
       return {
@@ -177,7 +178,7 @@ export class GapAnalysisService {
         porLocalTrabalho: [],
         coberturaArquitetos: [],
         colaboradores: [],
-        insights: [],
+        insights: alertasGestorInativo,
         competenciasCriticas: [],
         colaboradoresEmRiscoFuga: [],
       };
@@ -207,7 +208,7 @@ export class GapAnalysisService {
       porLocalTrabalho,
       coberturaArquitetos,
       colaboradores: [...resumos].sort((a, b) => a.prontidaoMedia - b.prontidaoMedia),
-      insights: this.gerarInsights(resumos, porDirecao, porArea, competenciasCriticas, colaboradoresEmRiscoFuga),
+      insights: [...alertasGestorInativo, ...this.gerarInsights(resumos, porDirecao, porArea, competenciasCriticas, colaboradoresEmRiscoFuga)],
       competenciasCriticas,
       colaboradoresEmRiscoFuga,
     };
@@ -225,6 +226,7 @@ export class GapAnalysisService {
 
     const where: Prisma.ColaboradorWhereInput = {
       cargoId: { not: null },
+      ativo: true,
       ...(user.role === PapelUtilizador.MANAGER ? { managerId: user.colaboradorId ?? -1 } : {}),
       ...(filtros.direcaoId ? { direcaoId: filtros.direcaoId } : {}),
       ...(filtros.areaId ? { areaId: filtros.areaId } : {}),
@@ -590,11 +592,19 @@ export class GapAnalysisService {
    * ver nota em `sugerirCandidatosCarreira` sobre porque isto não depende
    * do cargo-alvo.
    */
+  /**
+   * Colaboradores inativos são sempre excluídos daqui, independentemente do
+   * `where` recebido — este é o método partilhado por obterDashboard,
+   * sugerirCandidatosCarreira e calcularRiscoFuga/Cobertura de Arquitetos
+   * (que recebem os resumos já filtrados), por isso um único ponto garante
+   * que "não são considerados para análise" em todo o lado. Ver pedido do
+   * utilizador.
+   */
   private async calcularResumos(
     where: Prisma.ColaboradorWhereInput,
   ): Promise<{ resumos: ResumoColaboradorDashboard[]; competenciasCriticas: CompetenciaCritica[] }> {
     const colaboradores = await this.prisma.colaborador.findMany({
-      where,
+      where: { ...where, ativo: true },
       select: {
         id: true,
         nome: true,
@@ -732,6 +742,26 @@ export class GapAnalysisService {
     }
 
     return risco.sort((a, b) => b.prontidaoMedia - a.prontidaoMedia);
+  }
+
+  /**
+   * Alerta pedido pelo utilizador: "dar alertas se o colaborador inativo
+   * está associado a outros colaboradores" — deteta colaboradores
+   * inativos que continuam definidos como managerId de gente ainda ativa
+   * (situação que a eliminação normal não cria, já que managerId fica a
+   * null nesse caso — isto só acontece quando alguém é desativado sem ser
+   * eliminado, e as suas equipas não foram reatribuídas). Org-wide,
+   * independente do papel de quem vê o Dashboard.
+   */
+  private async detectarGestoresInativosComEquipaAtiva(): Promise<string[]> {
+    const gestoresInativos = await this.prisma.colaborador.findMany({
+      where: { ativo: false, subordinados: { some: { ativo: true } } },
+      select: { nome: true, subordinados: { where: { ativo: true }, select: { nome: true } } },
+    });
+    return gestoresInativos.map((g) => {
+      const n = g.subordinados.length;
+      return `"${g.nome}" está inativo mas continua definido como gestor de ${n} colaborador${n === 1 ? '' : 'es'} ativo${n === 1 ? '' : 's'}: ${g.subordinados.map((s) => s.nome).join(', ')}.`;
+    });
   }
 
   /** Frases de insight geradas a partir dos agregados já calculados — nunca inventa números, só lê o que já foi computado. */

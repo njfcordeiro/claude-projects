@@ -351,10 +351,11 @@ const TABELAS: TabelaModelo[] = [
       { nome: 'nome', tipo: 'String' },
       { nome: 'carreiraId / categoriaId / cargoId', tipo: 'String?', nota: '→ Carreira / Categoria / Cargo, onDelete Restrict' },
       { nome: 'direcaoId / nucleoId / areaId', tipo: 'Int?', nota: '→ Direcao / Nucleo / Area, onDelete Restrict' },
-      { nome: 'managerId', tipo: 'Int?', nota: '→ Colaborador (auto-relação), onDelete Restrict' },
+      { nome: 'managerId', tipo: 'Int?', nota: '→ Colaborador (auto-relação), onDelete SetNull — eliminar o gestor não bloqueia, os subordinados ficam sem gestor' },
       { nome: 'proximaLobId', tipo: 'Int?', nota: '→ Lob, onDelete Restrict — "Próxima LOB" visada pelo colaborador' },
       { nome: 'nivelGestaoId', tipo: 'Int?', nota: '→ NivelGestao, onDelete Restrict' },
       { nome: 'localTrabalhoId', tipo: 'Int?', nota: '→ LocalTrabalho, onDelete Restrict' },
+      { nome: 'ativo', tipo: 'Boolean', nota: 'default true — inativos excluídos de toda a análise agregada (Dashboard, Skill Matrix, Candidatos)' },
       { nome: 'eBum', tipo: 'Boolean', nota: 'default false' },
       { nome: 'dataAdmissao', tipo: 'Date?' },
       { nome: 'createdBy / updatedBy', tipo: 'Int?' },
@@ -363,12 +364,12 @@ const TABELAS: TabelaModelo[] = [
     ],
     relacoes: [
       'Entidade central — aponta para toda a Organização (Carreira/Categoria/Cargo/Direção/Núcleo/Área), para a Lob (proximaLobId), NivelGestao e LocalTrabalho',
-      '1—1 User (opcional), 1—N subordinados (auto-relação managerId)',
-      '1—N ColaboradorCompetencia, ColaboradorCertificacao, ColaboradorLobRecomendacao, PdiItem',
+      '1—1 User (opcional, onDelete SetNull — eliminar o colaborador não elimina a conta, só desliga a ligação), 1—N subordinados (auto-relação managerId)',
+      '1—N ColaboradorCompetencia, ColaboradorCertificacao, ColaboradorLobRecomendacao, PdiItem — todas com onDelete Cascade (pertencem ao colaborador, desaparecem com ele)',
     ],
     visibilidade: 'total',
     visibilidadeTexto:
-      'Ecrã Colaboradores: criar, editar (todos os campos, com locking otimista por version) e eliminar num modal a partir da lista, upload/download Excel. A ficha do colaborador também permite editar dataAdmissao/proximaLobId/nivelGestaoId/localTrabalhoId diretamente (ADMIN_RH) — "Anos de experiência" é calculado dinamicamente a partir de dataAdmissao, nunca guardado. createdBy/updatedBy nunca aparecem na UI.',
+      'Ecrã Colaboradores: criar, editar (todos os campos, com locking otimista por version) e eliminar num modal a partir da lista, upload/download Excel — eliminar é sempre possível, independentemente de dados associados (ver onDelete acima). A ficha do colaborador também permite editar dataAdmissao/proximaLobId/nivelGestaoId/localTrabalhoId/ativo diretamente (ADMIN_RH) — "Anos de experiência" é calculado dinamicamente a partir de dataAdmissao, nunca guardado. createdBy/updatedBy nunca aparecem na UI.',
   },
 
   // --- Avaliações ------------------------------------------------------------

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsInt, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsDateString, IsInt, IsOptional, IsString } from 'class-validator';
 
 /** Igual a UpdateColaboradorDto, mas `id`/`nome` são obrigatórios (não há autoincrement — `id` replica o "ID Colaborador" do Excel) e sem `version` (não existe ainda). */
 export class CreateColaboradorDto {
@@ -65,4 +65,9 @@ export class CreateColaboradorDto {
   @IsOptional()
   @IsDateString()
   dataAdmissao?: string;
+
+  @ApiPropertyOptional({ description: 'Default true — colaboradores inativos são excluídos de toda a análise agregada.' })
+  @IsOptional()
+  @IsBoolean()
+  ativo?: boolean;
 }

@@ -408,12 +408,11 @@ model User {
   updatedAt     DateTime        @updatedAt @map("updated_at")
   lastLoginAt   DateTime?       @map("last_login_at")
 
-  // onDelete: Restrict (explícito) — sem isto, o default do Prisma para FK
-  // opcional é SET NULL, que deixaria eliminar um Colaborador com conta
-  // associada e simplesmente desligar a conta em silêncio. Ver pedido do
-  // utilizador: eliminar um registo em uso noutro lado tem de bloquear com
-  // aviso, nunca orfanar dados silenciosamente.
-  colaborador Colaborador? @relation(fields: [colaboradorId], references: [id], onDelete: Restrict)
+  // onDelete: SetNull — pedido do utilizador: eliminar um Colaborador tem de
+  // ser sempre possível independentemente de estar associado a outros
+  // dados; se o id estiver referenciado noutro lado (aqui, a conta de
+  // utilizador), essa referência é limpa em vez de bloquear a eliminação.
+  colaborador Colaborador? @relation(fields: [colaboradorId], references: [id], onDelete: SetNull)
 
   avaliacoesFeitas ColaboradorCompetencia[] @relation("Avaliador")
   gapAnalysisRuns  GapAnalysisRun[]
@@ -441,6 +440,10 @@ model Colaborador {
   nivelGestaoId   Int?      @map("nivel_gestao_id")
   // Local de trabalho do colaborador — pedido do utilizador.
   localTrabalhoId Int?      @map("local_trabalho_id")
+  // Colaboradores inativos são excluídos de toda a análise agregada
+  // (Dashboard, Skill Matrix, Candidatos, Cobertura, Risco de Fuga) — ver
+  // GapAnalysisService.calcularResumos/obterSkillMatrix. Pedido do utilizador.
+  ativo           Boolean   @default(true)
   eBum            Boolean   @default(false) @map("e_bum")
   dataAdmissao    DateTime? @map("data_admissao") @db.Date
   createdAt       DateTime  @default(now()) @map("created_at")
@@ -455,10 +458,14 @@ model Colaborador {
   // docs/02-arquitetura-tecnica.md secção 4.5.
   version         Int       @default(0)
 
-  // onDelete: Restrict em todas — sem isto, o default do Prisma para FK
-  // opcional é SET NULL, que deixaria eliminar (ex.) uma Direção com
-  // colaboradores atribuídos e simplesmente desligar essa atribuição em
-  // silêncio, sem aviso nenhum. Ver pedido do utilizador.
+  // onDelete: Restrict — este é o lado "de saída" de Colaborador para o
+  // catálogo/organização (ex. Direção deste colaborador): eliminar uma
+  // Direção com colaboradores atribuídos continua bloqueado, para não
+  // desligar essa atribuição em silêncio. Diferente do lado "de entrada"
+  // (outras tabelas apontando PARA este colaborador, ver managerId abaixo e
+  // os modelos ColaboradorCompetencia/Certificacao/... mais abaixo), onde o
+  // pedido do utilizador é o oposto: eliminar o colaborador tem de resultar
+  // sempre em sucesso, limpando ou apagando em cascata o que lhe aponta.
   carreira      Carreira?      @relation(fields: [carreiraId], references: [id], onDelete: Restrict)
   categoria     Categoria?     @relation(fields: [categoriaId], references: [id], onDelete: Restrict)
   cargo         Cargo?         @relation(fields: [cargoId], references: [id], onDelete: Restrict)
@@ -469,11 +476,19 @@ model Colaborador {
   nivelGestao   NivelGestao?   @relation(fields: [nivelGestaoId], references: [id], onDelete: Restrict)
   localTrabalho LocalTrabalho? @relation(fields: [localTrabalhoId], references: [id], onDelete: Restrict)
 
-  gestor       Colaborador?  @relation("Gestao", fields: [managerId], references: [id], onDelete: Restrict)
+  // SetNull: eliminar o gestor não pode bloquear a eliminação — os
+  // subordinados ficam sem gestor definido (ver alerta em
+  // GapAnalysisService caso o gestor ainda ativo tivesse sido só desativado
+  // em vez de eliminado).
+  gestor       Colaborador?  @relation("Gestao", fields: [managerId], references: [id], onDelete: SetNull)
   subordinados Colaborador[] @relation("Gestao")
 
   user User?
 
+  // Cascade: estes registos pertencem ao colaborador (histórico de
+  // avaliações, certificações, recomendações, PDI, snapshots) — não fazem
+  // sentido órfãos, por isso desaparecem com ele em vez de bloquear a
+  // eliminação.
   competencias     ColaboradorCompetencia[]
   certificacoes    ColaboradorCertificacao[]
   lobRecomendacoes ColaboradorLobRecomendacao[]
@@ -504,7 +519,7 @@ model ColaboradorCompetencia {
   origem        OrigemAvaliacao
   createdAt     DateTime        @default(now()) @map("created_at")
 
-  colaborador Colaborador @relation(fields: [colaboradorId], references: [id])
+  colaborador Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
   competencia Competencia @relation(fields: [competenciaId], references: [id])
   nivel       Nivel       @relation(fields: [nivelId], references: [id])
   avaliador   User?       @relation("Avaliador", fields: [avaliadoPor], references: [id])
@@ -525,7 +540,7 @@ model ColaboradorCertificacao {
   // Locking otimista (NOVO) — ver nota em Colaborador.version.
   version        Int       @default(0)
 
-  colaborador  Colaborador  @relation(fields: [colaboradorId], references: [id])
+  colaborador  Colaborador  @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
   certificacao Certificacao @relation(fields: [certificacaoId], references: [id])
 
   @@unique([colaboradorId, certificacaoId])
@@ -541,7 +556,7 @@ model ColaboradorLobRecomendacao {
   auto          Boolean  @default(false)
   createdAt     DateTime @default(now()) @map("created_at")
 
-  colaborador Colaborador @relation(fields: [colaboradorId], references: [id])
+  colaborador Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
   lob         Lob         @relation(fields: [lobId], references: [id])
 
   @@unique([colaboradorId, lobId])
@@ -569,7 +584,7 @@ model PdiItem {
   createdBy      Int?      @map("created_by")
   updatedBy      Int?      @map("updated_by")
 
-  colaborador  Colaborador   @relation(fields: [colaboradorId], references: [id])
+  colaborador  Colaborador   @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
   // onDelete: Restrict (ver nota em Colaborador acima) — evita apagar uma
   // Competência/Certificação/Formação em uso num PDI sem aviso.
   competencia  Competencia?  @relation(fields: [competenciaId], references: [id], onDelete: Restrict)
@@ -617,7 +632,7 @@ model GapAnalysisLobResult {
   obrigatoriosEmFalta Int     @map("obrigatorios_em_falta")
 
   run         GapAnalysisRun @relation(fields: [runId], references: [id])
-  colaborador Colaborador    @relation(fields: [colaboradorId], references: [id])
+  colaborador Colaborador    @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
   lob         Lob            @relation(fields: [lobId], references: [id])
 
   @@index([runId, colaboradorId])
@@ -634,7 +649,7 @@ model GapAnalysisCargoResult {
   gap           Int // lobs_exigidos - lobs_atingidos
 
   run         GapAnalysisRun @relation(fields: [runId], references: [id])
-  colaborador Colaborador    @relation(fields: [colaboradorId], references: [id])
+  colaborador Colaborador    @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
   cargo       Cargo          @relation(fields: [cargoId], references: [id])
 
   @@index([runId, colaboradorId])

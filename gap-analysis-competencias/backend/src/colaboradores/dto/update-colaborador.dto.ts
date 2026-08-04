@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsInt, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsDateString, IsInt, IsOptional, IsString } from 'class-validator';
 
 /** Campos demonstrativos — os módulos seguintes (secção 7 do doc de arquitetura) alargam isto. */
 export class UpdateColaboradorDto {
@@ -62,6 +62,11 @@ export class UpdateColaboradorDto {
   @IsOptional()
   @IsDateString()
   dataAdmissao?: string;
+
+  @ApiPropertyOptional({ description: 'Colaboradores inativos são excluídos de toda a análise agregada (Dashboard, Skill Matrix, Candidatos, ...).' })
+  @IsOptional()
+  @IsBoolean()
+  ativo?: boolean;
 
   @ApiProperty({ description: 'Versão lida pelo cliente antes de editar — locking otimista, ver docs/02-arquitetura-tecnica.md secção 4.5.' })
   @IsInt()

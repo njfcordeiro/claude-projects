@@ -12,7 +12,9 @@ import {
   Sparkles,
   Star,
   Target,
+  Trash2,
   UserCircle,
+  UserX,
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { PrintButton } from '../components/ui/PrintButton';
@@ -285,6 +287,20 @@ const REGRAS = [
     texto:
       'Dois atributos adicionais do colaborador, editáveis na ficha (secção ADMIN_RH): "Nível de Gestão" (ex. BUD, BUM, Team Leader) e "Local de Trabalho". As opções vêm de duas tabelas de catálogo geridas em Gestão de Dados ("Níveis de Gestão" e "Locais de Trabalho") — não são texto livre. Ambos aparecem como colunas na lista de Colaboradores e no Dashboard, e podem ser usados como dimensão de agrupamento no Dashboard e na Skill Matrix.',
     formula: 'colaborador.nivelGestaoId → niveis_gestao · colaborador.localTrabalhoId → locais_trabalho',
+  },
+  {
+    icone: UserX,
+    titulo: 'Colaboradores inativos',
+    texto:
+      'O campo "Estado" (Ativo/Inativo) na ficha do colaborador — pedido do utilizador: colaboradores inativos são excluídos de toda a análise agregada: Dashboard (KPIs, gráfico de prontidão, tabela de colaboradores), Skill Matrix e Candidatos a carreira. Continuam visíveis e geríveis no ecrã de Colaboradores (com filtro "Estado: Todos/Ativos/Inativos"), e a ficha individual de um colaborador inativo continua acessível. Se um colaborador for desativado sem lhe reatribuir a equipa primeiro, um alerta aparece nos Insights automáticos do Dashboard e na própria ficha desse colaborador.',
+    formula: 'calcularResumos/obterSkillMatrix filtram sempre ativo = true, independentemente dos restantes filtros',
+  },
+  {
+    icone: Trash2,
+    titulo: 'Eliminar um colaborador',
+    texto:
+      'Pedido do utilizador: eliminar um colaborador tem de ser sempre possível, independentemente de estar associado a outros dados. Registos que lhe pertencem (avaliações, certificações, recomendações de LOB, PDI) são eliminados em cascata junto com ele. Referências vindas de outro lado ficam a null em vez de bloquear a eliminação: colaboradores que o tinham como gestor ficam sem gestor definido, e a conta de utilizador associada perde a ligação (a conta em si não é eliminada).',
+    formula: 'onDelete: Cascade nos dados do próprio colaborador · onDelete: SetNull nas referências de outros para ele (managerId, users.colaboradorId)',
   },
   {
     icone: Grid3x3,

@@ -25,6 +25,7 @@ const SELECT_RESUMO = {
   nivelGestaoId: true,
   localTrabalhoId: true,
   dataAdmissao: true,
+  ativo: true,
   version: true,
   cargo: { select: { nome: true } },
   direcao: { select: { nome: true, relevante: true } },
@@ -34,6 +35,10 @@ const SELECT_RESUMO = {
   proximaLob: { select: { nome: true } },
   nivelGestao: { select: { nome: true } },
   localTrabalho: { select: { nome: true } },
+  // Só interessa a contagem de subordinados ainda ativos — pedido do
+  // utilizador: alertar quando um colaborador inativo continua definido
+  // como gestor de gente ativa (ver aviso na ficha do colaborador).
+  _count: { select: { subordinados: { where: { ativo: true } } } },
 } satisfies Prisma.ColaboradorSelect;
 
 type ColaboradorComRelacoes = Prisma.ColaboradorGetPayload<{ select: typeof SELECT_RESUMO }>;
@@ -65,6 +70,8 @@ function mapearResumo(c: ColaboradorComRelacoes) {
     localTrabalhoId: c.localTrabalhoId,
     localTrabalhoNome: c.localTrabalho?.nome ?? null,
     dataAdmissao: c.dataAdmissao ? c.dataAdmissao.toISOString().slice(0, 10) : null,
+    ativo: c.ativo,
+    subordinadosAtivos: c._count.subordinados,
     version: c.version,
   };
 }
@@ -82,6 +89,7 @@ const COLUNAS_IMPORT_EXPORT = [
   'managerId',
   'nivelGestaoId',
   'localTrabalhoId',
+  'ativo',
   'eBum',
   'dataAdmissao',
 ] as const;
@@ -134,10 +142,14 @@ export class ColaboradoresService {
   }
 
   /**
-   * Elimina um colaborador. O schema não define `onDelete: Cascade` nas FKs
-   * para Colaborador, por isso o Postgres já rejeita (RESTRICT) eliminar
-   * alguém com subordinados/avaliações/certificações/conta associada —
-   * aqui só traduzimos esse erro para uma mensagem percetível.
+   * Elimina um colaborador — pedido do utilizador: tem de ser sempre
+   * possível, independentemente de estar associado a outros dados. O
+   * schema reflete isto no `onDelete` de cada FK que aponta para
+   * Colaborador (ver comentários em schema.prisma): registos que lhe
+   * pertencem (avaliações, certificações, PDI, recomendações, snapshots)
+   * são apagados em cascata; referências vindas de outro lado (é gestor de
+   * alguém, tem uma conta de utilizador) ficam simplesmente a null. O catch
+   * de P2003 fica como rede de segurança, não deve disparar na prática.
    */
   async eliminar(id: number, autor: AuthenticatedUser) {
     try {
@@ -147,9 +159,7 @@ export class ColaboradoresService {
         throw new NotFoundException(`Colaborador ${id} não encontrado.`);
       }
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
-        throw new ConflictException(
-          `Este colaborador tem dados associados (avaliações, subordinados, conta, etc.) — não pode ser eliminado.`,
-        );
+        throw new ConflictException(`Não foi possível eliminar este colaborador devido a dados associados não previstos.`);
       }
       throw err;
     }
@@ -186,6 +196,7 @@ export class ColaboradoresService {
         managerId: true,
         nivelGestaoId: true,
         localTrabalhoId: true,
+        ativo: true,
         eBum: true,
         dataAdmissao: true,
       },
@@ -366,6 +377,11 @@ export class ColaboradoresService {
     if (bruto.eBum !== undefined && bruto.eBum !== null && bruto.eBum !== '') {
       const texto = String(bruto.eBum).trim().toLowerCase();
       data.eBum = texto === 'true' || texto === '1' || texto === 'sim' || texto === 'x';
+    }
+
+    if (bruto.ativo !== undefined && bruto.ativo !== null && bruto.ativo !== '') {
+      const texto = String(bruto.ativo).trim().toLowerCase();
+      data.ativo = texto === 'true' || texto === '1' || texto === 'sim' || texto === 'x';
     }
 
     if (bruto.dataAdmissao !== undefined && bruto.dataAdmissao !== null && bruto.dataAdmissao !== '') {

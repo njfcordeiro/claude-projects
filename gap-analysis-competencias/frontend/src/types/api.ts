@@ -42,6 +42,10 @@ export interface ColaboradorResumo {
   localTrabalhoNome: string | null;
   /** Formato AAAA-MM-DD, null se não preenchida. */
   dataAdmissao: string | null;
+  /** Inativos são excluídos de toda a análise agregada (Dashboard, Skill Matrix, Candidatos, ...). */
+  ativo: boolean;
+  /** Nº de subordinados diretos ainda ativos — usado para alertar quando este colaborador está inativo mas ainda é gestor de gente ativa. */
+  subordinadosAtivos: number;
   /** Locking otimista — ver docs/02-arquitetura-tecnica.md secção 4.5. */
   version: number;
 }
@@ -60,6 +64,7 @@ export interface CreateColaboradorInput {
   nivelGestaoId?: number;
   localTrabalhoId?: number;
   dataAdmissao?: string;
+  ativo?: boolean;
 }
 
 export interface UpdateColaboradorInput {
@@ -75,6 +80,7 @@ export interface UpdateColaboradorInput {
   proximaLobId?: number | null;
   nivelGestaoId?: number | null;
   localTrabalhoId?: number | null;
+  ativo?: boolean;
   version: number;
 }
 

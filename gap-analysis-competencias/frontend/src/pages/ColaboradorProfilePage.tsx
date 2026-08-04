@@ -1,7 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Pencil } from 'lucide-react';
+import { AlertTriangle, Pencil } from 'lucide-react';
 import { endpoints } from '../api/endpoints';
 import { ApiError } from '../api/client';
 import { useAuth } from '../auth/useAuth';
@@ -215,6 +215,65 @@ function EditarCampoSimplesModal({
   );
 }
 
+/** Editar o Estado (Ativo/Inativo) — inativos são excluídos de toda a análise agregada (Dashboard, Skill Matrix, Candidatos, ...). */
+function EditarAtivoModal({ colaborador, onClose }: { colaborador: ColaboradorResumo; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [ativo, setAtivo] = useState(colaborador.ativo ? 'true' : 'false');
+  const [erro, setErro] = useState<string | null>(null);
+
+  const guardar = useMutation({
+    mutationFn: () => endpoints.atualizarColaborador(colaborador.id, { ativo: ativo === 'true', version: colaborador.version }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['colaborador', colaborador.id] });
+      queryClient.invalidateQueries({ queryKey: ['colaboradores'] });
+      onClose();
+    },
+    onError: (err) =>
+      setErro(
+        err instanceof ApiError && err.status === 409
+          ? 'Este colaborador foi alterado por outra pessoa entretanto — fecha e reabre para ver os dados atuais.'
+          : err instanceof ApiError
+            ? err.message
+            : 'Não foi possível gravar.',
+      ),
+  });
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setErro(null);
+    guardar.mutate();
+  }
+
+  return (
+    <Modal title="Estado do colaborador" onClose={onClose}>
+      <form onSubmit={handleSubmit}>
+        <Field label="Estado">
+          <Select value={ativo} onChange={(e) => setAtivo(e.target.value)} autoFocus>
+            <option value="true">Ativo</option>
+            <option value="false">Inativo</option>
+          </Select>
+        </Field>
+        {ativo === 'false' && colaborador.subordinadosAtivos > 0 && (
+          <p className="mb-3 flex items-start gap-1.5 text-xs text-fiori-warning">
+            <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+            Este colaborador ainda é gestor de {colaborador.subordinadosAtivos} colaborador{colaborador.subordinadosAtivos === 1 ? '' : 'es'} ativo
+            {colaborador.subordinadosAtivos === 1 ? '' : 's'} — considera reatribuir a equipa.
+          </p>
+        )}
+        {erro && <p className="mb-3 text-sm text-fiori-error">{erro}</p>}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={guardar.isPending}>
+            {guardar.isPending ? 'A gravar…' : 'Gravar'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 /**
  * Ficha do colaborador: competências/certificações e % de prontidão para
  * o cargo. Organizado por LOB (não há requisitos de competência "soltos"
@@ -230,6 +289,7 @@ export function ColaboradorProfilePage() {
   const [editarProximaLob, setEditarProximaLob] = useState(false);
   const [editarNivelGestao, setEditarNivelGestao] = useState(false);
   const [editarLocalTrabalho, setEditarLocalTrabalho] = useState(false);
+  const [editarAtivo, setEditarAtivo] = useState(false);
 
   const colaboradorQuery = useQuery({
     queryKey: ['colaborador', colaboradorId],
@@ -273,7 +333,10 @@ export function ColaboradorProfilePage() {
         <div className="flex flex-wrap items-center gap-6">
           {gap && <ProgressRing percentual={prontidaoMedia} label="Prontidão para o cargo" />}
           <div>
-            <h1 className="text-xl font-semibold text-fiori-text">{colaborador?.nome}</h1>
+            <h1 className="flex items-center gap-2 text-xl font-semibold text-fiori-text">
+              {colaborador?.nome}
+              {colaborador && !colaborador.ativo && <Badge status="neutral">Inativo</Badge>}
+            </h1>
             <p className="text-sm text-fiori-text-secondary">
               {gap ? gap.cargoNome : colaborador?.cargoId ?? 'Sem cargo atribuído'}
             </p>
@@ -341,6 +404,19 @@ export function ColaboradorProfilePage() {
                     </button>
                   )}
                 </span>
+                <span className="flex items-center gap-1.5">
+                  Estado: {colaborador.ativo ? 'Ativo' : 'Inativo'}
+                  {user?.role === 'ADMIN_RH' && (
+                    <button
+                      type="button"
+                      onClick={() => setEditarAtivo(true)}
+                      className="no-print text-fiori-text-secondary hover:text-fiori-primary"
+                      title="Editar estado"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                  )}
+                </span>
               </p>
             )}
           </div>
@@ -348,6 +424,13 @@ export function ColaboradorProfilePage() {
         {semCargo && (
           <p className="mt-3 text-sm text-fiori-text-secondary">
             Este colaborador não tem cargo atribuído — não é possível calcular a prontidão para um cargo.
+          </p>
+        )}
+        {colaborador && !colaborador.ativo && colaborador.subordinadosAtivos > 0 && (
+          <p className="mt-3 flex items-start gap-1.5 text-sm text-fiori-warning">
+            <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+            Este colaborador está inativo mas continua definido como gestor de {colaborador.subordinadosAtivos} colaborador
+            {colaborador.subordinadosAtivos === 1 ? '' : 'es'} ativo{colaborador.subordinadosAtivos === 1 ? '' : 's'}.
           </p>
         )}
       </Card>
@@ -376,6 +459,7 @@ export function ColaboradorProfilePage() {
           onClose={() => setEditarLocalTrabalho(false)}
         />
       )}
+      {editarAtivo && colaborador && <EditarAtivoModal colaborador={colaborador} onClose={() => setEditarAtivo(false)} />}
 
       {gap && gap.lobs.length >= 3 && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

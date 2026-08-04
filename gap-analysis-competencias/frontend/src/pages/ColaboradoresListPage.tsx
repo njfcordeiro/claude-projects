@@ -6,6 +6,7 @@ import { endpoints } from '../api/endpoints';
 import { ApiError } from '../api/client';
 import { ColaboradorResumo, CreateColaboradorInput, ResumoImportacao, UpdateColaboradorInput } from '../types/api';
 import { Card } from '../components/ui/Card';
+import { Badge } from '../components/ui/Badge';
 import { DataTable, DataTableColumn } from '../components/ui/DataTable';
 import { Modal } from '../components/ui/Modal';
 import { PrintButton } from '../components/ui/PrintButton';
@@ -13,6 +14,7 @@ import { Button, Field, Input, Select } from '../components/ui/form';
 import { UploadReportModal } from '../components/catalogo/UploadReportModal';
 
 type FiltroRelevancia = 'todos' | 'relevantes' | 'outros';
+type FiltroEstado = 'todos' | 'ativos' | 'inativos';
 type Agrupamento = 'nenhum' | 'direcao' | 'area' | 'nucleo';
 
 function ehRelevante(c: ColaboradorResumo): boolean {
@@ -26,6 +28,13 @@ function construirColunas(
   return [
     { key: 'id', header: 'ID', render: (c) => c.id, sortValue: (c) => c.id },
     { key: 'nome', header: 'Nome', render: (c) => c.nome, sortValue: (c) => c.nome },
+    {
+      key: 'estado',
+      header: 'Estado',
+      render: (c) => (c.ativo ? <Badge status="success">Ativo</Badge> : <Badge status="neutral">Inativo</Badge>),
+      sortValue: (c) => (c.ativo ? 1 : 0),
+      searchValue: (c) => (c.ativo ? 'ativo' : 'inativo'),
+    },
     { key: 'cargo', header: 'Cargo', render: (c) => c.cargoNome ?? '—', sortValue: (c) => c.cargoNome ?? '', searchValue: (c) => c.cargoNome ?? '' },
     { key: 'direcao', header: 'Direção', render: (c) => c.direcaoNome ?? '—', sortValue: (c) => c.direcaoNome ?? '', searchValue: (c) => c.direcaoNome ?? '' },
     { key: 'area', header: 'Área', render: (c) => c.areaNome ?? '—', sortValue: (c) => c.areaNome ?? '', searchValue: (c) => c.areaNome ?? '' },
@@ -107,6 +116,7 @@ export function ColaboradoresListPage() {
   const [colaboradorEmEdicao, setColaboradorEmEdicao] = useState<ColaboradorResumo | null>(null);
   const [relatorioImportacao, setRelatorioImportacao] = useState<ResumoImportacao | null>(null);
   const [filtro, setFiltro] = useState<FiltroRelevancia>('todos');
+  const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>('todos');
   const [agrupamento, setAgrupamento] = useState<Agrupamento>('nenhum');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -133,11 +143,13 @@ export function ColaboradoresListPage() {
   }
 
   const dadosFiltrados = useMemo(() => {
-    const base = data ?? [];
-    if (filtro === 'relevantes') return base.filter(ehRelevante);
-    if (filtro === 'outros') return base.filter((c) => !ehRelevante(c));
+    let base = data ?? [];
+    if (filtro === 'relevantes') base = base.filter(ehRelevante);
+    else if (filtro === 'outros') base = base.filter((c) => !ehRelevante(c));
+    if (filtroEstado === 'ativos') base = base.filter((c) => c.ativo);
+    else if (filtroEstado === 'inativos') base = base.filter((c) => !c.ativo);
     return base;
-  }, [data, filtro]);
+  }, [data, filtro, filtroEstado]);
 
   const grupos = useMemo(() => {
     if (agrupamento === 'nenhum') return null;
@@ -205,6 +217,27 @@ export function ColaboradoresListPage() {
                   onClick={() => setFiltro(valor)}
                   className={`rounded px-2.5 py-1 text-xs font-medium ${
                     filtro === valor ? 'bg-fiori-surface text-fiori-primary shadow-fiori' : 'text-fiori-text-secondary'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-fiori-text-secondary">Estado</p>
+            <div className="flex gap-1 rounded bg-fiori-canvas p-0.5">
+              {([
+                ['todos', 'Todos'],
+                ['ativos', 'Ativos'],
+                ['inativos', 'Inativos'],
+              ] as [FiltroEstado, string][]).map(([valor, label]) => (
+                <button
+                  key={valor}
+                  type="button"
+                  onClick={() => setFiltroEstado(valor)}
+                  className={`rounded px-2.5 py-1 text-xs font-medium ${
+                    filtroEstado === valor ? 'bg-fiori-surface text-fiori-primary shadow-fiori' : 'text-fiori-text-secondary'
                   }`}
                 >
                   {label}
@@ -287,6 +320,8 @@ interface ValoresColaborador {
   nivelGestaoId: string;
   localTrabalhoId: string;
   dataAdmissao: string;
+  /** 'true' | 'false' — string por uniformidade com o resto do formulário, convertido a boolean só no submit. */
+  ativo: string;
 }
 
 const VALORES_VAZIOS: ValoresColaborador = {
@@ -302,6 +337,7 @@ const VALORES_VAZIOS: ValoresColaborador = {
   nivelGestaoId: '',
   localTrabalhoId: '',
   dataAdmissao: '',
+  ativo: 'true',
 };
 
 /** Conjunto de campos partilhado pelos modais de criar/editar colaborador — evita duplicar 9 <Select>/<Input> em cada um. */
@@ -426,6 +462,12 @@ function ColaboradorCamposEditor({
       <Field label="Data de admissão">
         <Input type="date" value={valores.dataAdmissao} onChange={(e) => onChange('dataAdmissao', e.target.value)} />
       </Field>
+      <Field label="Estado">
+        <Select value={valores.ativo} onChange={(e) => onChange('ativo', e.target.value)}>
+          <option value="true">Ativo</option>
+          <option value="false">Inativo</option>
+        </Select>
+      </Field>
     </>
   );
 }
@@ -456,6 +498,7 @@ function CriarColaboradorModal({ onClose }: { onClose: () => void }) {
         nivelGestaoId: valores.nivelGestaoId ? Number(valores.nivelGestaoId) : undefined,
         localTrabalhoId: valores.localTrabalhoId ? Number(valores.localTrabalhoId) : undefined,
         dataAdmissao: valores.dataAdmissao || undefined,
+        ativo: valores.ativo === 'true',
       };
       return endpoints.criarColaborador(dto);
     },
@@ -509,6 +552,7 @@ function EditarColaboradorModal({ colaborador, onClose }: { colaborador: Colabor
     nivelGestaoId: colaborador.nivelGestaoId != null ? String(colaborador.nivelGestaoId) : '',
     localTrabalhoId: colaborador.localTrabalhoId != null ? String(colaborador.localTrabalhoId) : '',
     dataAdmissao: colaborador.dataAdmissao ?? '',
+    ativo: colaborador.ativo ? 'true' : 'false',
   });
   const [erro, setErro] = useState<string | null>(null);
 
@@ -531,6 +575,7 @@ function EditarColaboradorModal({ colaborador, onClose }: { colaborador: Colabor
         nivelGestaoId: valores.nivelGestaoId ? Number(valores.nivelGestaoId) : null,
         localTrabalhoId: valores.localTrabalhoId ? Number(valores.localTrabalhoId) : null,
         dataAdmissao: valores.dataAdmissao || undefined,
+        ativo: valores.ativo === 'true',
         version: colaborador.version,
       };
       return endpoints.atualizarColaborador(colaborador.id, dto);
