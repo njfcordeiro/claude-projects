@@ -235,14 +235,15 @@ export class GapAnalysisService {
         this.buscarCertificacoesEmLote(ids),
         this.prisma.lob.findMany({
           include: {
+            area: true,
             requisitosCompetencia: { include: { competencia: true } },
             requisitosCertificacao: { include: { certificacao: true } },
           },
-          orderBy: { nome: 'asc' },
+          orderBy: [{ area: { nome: 'asc' } }, { nome: 'asc' }],
         }),
       ]);
 
-      const colunas = todasAsLobs.map((l) => ({ id: l.id, nome: l.nome }));
+      const colunas = todasAsLobs.map((l) => ({ id: l.id, nome: l.nome, areaId: l.areaId, areaNome: l.area.nome }));
       const linhas = colaboradores.map((c) => {
         const niveisAtuais = niveisPorColaborador.get(c.id) ?? new Map();
         const certsColaborador = certsPorColaborador.get(c.id) ?? new Map();
@@ -261,9 +262,18 @@ export class GapAnalysisService {
 
     const [niveisPorColaborador, competencias] = await Promise.all([
       this.buscarNiveisAtuaisEmLote(ids),
-      this.prisma.competencia.findMany({ orderBy: { nome: 'asc' } }),
+      this.prisma.competencia.findMany({
+        include: { area: true, lobRequisitos: { select: { lobId: true } } },
+        orderBy: [{ area: { nome: 'asc' } }, { nome: 'asc' }],
+      }),
     ]);
-    const colunas = competencias.map((c) => ({ id: c.id, nome: c.nome }));
+    const colunas = competencias.map((c) => ({
+      id: c.id,
+      nome: c.nome,
+      areaId: c.areaId,
+      areaNome: c.area.nome,
+      lobIds: c.lobRequisitos.map((r) => r.lobId),
+    }));
     const linhas = colaboradores.map((c) => {
       const niveisAtuais = niveisPorColaborador.get(c.id) ?? new Map();
       const valores: Record<string, number> = {};

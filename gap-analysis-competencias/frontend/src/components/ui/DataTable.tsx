@@ -9,6 +9,8 @@ export interface DataTableColumn<T> {
   sortValue?: (row: T) => string | number;
   /** Usado pela pesquisa de texto livre quando `render` não é uma string simples. */
   searchValue?: (row: T) => string;
+  /** Rótulo de agrupamento — colunas consecutivas com o mesmo grupo ganham uma linha de cabeçalho extra com colspan (ex.: LOBs agrupadas por Área). */
+  group?: string;
 }
 
 interface DataTableProps<T> {
@@ -81,6 +83,19 @@ export function DataTable<T>({
   const colunasComLabel = columns.filter((c) => c.header.trim() !== '');
   const colunasSemLabel = columns.filter((c) => c.header.trim() === '');
 
+  // Linha de cabeçalho de grupo (ex.: Área acima das LOBs) — funde colunas
+  // consecutivas com o mesmo `group` num único <th colSpan>.
+  const temGrupos = columns.some((c) => c.group);
+  const gruposDeCabecalho: { label: string; span: number }[] = [];
+  if (temGrupos) {
+    for (const col of columns) {
+      const label = col.group ?? '';
+      const ultimo = gruposDeCabecalho[gruposDeCabecalho.length - 1];
+      if (ultimo && ultimo.label === label) ultimo.span += 1;
+      else gruposDeCabecalho.push({ label, span: 1 });
+    }
+  }
+
   return (
     <div>
       <div className="mb-3 flex items-center gap-2 rounded border border-fiori-border bg-fiori-surface px-3 py-1.5">
@@ -97,6 +112,19 @@ export function DataTable<T>({
       <div className={`overflow-x-auto rounded border border-fiori-border bg-fiori-surface ${cardOnMobile ? 'hidden md:block' : ''}`}>
         <table className="fiori-table">
           <thead>
+            {temGrupos && (
+              <tr>
+                {gruposDeCabecalho.map((g, i) => (
+                  <th
+                    key={i}
+                    colSpan={g.span}
+                    className={`text-center ${g.label ? 'border-l border-fiori-border/70' : ''}`}
+                  >
+                    {g.label}
+                  </th>
+                ))}
+              </tr>
+            )}
             <tr>
               {columns.map((col) => (
                 <th key={col.key}>

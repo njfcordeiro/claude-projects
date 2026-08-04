@@ -249,6 +249,10 @@ export type DimensaoSkillMatrix = 'lob' | 'competencia';
 export interface SkillMatrixColuna {
   id: number;
   nome: string;
+  areaId: number;
+  areaNome: string;
+  /** Só presente na dimensão 'competencia' — LOBs que exigem esta competência (usado no filtro "por LOB"). */
+  lobIds?: number[];
 }
 
 export interface SkillMatrixLinha {
