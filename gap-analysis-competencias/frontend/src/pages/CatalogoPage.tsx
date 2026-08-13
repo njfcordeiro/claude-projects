@@ -53,7 +53,7 @@ export function CatalogoPage() {
       setRelatorioImportacao(resumo);
     },
     onError: (err) =>
-      setRelatorioImportacao({ criados: 0, atualizados: 0, avisos: [], erros: [err instanceof ApiError ? err.message : 'Não foi possível importar o ficheiro.'] }),
+      setRelatorioImportacao({ criados: 0, atualizados: 0, erros: [err instanceof ApiError ? err.message : 'Não foi possível importar o ficheiro.'] }),
   });
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {

@@ -365,7 +365,6 @@ export type CatalogoRegisto = Record<string, string | number | boolean | null>;
 export interface ResumoImportacao {
   criados: number;
   atualizados: number;
-  avisos: string[];
   erros: string[];
 }
 

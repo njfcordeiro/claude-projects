@@ -10,8 +10,6 @@ import { adicionarFolhasDeOpcoes, formulaNomeAtual, nomeFolhaDeOpcoes, numParaCo
 export interface ResumoImportacao {
   criados: number;
   atualizados: number;
-  /** Auto-criação de registos relacionados em falta (LOB/Formação/Competência/...) — ver AutoCriacaoService. Nunca bloqueia a linha. */
-  avisos: string[];
   erros: string[];
 }
 
@@ -165,8 +163,12 @@ export class CatalogoService {
       if (idx !== -1) indicePorCampo.set(c.key, idx);
     }
 
-    const resumo: ResumoImportacao = { criados: 0, atualizados: 0, avisos: [], erros: [] };
+    const resumo: ResumoImportacao = { criados: 0, atualizados: 0, erros: [] };
 
+    // Fase 1 — validação (só leitura): resolve todas as linhas contra a BD
+    // sem escrever nada. Uma referência em falta em qualquer linha rejeita o
+    // ficheiro inteiro — não há importação parcial.
+    const linhasValidas: { data: Record<string, unknown>; where: Record<string, unknown> }[] = [];
     for (let r = 2; r <= sheet.rowCount; r++) {
       const linha = sheet.getRow(r);
       if (linha.values == null || (Array.isArray(linha.values) && linha.values.length === 0)) continue;
@@ -181,20 +183,32 @@ export class CatalogoService {
         }
         if (Object.values(bruto).every((v) => v === null || v === undefined || v === '')) continue;
 
-        const data = await this.validarEcoagirImport(def, bruto, user, resumo.avisos);
+        const data = await this.validarEcoagirImport(def, bruto);
         const where = this.construirWhereIdentidade(def, data);
-
-        const existe = await (this.prisma as any)[def.delegate].findFirst({ where });
-        await this.prisma.runAsUser(user.sub, (tx) =>
-          existe ? (tx as any)[def.delegate].updateMany({ where, data }) : (tx as any)[def.delegate].create({ data }),
-        );
-        if (existe) resumo.atualizados++;
-        else resumo.criados++;
+        linhasValidas.push({ data, where });
       } catch (err) {
         const mensagem = err instanceof Error ? err.message : 'Erro desconhecido.';
         resumo.erros.push(`Linha ${r}: ${mensagem}`);
       }
     }
+
+    if (resumo.erros.length > 0) {
+      return resumo;
+    }
+
+    // Fase 2 — escrita: tudo numa única transação, atómica ao ficheiro inteiro.
+    await this.prisma.runAsUser(user.sub, async (tx) => {
+      for (const { data, where } of linhasValidas) {
+        const existe = await (tx as any)[def.delegate].findFirst({ where });
+        if (existe) {
+          await (tx as any)[def.delegate].updateMany({ where, data });
+          resumo.atualizados++;
+        } else {
+          await (tx as any)[def.delegate].create({ data });
+          resumo.criados++;
+        }
+      }
+    });
 
     return resumo;
   }
@@ -245,18 +259,12 @@ export class CatalogoService {
 
   /**
    * Como `validarEcoagir`, mas para import: campos de relação são
-   * resolvidos por id OU por nome (via `AutoCriacaoService`), criando o
-   * registo relacionado automaticamente quando ainda não existe — ver
-   * REGRA DE DEPENDÊNCIAS AUTOMÁTICA pedida pelo utilizador. Nunca bloqueia
-   * a linha por uma relação em falta quando a tabela relacionada suporta
-   * criação automática.
+   * resolvidos por id OU por nome (via `AutoCriacaoService.resolver`) contra
+   * registos já existentes — nunca cria nada. Uma relação em falta lança
+   * erro (apanhado pelo chamador em `importar`), tal como um campo
+   * obrigatório em falta.
    */
-  private async validarEcoagirImport(
-    def: CatalogoTabelaDef,
-    dados: Record<string, unknown>,
-    user: AuthenticatedUser,
-    avisos: string[],
-  ): Promise<Record<string, unknown>> {
+  private async validarEcoagirImport(def: CatalogoTabelaDef, dados: Record<string, unknown>): Promise<Record<string, unknown>> {
     const resultado: Record<string, unknown> = {};
     for (const c of def.campos) {
       const bruto = dados[c.key];
@@ -270,7 +278,7 @@ export class CatalogoService {
       }
 
       if (c.tipo === 'relation' && c.relatedTable) {
-        resultado[c.key] = await this.autoCriacao.resolver(c.relatedTable, bruto as string | number, user, avisos);
+        resultado[c.key] = await this.autoCriacao.resolver(c.relatedTable, bruto as string | number);
       } else {
         resultado[c.key] = this.coagirValor(c, bruto);
       }

@@ -97,7 +97,6 @@ const COLUNAS_IMPORT_EXPORT = [
 export interface ResumoImportacaoColaboradores {
   criados: number;
   atualizados: number;
-  avisos: string[];
   erros: string[];
 }
 
@@ -282,12 +281,15 @@ export class ColaboradoresService {
 
   /**
    * Round-trip de Excel para Colaboradores: atualiza por `id` (cria se não
-   * existir). Campos de relação (Direção/Área/Núcleo/Carreira/Categoria)
-   * podem vir por id OU por nome — se o nome não existir ainda, é criado
-   * automaticamente (ver `AutoCriacaoService`). `cargoId` e `managerId` têm
-   * de já existir (não criamos cargos nem colaboradores "fantasma" só a
-   * partir de um nome numa célula) — linha com erro fica só nessa linha,
-   * não bloqueia o ficheiro inteiro.
+   * existir). Todos os campos de relação (Direção/Área/Núcleo/Carreira/
+   * Categoria/Nível de Gestão/Local de Trabalho/Cargo/Gestor) têm de já
+   * existir — por id OU por nome — tal como `cargoId`/`managerId`; nada é
+   * criado automaticamente. Validação em duas fases: primeiro resolve todas
+   * as linhas do ficheiro sem escrever nada; se qualquer linha tiver uma
+   * referência em falta, o ficheiro inteiro é rejeitado (nenhuma linha é
+   * importada, nem as válidas) e `erros` lista todas as linhas problemáticas
+   * de uma vez. Só se todas as linhas forem válidas é que a escrita
+   * acontece, numa única transação.
    */
   async importar(buffer: Buffer, user: AuthenticatedUser): Promise<ResumoImportacaoColaboradores> {
     const workbook = new ExcelJS.Workbook();
@@ -302,8 +304,11 @@ export class ColaboradoresService {
       if (idx !== -1) indicePorCampo.set(chave, idx);
     }
 
-    const resumo: ResumoImportacaoColaboradores = { criados: 0, atualizados: 0, avisos: [], erros: [] };
+    const resumo: ResumoImportacaoColaboradores = { criados: 0, atualizados: 0, erros: [] };
 
+    // Fase 1 — validação (só leitura): resolve todas as linhas contra a BD
+    // sem escrever nada.
+    const linhasValidas: { data: Record<string, unknown> }[] = [];
     for (let r = 2; r <= sheet.rowCount; r++) {
       const linha = sheet.getRow(r);
       if (linha.values == null || (Array.isArray(linha.values) && linha.values.length === 0)) continue;
@@ -318,30 +323,36 @@ export class ColaboradoresService {
         }
         if (Object.values(bruto).every((v) => v === null || v === undefined || v === '')) continue;
 
-        const data = await this.mapearLinhaImport(bruto, user, resumo.avisos);
-
-        const existe = await this.prisma.colaborador.findUnique({ where: { id: data.id as number } });
-        await this.prisma.runAsUser(user.sub, (tx) =>
-          existe
-            ? tx.colaborador.update({ where: { id: data.id as number }, data: { ...data, id: undefined } })
-            : tx.colaborador.create({ data: data as Prisma.ColaboradorCreateInput }),
-        );
-        if (existe) resumo.atualizados++;
-        else resumo.criados++;
+        const data = await this.mapearLinhaImport(bruto);
+        linhasValidas.push({ data });
       } catch (err) {
         const mensagem = err instanceof Error ? err.message : 'Erro desconhecido.';
         resumo.erros.push(`Linha ${r}: ${mensagem}`);
       }
     }
 
+    if (resumo.erros.length > 0) {
+      return resumo;
+    }
+
+    // Fase 2 — escrita: tudo numa única transação, atómica ao ficheiro inteiro.
+    await this.prisma.runAsUser(user.sub, async (tx) => {
+      for (const { data } of linhasValidas) {
+        const existe = await tx.colaborador.findUnique({ where: { id: data.id as number } });
+        if (existe) {
+          await tx.colaborador.update({ where: { id: data.id as number }, data: { ...data, id: undefined } });
+          resumo.atualizados++;
+        } else {
+          await tx.colaborador.create({ data: data as Prisma.ColaboradorCreateInput });
+          resumo.criados++;
+        }
+      }
+    });
+
     return resumo;
   }
 
-  private async mapearLinhaImport(
-    bruto: Record<string, unknown>,
-    user: AuthenticatedUser,
-    avisos: string[],
-  ): Promise<Record<string, unknown>> {
+  private async mapearLinhaImport(bruto: Record<string, unknown>): Promise<Record<string, unknown>> {
     if (bruto.id === undefined || bruto.id === null || bruto.id === '') {
       throw new Error('Campo obrigatório em falta: "id".');
     }
@@ -351,7 +362,7 @@ export class ColaboradoresService {
 
     const data: Record<string, unknown> = { id: Number(bruto.id), nome: String(bruto.nome).trim() };
 
-    const relacoesAutoCriaveis: [string, string][] = [
+    const relacoes: [string, string][] = [
       ['direcaoId', 'direcoes'],
       ['areaId', 'areas'],
       ['nucleoId', 'nucleos'],
@@ -360,10 +371,10 @@ export class ColaboradoresService {
       ['nivelGestaoId', 'niveis-gestao'],
       ['localTrabalhoId', 'locais-trabalho'],
     ];
-    for (const [campo, tabela] of relacoesAutoCriaveis) {
+    for (const [campo, tabela] of relacoes) {
       const valor = bruto[campo];
       if (valor === undefined || valor === null || valor === '') continue;
-      data[campo] = await this.autoCriacao.resolver(tabela, valor as string | number, user, avisos);
+      data[campo] = await this.autoCriacao.resolver(tabela, valor as string | number);
     }
 
     if (bruto.cargoId !== undefined && bruto.cargoId !== null && bruto.cargoId !== '') {
