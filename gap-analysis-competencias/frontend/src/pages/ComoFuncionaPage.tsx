@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import {
   AlertTriangle,
   Award,
@@ -21,8 +21,6 @@ import {
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { PrintButton } from '../components/ui/PrintButton';
-import { Button, Field, Input } from '../components/ui/form';
-import { useAuth } from '../auth/useAuth';
 import { endpoints } from '../api/endpoints';
 import { PesosProntidao } from '../types/api';
 
@@ -419,31 +417,46 @@ const CRITERIOS_PESO: { chave: keyof PesosProntidao; label: string; calculo: str
   { chave: 'pesoPontos', label: 'Pontos mínimos', calculo: 'mín(1, pontos obtidos ÷ pontos mínimos)' },
 ];
 
-/** Leitura para todos os papéis; edição só para ADMIN_RH (mesmo RBAC do backend, ver ConfiguracaoProntidaoController). */
-function SecaoPesosProntidao({ pesos, podeEditar }: { pesos: PesosProntidao; podeEditar: boolean }) {
-  const queryClient = useQueryClient();
-  const [aEditar, setAEditar] = useState(false);
-  const [rascunho, setRascunho] = useState<PesosProntidao>(pesos);
+interface ExemploPontidao {
+  titulo: string;
+  cenario: string;
+  ratioComp: number;
+  ratioCert: number;
+  ratioPontos: number;
+  vacuidadeComp?: boolean;
+  vacuidadeCert?: boolean;
+}
 
-  const soma = rascunho.pesoCompetencias + rascunho.pesoCertificacoes + rascunho.pesoPontos;
-  const somaValida = soma === 100;
+const EXEMPLOS_PRONTIDAO: ExemploPontidao[] = [
+  {
+    titulo: 'Tudo cumprido',
+    cenario: '1 competência obrigatória cumprida · 1 certificação obrigatória válida · 50/50 pontos.',
+    ratioComp: 1,
+    ratioCert: 1,
+    ratioPontos: 1,
+  },
+  {
+    titulo: 'Falta 1 certificação obrigatória',
+    cenario: 'Competência obrigatória cumprida e 50/50 pontos — mas a certificação obrigatória está em falta.',
+    ratioComp: 1,
+    ratioCert: 0,
+    ratioPontos: 1,
+  },
+  {
+    titulo: 'Sem obrigatórias, só pontos parciais',
+    cenario: 'Esta LOB não tem nenhuma competência/certificação obrigatória — só 10 de 50 pontos obtidos.',
+    ratioComp: 1,
+    ratioCert: 1,
+    ratioPontos: 0.2,
+    vacuidadeComp: true,
+    vacuidadeCert: true,
+  },
+];
 
-  const atualizar = useMutation({
-    mutationFn: () => endpoints.atualizarConfiguracaoProntidao(rascunho),
-    onSuccess: (novo) => {
-      queryClient.setQueryData(['configuracao-prontidao'], novo);
-      setAEditar(false);
-    },
-  });
-
-  function iniciarEdicao() {
-    setRascunho(pesos);
-    atualizar.reset();
-    setAEditar(true);
-  }
-
+/** Documentação viva (sem edição — os pesos só mudam em Gestão de Dados) — mostra os pesos atuais e exemplos de cálculo com esses pesos. */
+function SecaoPesosProntidao({ pesos }: { pesos: PesosProntidao }) {
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <p className="text-sm text-fiori-text-secondary">
         Os pesos que o motor de gap usa para calcular a prontidão de uma LOB (ver "Fórmula de Prontidão" nas regras de negócio abaixo) —
         configuração global, aplicada a toda a organização, não por LOB.
@@ -463,52 +476,66 @@ function SecaoPesosProntidao({ pesos, podeEditar }: { pesos: PesosProntidao; pod
               <tr key={c.chave} className="border-b border-fiori-border last:border-0">
                 <td className="py-2 pr-3 font-medium text-fiori-text">{c.label}</td>
                 <td className="py-2 pr-3">
-                  {aEditar ? (
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={rascunho[c.chave]}
-                      onChange={(e) => setRascunho((prev) => ({ ...prev, [c.chave]: Math.max(0, Math.min(100, Number(e.target.value))) }))}
-                      className="w-20"
-                    />
-                  ) : (
-                    <span className="font-semibold text-fiori-primary">{pesos[c.chave]}%</span>
-                  )}
+                  <span className="rounded bg-fiori-primary-bg px-2 py-0.5 font-semibold text-fiori-primary">{pesos[c.chave]}%</span>
                 </td>
                 <td className="py-2 font-mono text-xs text-fiori-text-secondary">{c.calculo}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        <p className="mt-2 text-xs italic text-fiori-text-secondary">
+          Soma: 100% — uma LOB sem nenhuma competência (ou certificação) obrigatória conta esse critério como cumprido por vacuidade
+          (100%), não há nada a bloquear nesse eixo.
+        </p>
       </div>
 
-      {aEditar && (
-        <p className={`text-xs font-medium ${somaValida ? 'text-fiori-success' : 'text-fiori-error'}`}>
-          Soma: {soma}% {somaValida ? '✓' : '— os três pesos têm de somar exatamente 100%'}
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-fiori-text-secondary">
+          Exemplos de cálculo — LOB "Payroll" (pontos mínimos: 50), com os pesos acima
         </p>
-      )}
-
-      {atualizar.isError && <p className="text-xs text-fiori-error">Não foi possível guardar. Tenta novamente.</p>}
-
-      {podeEditar && (
-        <div className="flex gap-2">
-          {aEditar ? (
-            <>
-              <Button onClick={() => atualizar.mutate()} disabled={!somaValida || atualizar.isPending}>
-                {atualizar.isPending ? 'A guardar…' : 'Guardar pesos'}
-              </Button>
-              <Button variant="secondary" onClick={() => setAEditar(false)} disabled={atualizar.isPending}>
-                Cancelar
-              </Button>
-            </>
-          ) : (
-            <Button variant="secondary" onClick={iniciarEdicao}>
-              Editar pesos
-            </Button>
-          )}
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+          {EXEMPLOS_PRONTIDAO.map((ex) => {
+            const prontidao = Math.round(pesos.pesoCompetencias * ex.ratioComp + pesos.pesoCertificacoes * ex.ratioCert + pesos.pesoPontos * ex.ratioPontos);
+            const atingido = prontidao === 100;
+            const linhas = [
+              { label: 'Competências', ratio: ex.ratioComp, peso: pesos.pesoCompetencias, cor: 'bg-fiori-primary', vacuidade: ex.vacuidadeComp },
+              { label: 'Certificações', ratio: ex.ratioCert, peso: pesos.pesoCertificacoes, cor: 'bg-fiori-warning', vacuidade: ex.vacuidadeCert },
+              { label: 'Pontos', ratio: ex.ratioPontos, peso: pesos.pesoPontos, cor: 'bg-fiori-success' },
+            ];
+            return (
+              <div key={ex.titulo} className="overflow-hidden rounded-md border border-fiori-border">
+                <div className={`flex items-center justify-between gap-2 px-3 py-2 ${atingido ? 'bg-fiori-success-bg' : 'bg-fiori-error-bg'}`}>
+                  <p className="text-sm font-semibold text-fiori-text">{ex.titulo}</p>
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold text-white ${atingido ? 'bg-fiori-success' : 'bg-fiori-error'}`}>
+                    {atingido ? 'LOB atingida' : 'LOB não atingida'}
+                  </span>
+                </div>
+                <div className="space-y-1.5 p-3">
+                  <p className="mb-2 text-xs text-fiori-text-secondary">{ex.cenario}</p>
+                  {linhas.map((l) => (
+                    <div key={l.label} className="flex items-center gap-2 text-xs">
+                      <span className="w-20 shrink-0 text-fiori-text-secondary">{l.label}</span>
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-fiori-canvas">
+                        <div className={`h-full rounded-full ${l.cor}`} style={{ width: `${Math.round(l.ratio * 100)}%` }} />
+                      </div>
+                      <span className="w-24 shrink-0 text-right font-medium text-fiori-text">
+                        {Math.round(l.ratio * 100)}{l.vacuidade ? '%*' : '%'} × {l.peso}% = {Math.round(l.ratio * l.peso)}pp
+                      </span>
+                    </div>
+                  ))}
+                  <div className="mt-2 flex items-baseline justify-between border-t border-dashed border-fiori-border pt-2">
+                    <span className="text-xs text-fiori-text-secondary">Prontidão</span>
+                    <span className={`text-xl font-bold ${atingido ? 'text-fiori-success' : 'text-fiori-error'}`}>{prontidao}%</span>
+                  </div>
+                  {(ex.vacuidadeComp || ex.vacuidadeCert) && (
+                    <p className="text-[11px] text-fiori-text-secondary">*sem obrigatórias nesse critério nesta LOB → conta por vacuidade.</p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -567,9 +594,8 @@ function TabelaRbac() {
 
 // --- Página -------------------------------------------------------------------
 
-/** Documentação viva do modelo de dados e das regras de negócio, acessível a todos os papéis autenticados — a única chamada à API é a leitura/edição dos pesos de prontidão. */
+/** Documentação viva do modelo de dados e das regras de negócio, acessível a todos os papéis autenticados — a única chamada à API é a leitura (não editável aqui) dos pesos de prontidão configurados. */
 export function ComoFuncionaPage() {
-  const { user } = useAuth();
   const { data: pesos } = useQuery({ queryKey: ['configuracao-prontidao'], queryFn: endpoints.configuracaoProntidao });
 
   return (
@@ -593,7 +619,7 @@ export function ComoFuncionaPage() {
       </Card>
 
       <Card title="Pesos de Prontidão">
-        <SecaoPesosProntidao pesos={pesos ?? PESOS_PADRAO} podeEditar={user?.role === 'ADMIN_RH'} />
+        <SecaoPesosProntidao pesos={pesos ?? PESOS_PADRAO} />
       </Card>
 
       <Card title="Regras de negócio">
