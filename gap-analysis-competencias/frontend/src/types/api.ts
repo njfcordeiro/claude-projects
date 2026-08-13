@@ -432,6 +432,10 @@ export interface PdiItem {
   estado: EstadoPdi;
   origem: OrigemPdi;
   notas: string | null;
+  /** Quando o item passou a CONCLUIDO pela primeira vez — null se nunca foi concluído. */
+  dataConclusao: string | null;
+  /** Duração (horas) da Formação congelada no momento da conclusão — null se o item não tem Formação ou ainda não foi concluído. */
+  duracaoHorasSnapshot: number | null;
   createdAt: string;
   updatedAt: string;
   competencia: { nome: string } | null;

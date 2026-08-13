@@ -175,7 +175,13 @@ function ItemPdi({
         {item.formacao && (
           <p className="mt-1 text-xs text-fiori-text-secondary">
             Formação sugerida: <span className="font-medium">{item.formacao.nome}</span>
-            {item.formacao.duracaoHoras ? ` (${item.formacao.duracaoHoras}h)` : ''}
+            {item.formacao.duracaoHoras ? ` (${item.formacao.duracaoHoras}h atualmente)` : ''}
+          </p>
+        )}
+        {item.dataConclusao && (
+          <p className="mt-1 text-xs text-fiori-text-secondary">
+            Concluído em {new Date(item.dataConclusao).toLocaleDateString('pt-PT')}
+            {item.duracaoHorasSnapshot !== null ? ` — ${item.duracaoHorasSnapshot}h registadas nessa altura` : ''}
           </p>
         )}
         <div className="mt-1.5 flex items-center gap-1.5">

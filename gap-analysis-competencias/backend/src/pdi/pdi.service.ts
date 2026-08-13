@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { OrigemPdi } from '@prisma/client';
+import { EstadoPdi, OrigemPdi, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ColaboradoresService } from '../colaboradores/colaboradores.service';
 import { GapAnalysisService } from '../gap-analysis/gap-analysis.service';
@@ -199,18 +199,35 @@ export class PdiService {
     return criado;
   }
 
+  /**
+   * Ao transitar para CONCLUIDO pela primeira vez, congela `dataConclusao` e
+   * `duracaoHorasSnapshot` (pedido do utilizador: a duração da Formação no
+   * catálogo pode mudar mais tarde — sem isto, relatórios históricos
+   * mostrariam a duração de hoje, não a que valia quando a formação foi
+   * feita). Reabrir o item (voltar a PENDENTE/EM_CURSO) não apaga este
+   * registo — fica como prova de que já foi concluído uma vez.
+   */
   async atualizar(colaboradorId: number, itemId: number, dto: UpdatePdiItemDto, user: AuthenticatedUser) {
     await this.colaboradores.podeEditar(colaboradorId, user);
 
-    const resultado = await this.prisma.runAsUser(user.sub, (tx) =>
-      tx.pdiItem.updateMany({
-        where: { id: itemId, colaboradorId },
-        data: { ...dto, updatedBy: user.sub },
-      }),
-    );
-    if (resultado.count === 0) {
+    const existente = await this.prisma.pdiItem.findFirst({ where: { id: itemId, colaboradorId } });
+    if (!existente) {
       throw new NotFoundException(`Item de PDI ${itemId} não encontrado para este colaborador.`);
     }
+
+    const dados: Prisma.PdiItemUpdateInput = { ...dto, updatedBy: user.sub };
+    if (dto.estado === EstadoPdi.CONCLUIDO && existente.dataConclusao === null) {
+      dados.dataConclusao = new Date();
+      if (existente.formacaoId !== null) {
+        const formacao = await this.prisma.formacao.findUnique({
+          where: { id: existente.formacaoId },
+          select: { duracaoHoras: true },
+        });
+        dados.duracaoHorasSnapshot = formacao?.duracaoHoras ?? null;
+      }
+    }
+
+    await this.prisma.runAsUser(user.sub, (tx) => tx.pdiItem.update({ where: { id: itemId }, data: dados }));
     return this.prisma.pdiItem.findUniqueOrThrow({ where: { id: itemId }, include: INCLUDE_ITEM });
   }
 

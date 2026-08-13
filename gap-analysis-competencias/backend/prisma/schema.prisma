@@ -653,23 +653,30 @@ model ColaboradorLobRecomendacao {
 // ---------------------------------------------------------------------
 
 model PdiItem {
-  id             Int       @id @default(autoincrement())
-  colaboradorId  Int       @map("colaborador_id")
-  competenciaId  Int?      @map("competencia_id")
-  certificacaoId String?   @map("certificacao_id")
-  formacaoId     Int?      @map("formacao_id") // formação sugerida para colmatar o gap
+  id                   Int       @id @default(autoincrement())
+  colaboradorId        Int       @map("colaborador_id")
+  competenciaId        Int?      @map("competencia_id")
+  certificacaoId       String?   @map("certificacao_id")
+  formacaoId           Int?      @map("formacao_id") // formação sugerida para colmatar o gap
   // LOB que originou este item (só preenchido pelas sugestões automáticas de PdiService.gerar);
   // usado para agrupar o PDI por origem — a classificação BUD/Sistema/Outras é sempre feita ao
   // vivo contra os objetivos de LOB atuais (ver LobObjetivosService), nunca guardada aqui.
-  lobId          Int?      @map("lob_id")
-  descricao      String
-  estado         EstadoPdi @default(PENDENTE)
-  origem         OrigemPdi @default(AUTOMATICO)
-  notas          String?
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
-  createdBy      Int?      @map("created_by")
-  updatedBy      Int?      @map("updated_by")
+  lobId                Int?      @map("lob_id")
+  descricao            String
+  estado               EstadoPdi @default(PENDENTE)
+  origem               OrigemPdi @default(AUTOMATICO)
+  notas                String?
+  // Quando o item passou a CONCLUIDO (nunca reescrito depois — reabrir o
+  // item não apaga este registo). duracaoHorasSnapshot é a duração da
+  // Formação congelada nesse momento (pedido do utilizador: a duração no
+  // catálogo pode mudar mais tarde) — mesmo princípio de
+  // GapAnalysisLobResult.pontosMinimos ("congelado no momento do snapshot").
+  dataConclusao        DateTime? @map("data_conclusao") @db.Date
+  duracaoHorasSnapshot Int?      @map("duracao_horas_snapshot")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  createdBy            Int?      @map("created_by")
+  updatedBy            Int?      @map("updated_by")
 
   colaborador  Colaborador   @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
   // onDelete: Restrict (ver nota em Colaborador acima) — evita apagar uma
