@@ -8,6 +8,7 @@ import { calcularGapLob, ordenarCertificacoes, ordenarFormacoes } from './gap-an
 import {
   CandidatoCarreira,
   CandidatosCarreiraResponse,
+  CandidatosPorColaboradorResponse,
   CertificacaoCandidata,
   CertificacaoColaboradorInput,
   ColaboradorEmRisco,
@@ -534,13 +535,18 @@ export class GapAnalysisService {
         candidatos.push({
           colaboradorId: r.colaboradorId,
           nome: r.nome,
+          direcaoId: r.direcaoId,
           direcaoNome: r.direcaoNome,
+          areaId: r.areaId,
           areaNome: r.areaNome,
+          nucleoId: r.nucleoId,
           nucleoNome: r.nucleoNome,
           cargoAtualId: r.cargoId,
           cargoAtualNome: r.cargoNome,
           proximoCargoId: alvo.id,
           proximoCargoNome: alvo.nome,
+          proximoCargoCarreiraId: carreira.id,
+          proximoCargoCarreiraNome: carreira.nome,
           lobsAtingidos: r.lobsAtingidos,
           lobsExigidos,
           gap,
@@ -589,6 +595,93 @@ export class GapAnalysisService {
   }
 
   /**
+   * Vista "por colaborador" de Candidatos (pedido do utilizador): a mesma
+   * lógica de `sugerirCandidatosCarreira` — uma linha por par (colaborador,
+   * Cargo-alvo) —, mas sem restringir `cargo_progressao` a uma única
+   * carreira. Devolve TODOS os colaboradores com pelo menos uma progressão
+   * possível a partir do seu cargo atual, em qualquer carreira; filtragem
+   * por Direção/Área/Núcleo fica do lado do frontend (mesmo padrão do ecrã
+   * de Colaboradores), por isso este método não recebe `FiltrosOrganizacionais`.
+   *
+   * Ordenado por nome do colaborador (não por gap/prontidão, ao contrário de
+   * `sugerirCandidatosCarreira`) para que as várias linhas da mesma pessoa
+   * fiquem sempre contíguas — o frontend depende disso para as agrupar
+   * visualmente numa única célula por pessoa.
+   */
+  async sugerirCandidatosPorColaborador(user: AuthenticatedUser): Promise<CandidatosPorColaboradorResponse> {
+    if (user.role === PapelUtilizador.EMPLOYEE) {
+      throw new ForbiddenException('Os candidatos são uma vista de equipa/organização — usa a tua ficha pessoal.');
+    }
+
+    const where: Prisma.ColaboradorWhereInput = {
+      cargoId: { not: null },
+      ...(user.role === PapelUtilizador.MANAGER ? { managerId: user.colaboradorId ?? -1 } : {}),
+    };
+    const { resumos } = await this.calcularResumos(where);
+    if (resumos.length === 0) return { candidatos: [] };
+
+    const idsPredecessores = [...new Set(resumos.map((r) => r.cargoId))];
+    const progressoes = await this.prisma.cargoProgressao.findMany({ where: { cargoId: { in: idsPredecessores } } });
+    if (progressoes.length === 0) return { candidatos: [] };
+
+    const idsAlvo = [...new Set(progressoes.map((p) => p.proximoCargoId))];
+    const cargosAlvo = await this.prisma.cargo.findMany({
+      where: { id: { in: idsAlvo } },
+      include: { carreira: { select: { nome: true } } },
+    });
+    const cargosAlvoPorId = new Map(cargosAlvo.map((c) => [c.id, c]));
+
+    const alvosPorPredecessor = new Map<string, typeof cargosAlvo>();
+    for (const p of progressoes) {
+      const alvo = cargosAlvoPorId.get(p.proximoCargoId);
+      if (!alvo) continue;
+      if (!alvosPorPredecessor.has(p.cargoId)) alvosPorPredecessor.set(p.cargoId, []);
+      alvosPorPredecessor.get(p.cargoId)!.push(alvo);
+    }
+
+    const agora = Date.now();
+    const candidatos: CandidatoCarreira[] = [];
+    const resumosOrdenados = [...resumos].sort((a, b) => a.nome.localeCompare(b.nome));
+    for (const r of resumosOrdenados) {
+      const alvos = (alvosPorPredecessor.get(r.cargoId) ?? []).sort((a, b) => a.nome.localeCompare(b.nome));
+      for (const alvo of alvos) {
+        const lobsExigidos = alvo.lobsExigidos ?? 0;
+        const anosExperienciaMinima = alvo.anosExperienciaMinimo ?? 0;
+        const gap = Math.max(0, lobsExigidos - r.lobsAtingidos);
+        const anosExperiencia = r.dataAdmissao ? Math.round(((agora - new Date(r.dataAdmissao).getTime()) / MS_POR_ANO) * 10) / 10 : null;
+        const aptoAntiguidade = anosExperienciaMinima <= 0 || (anosExperiencia !== null && anosExperiencia >= anosExperienciaMinima);
+        const aptoLobs = gap === 0;
+        candidatos.push({
+          colaboradorId: r.colaboradorId,
+          nome: r.nome,
+          direcaoId: r.direcaoId,
+          direcaoNome: r.direcaoNome,
+          areaId: r.areaId,
+          areaNome: r.areaNome,
+          nucleoId: r.nucleoId,
+          nucleoNome: r.nucleoNome,
+          cargoAtualId: r.cargoId,
+          cargoAtualNome: r.cargoNome,
+          proximoCargoId: alvo.id,
+          proximoCargoNome: alvo.nome,
+          proximoCargoCarreiraId: alvo.carreiraId,
+          proximoCargoCarreiraNome: alvo.carreira?.nome ?? null,
+          lobsAtingidos: r.lobsAtingidos,
+          lobsExigidos,
+          gap,
+          prontidao: r.prontidaoProximaLob,
+          anosExperiencia,
+          aptoAntiguidade,
+          aptoLobs,
+          apto: aptoAntiguidade && aptoLobs,
+        });
+      }
+    }
+
+    return { candidatos };
+  }
+
+  /**
    * Núcleo partilhado por `obterDashboard`/`sugerirCandidatosCarreira`:
    * carrega colaboradores (com o `where` pedido) em lote e calcula
    * `lobsAtingidos`/`prontidaoMedia` sobre todas as LOBs da organização —
@@ -615,6 +708,9 @@ export class GapAnalysisService {
         carreiraId: true,
         dataAdmissao: true,
         proximaLobId: true,
+        direcaoId: true,
+        areaId: true,
+        nucleoId: true,
         direcao: { select: { nome: true } },
         area: { select: { nome: true } },
         nucleo: { select: { nome: true } },
@@ -685,8 +781,11 @@ export class GapAnalysisService {
       return {
         colaboradorId: c.id,
         nome: c.nome,
+        direcaoId: c.direcaoId,
         direcaoNome: c.direcao?.nome ?? null,
+        areaId: c.areaId,
         areaNome: c.area?.nome ?? null,
+        nucleoId: c.nucleoId,
         nucleoNome: c.nucleo?.nome ?? null,
         cargoId: c.cargoId!,
         cargoNome: cargo?.nome ?? c.cargoId!,

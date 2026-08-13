@@ -317,13 +317,19 @@ export interface DashboardResponse {
 export interface CandidatoCarreira {
   colaboradorId: number;
   nome: string;
+  direcaoId: number | null;
   direcaoNome: string | null;
+  areaId: number | null;
   areaNome: string | null;
+  nucleoId: number | null;
   nucleoNome: string | null;
   cargoAtualId: string;
   cargoAtualNome: string;
   proximoCargoId: string;
   proximoCargoNome: string;
+  /** Carreira do próximo cargo — só relevante na vista "por colaborador". */
+  proximoCargoCarreiraId: string | null;
+  proximoCargoCarreiraNome: string | null;
   lobsAtingidos: number;
   lobsExigidos: number;
   gap: number;
@@ -337,6 +343,11 @@ export interface CandidatoCarreira {
 export interface CandidatosCarreiraResponse {
   carreiraId: string;
   carreiraNome: string;
+  candidatos: CandidatoCarreira[];
+}
+
+/** Todas as progressões de cargo possíveis, em todas as carreiras, para cada colaborador — ver CandidatosPage "Por colaborador". */
+export interface CandidatosPorColaboradorResponse {
   candidatos: CandidatoCarreira[];
 }
 

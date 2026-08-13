@@ -25,4 +25,10 @@ export class CandidatosController {
     }
     return this.service.sugerirCandidatosCarreira(carreiraId, cargoId, user);
   }
+
+  /** Vista "por colaborador" (todas as carreiras) — ver GapAnalysisService.sugerirCandidatosPorColaborador. */
+  @Get('por-colaborador')
+  sugerirPorColaborador(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.sugerirCandidatosPorColaborador(user);
+  }
 }

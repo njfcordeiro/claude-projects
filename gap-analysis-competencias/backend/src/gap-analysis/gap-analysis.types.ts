@@ -164,8 +164,11 @@ export interface RelatorioGapCargo {
 export interface ResumoColaboradorDashboard {
   colaboradorId: number;
   nome: string;
+  direcaoId: number | null;
   direcaoNome: string | null;
+  areaId: number | null;
   areaNome: string | null;
+  nucleoId: number | null;
   nucleoNome: string | null;
   cargoId: string;
   cargoNome: string;
@@ -228,18 +231,24 @@ export interface DashboardResponse {
   colaboradoresEmRiscoFuga: ColaboradorEmRisco[];
 }
 
-/** Uma linha por par (colaborador, Cargo-alvo) — ver GapAnalysisService.sugerirCandidatosCarreira. */
+/** Uma linha por par (colaborador, Cargo-alvo) — ver GapAnalysisService.sugerirCandidatosCarreira/sugerirCandidatosPorColaborador. */
 export interface CandidatoCarreira {
   colaboradorId: number;
   nome: string;
+  direcaoId: number | null;
   direcaoNome: string | null;
+  areaId: number | null;
   areaNome: string | null;
+  nucleoId: number | null;
   nucleoNome: string | null;
   cargoAtualId: string;
   cargoAtualNome: string;
   /** Cargo para o qual este colaborador é candidato (predecessor direto em cargo_progressao). */
   proximoCargoId: string;
   proximoCargoNome: string;
+  /** Carreira do próximo cargo — só relevante na vista "por colaborador", onde as linhas de uma mesma pessoa podem pertencer a carreiras diferentes. */
+  proximoCargoCarreiraId: string | null;
+  proximoCargoCarreiraNome: string | null;
   lobsAtingidos: number;
   /** lobsExigidos do próximoCargo. */
   lobsExigidos: number;
@@ -260,6 +269,17 @@ export interface CandidatoCarreira {
 export interface CandidatosCarreiraResponse {
   carreiraId: string;
   carreiraNome: string;
+  candidatos: CandidatoCarreira[];
+}
+
+/**
+ * Resposta de `GET /gap-analysis/candidatos/por-colaborador` — todas as
+ * progressões de cargo possíveis, em todas as carreiras, para cada
+ * colaborador (não filtrado a uma carreira). Ordenada por nome do
+ * colaborador para que as várias linhas da mesma pessoa fiquem contíguas
+ * (o frontend agrupa-as visualmente numa única célula por pessoa).
+ */
+export interface CandidatosPorColaboradorResponse {
   candidatos: CandidatoCarreira[];
 }
 

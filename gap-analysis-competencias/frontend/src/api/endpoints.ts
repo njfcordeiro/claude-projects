@@ -3,6 +3,7 @@ import {
   AtribuirCertificacaoInput,
   AtribuirCompetenciaInput,
   CandidatosCarreiraResponse,
+  CandidatosPorColaboradorResponse,
   CatalogoRegisto,
   CatalogoTabelaMeta,
   CertificacaoAtual,
@@ -84,6 +85,7 @@ export const endpoints = {
     api.get<CandidatosCarreiraResponse>(
       `/gap-analysis/candidatos?carreiraId=${encodeURIComponent(carreiraId)}${cargoId ? `&cargoId=${encodeURIComponent(cargoId)}` : ''}`,
     ),
+  candidatosPorColaborador: () => api.get<CandidatosPorColaboradorResponse>('/gap-analysis/candidatos/por-colaborador'),
 
   // --- Catálogo genérico (Gestão de Dados) --------------------------------
   catalogoMeta: () => api.get<CatalogoTabelaMeta[]>('/catalogo/meta'),
