@@ -13,8 +13,10 @@ import {
   CreatePdiItemInput,
   DashboardResponse,
   DimensaoSkillMatrix,
+  EliminarSugestoesPdiResponse,
   FiltrosOrganizacionais,
   FormacaoResumo,
+  GerarPdiParaLobInput,
   GerarPdiResponse,
   LobDetalhe,
   LobResumo,
@@ -107,10 +109,14 @@ export const endpoints = {
   // --- PDI ------------------------------------------------------------------
   pdiListar: (colaboradorId: number) => api.get<PdiItem[]>(`/colaboradores/${colaboradorId}/pdi`),
   pdiGerar: (colaboradorId: number) => api.post<GerarPdiResponse>(`/colaboradores/${colaboradorId}/pdi/gerar`),
+  pdiGerarParaLob: (colaboradorId: number, dto: GerarPdiParaLobInput) =>
+    api.post<GerarPdiResponse>(`/colaboradores/${colaboradorId}/pdi/gerar-para-lob`, dto),
   pdiCriar: (colaboradorId: number, dto: CreatePdiItemInput) => api.post<PdiItem>(`/colaboradores/${colaboradorId}/pdi`, dto),
   pdiAtualizar: (colaboradorId: number, itemId: number, dto: UpdatePdiItemInput) =>
     api.patch<PdiItem>(`/colaboradores/${colaboradorId}/pdi/${itemId}`, dto),
   pdiEliminar: (colaboradorId: number, itemId: number) => api.delete<void>(`/colaboradores/${colaboradorId}/pdi/${itemId}`),
+  pdiEliminarSugestoes: (colaboradorId: number) =>
+    api.delete<EliminarSugestoesPdiResponse>(`/colaboradores/${colaboradorId}/pdi/sugestoes`),
 
   // --- Objetivos de LOB -------------------------------------------------------
   objetivosLob: (colaboradorId: number) => api.get<ObjetivosLobResponse>(`/colaboradores/${colaboradorId}/objetivos-lob`),

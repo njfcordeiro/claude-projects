@@ -16,6 +16,7 @@ export class LobsService {
     return lobs.map((lob) => ({
       id: lob.id,
       nome: lob.nome,
+      areaId: lob.areaId,
       areaNome: lob.area.nome,
       pontosMinimos: lob.pontosMinimos,
       totalRequisitosCompetencia: lob._count.requisitosCompetencia,

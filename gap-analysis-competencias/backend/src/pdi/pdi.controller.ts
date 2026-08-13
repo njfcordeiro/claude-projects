@@ -7,6 +7,7 @@ import { AuthenticatedUser } from '../auth/jwt-payload.interface';
 import { PdiService } from './pdi.service';
 import { CreatePdiItemDto } from './dto/create-pdi-item.dto';
 import { UpdatePdiItemDto } from './dto/update-pdi-item.dto';
+import { GerarParaLobDto } from './dto/gerar-para-lob.dto';
 
 /**
  * Plano de Desenvolvimento Individual — mesmo RBAC fino de leitura/escrita
@@ -30,9 +31,25 @@ export class PdiController {
     return this.service.gerar(id, user);
   }
 
+  /** Escolha manual da LOB-alvo — ver PdiService.gerarParaLobEscolhida (só LOBs da área do colaborador). */
+  @Post('gerar-para-lob')
+  gerarParaLob(@Param('id', ParseIntPipe) id: number, @Body() dto: GerarParaLobDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.gerarParaLobEscolhida(id, dto, user);
+  }
+
   @Post()
   criar(@Param('id', ParseIntPipe) id: number, @Body() dto: CreatePdiItemDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.criar(id, dto, user);
+  }
+
+  /**
+   * Elimina de uma vez todos os itens sugeridos (origem AUTOMATICO) — ver
+   * PdiService.eliminarSugestoes. Tem de estar ANTES de `:itemId` para o
+   * Nest não tentar interpretar "sugestoes" como um id numérico.
+   */
+  @Delete('sugestoes')
+  eliminarSugestoes(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.eliminarSugestoes(id, user);
   }
 
   @Patch(':itemId')

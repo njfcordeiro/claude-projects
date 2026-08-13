@@ -448,6 +448,14 @@ export interface CreatePdiItemInput {
   certificacaoId?: string;
 }
 
+export interface GerarPdiParaLobInput {
+  lobId: number;
+}
+
+export interface EliminarSugestoesPdiResponse {
+  eliminados: number;
+}
+
 // --- Objetivos de LOB (backend/src/pdi/lob-objetivos) ----------------------
 
 export interface ObjetivoLob {
@@ -505,6 +513,7 @@ export interface FiltrosOrganizacionais {
 export interface LobResumo {
   id: number;
   nome: string;
+  areaId: number;
   areaNome: string;
   pontosMinimos: number;
   totalRequisitosCompetencia: number;

@@ -1,6 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Sparkles, Trash2 } from 'lucide-react';
+import { ListChecks, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { endpoints } from '../../api/endpoints';
 import { ApiError } from '../../api/client';
 import { EstadoPdi, PdiItem } from '../../types/api';
@@ -90,6 +90,75 @@ function AdicionarPdiItemModal({ colaboradorId, onClose }: { colaboradorId: numb
   );
 }
 
+/**
+ * "Gerar sugestões para LOB" (pedido do utilizador) — escolha manual da LOB
+ * alvo, ao contrário do botão "Gerar sugestões" (que escolhe automaticamente
+ * pela recomendação do BUD, senão pela sugestão do sistema mais próxima).
+ * Só lista LOBs da própria Área do colaborador — o backend valida o mesmo.
+ */
+function GerarParaLobModal({
+  colaboradorId,
+  areaId,
+  onClose,
+}: {
+  colaboradorId: number;
+  areaId: number | null;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [lobId, setLobId] = useState('');
+  const [erro, setErro] = useState<string | null>(null);
+
+  const { data: lobs } = useQuery({ queryKey: ['lobs'], queryFn: endpoints.lobs });
+  const lobsDaArea = (lobs ?? []).filter((l) => l.areaId === areaId);
+
+  const gerar = useMutation({
+    mutationFn: () => endpoints.pdiGerarParaLob(colaboradorId, { lobId: Number(lobId) }),
+    onSuccess: (resultado) => {
+      queryClient.invalidateQueries({ queryKey: ['pdi', colaboradorId] });
+      onClose();
+      if (resultado.criados === 0) window.alert('Sem gaps novos para sugerir — a LOB escolhida já está coberta pelo PDI atual.');
+    },
+    onError: (err) => setErro(err instanceof ApiError ? err.message : 'Não foi possível gerar sugestões para esta LOB.'),
+  });
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!lobId) return;
+    setErro(null);
+    gerar.mutate();
+  }
+
+  return (
+    <Modal title="Gerar sugestões para LOB" onClose={onClose}>
+      <form onSubmit={handleSubmit}>
+        <Field label="LOB">
+          <Select value={lobId} onChange={(e) => setLobId(e.target.value)} autoFocus>
+            <option value="">— selecionar —</option>
+            {lobsDaArea.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.nome}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        {lobsDaArea.length === 0 && (
+          <p className="mb-3 text-sm text-fiori-text-secondary">Sem LOBs definidas para a área deste colaborador.</p>
+        )}
+        {erro && <p className="mb-3 text-sm text-fiori-error">{erro}</p>}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={gerar.isPending || !lobId}>
+            {gerar.isPending ? 'A gerar…' : 'Gerar'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 function ItemPdi({
   item,
   onAtualizar,
@@ -133,20 +202,25 @@ function ItemPdi({
 /**
  * PDI (Plano de Desenvolvimento Individual) — pedido do utilizador:
  * "criação automática... com base nos gaps, sugerindo formações". As
- * sugestões vêm do backend (PdiService.gerar, que reutiliza o motor de
- * gap existente e cobre todos os objetivos de LOB ativos — sistema +
- * BUD, ver ObjetivosLobSection). Aqui mostra-se a checklist, separada em
- * 3 grupos por origem (pedido do utilizador: "quero ver em primeiro as
- * competências das lobs recomendadas pelo BUD e depois recomendadas
- * pelo sistema; as restantes... ficam à parte") — a classificação
- * cruza item.lobId com os objetivos de LOB atuais, nunca com texto
- * guardado, por isso segue sempre o estado mais recente dos objetivos.
+ * sugestões vêm do backend e visam sempre UMA ÚNICA LOB por geração:
+ * "Gerar sugestões" (PdiService.gerar) escolhe-a automaticamente — a
+ * recomendada pelo BUD, senão a sugestão do sistema mais próxima de ser
+ * atingida; "Gerar sugestões para LOB" (PdiService.gerarParaLobEscolhida)
+ * deixa escolher manualmente, só entre as LOBs da própria Área do
+ * colaborador. Aqui mostra-se a checklist, separada em 3 grupos por origem
+ * (pedido do utilizador: "quero ver em primeiro as competências das lobs
+ * recomendadas pelo BUD e depois recomendadas pelo sistema; as
+ * restantes... ficam à parte") — a classificação cruza item.lobId com os
+ * objetivos de LOB atuais, nunca com texto guardado, por isso segue sempre
+ * o estado mais recente dos objetivos.
  */
 export function PdiSection({ colaboradorId }: { colaboradorId: number }) {
   const queryClient = useQueryClient();
   const { data: itens, isLoading } = useQuery({ queryKey: ['pdi', colaboradorId], queryFn: () => endpoints.pdiListar(colaboradorId) });
   const { data: objetivos } = useQuery({ queryKey: ['objetivos-lob', colaboradorId], queryFn: () => endpoints.objetivosLob(colaboradorId) });
+  const { data: colaborador } = useQuery({ queryKey: ['colaborador', colaboradorId], queryFn: () => endpoints.colaborador(colaboradorId) });
   const [aAdicionar, setAAdicionar] = useState(false);
+  const [aGerarParaLob, setAGerarParaLob] = useState(false);
 
   const gerar = useMutation({
     mutationFn: () => endpoints.pdiGerar(colaboradorId),
@@ -169,11 +243,19 @@ export function PdiSection({ colaboradorId }: { colaboradorId: number }) {
     onError: (err) => window.alert(err instanceof ApiError ? err.message : 'Não foi possível remover este item.'),
   });
 
+  const eliminarSugestoes = useMutation({
+    mutationFn: () => endpoints.pdiEliminarSugestoes(colaboradorId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['pdi', colaboradorId] }),
+    onError: (err) => window.alert(err instanceof ApiError ? err.message : 'Não foi possível eliminar as sugestões.'),
+  });
+
+  const temSugestoes = (itens ?? []).some((i) => i.origem === 'AUTOMATICO');
+
   return (
     <Card
       title="Plano de Desenvolvimento Individual"
       action={
-        <div className="flex gap-2 no-print">
+        <div className="flex flex-wrap gap-2 no-print">
           <Button variant="secondary" onClick={() => setAAdicionar(true)}>
             <span className="flex items-center gap-1.5">
               <Plus size={14} /> Adicionar
@@ -182,6 +264,24 @@ export function PdiSection({ colaboradorId }: { colaboradorId: number }) {
           <Button variant="secondary" onClick={() => gerar.mutate()} disabled={gerar.isPending}>
             <span className="flex items-center gap-1.5">
               <Sparkles size={14} /> {gerar.isPending ? 'A gerar…' : 'Gerar sugestões'}
+            </span>
+          </Button>
+          <Button variant="secondary" onClick={() => setAGerarParaLob(true)}>
+            <span className="flex items-center gap-1.5">
+              <ListChecks size={14} /> Gerar sugestões para LOB
+            </span>
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              if (window.confirm('Eliminar todas as competências/certificações sugeridas? Os itens adicionados manualmente não são afetados.')) {
+                eliminarSugestoes.mutate();
+              }
+            }}
+            disabled={eliminarSugestoes.isPending || !temSugestoes}
+          >
+            <span className="flex items-center gap-1.5">
+              <Trash2 size={14} /> {eliminarSugestoes.isPending ? 'A eliminar…' : 'Eliminar sugestões'}
             </span>
           </Button>
         </div>
@@ -258,6 +358,9 @@ export function PdiSection({ colaboradorId }: { colaboradorId: number }) {
       )}
 
       {aAdicionar && <AdicionarPdiItemModal colaboradorId={colaboradorId} onClose={() => setAAdicionar(false)} />}
+      {aGerarParaLob && (
+        <GerarParaLobModal colaboradorId={colaboradorId} areaId={colaborador?.areaId ?? null} onClose={() => setAGerarParaLob(false)} />
+      )}
     </Card>
   );
 }
