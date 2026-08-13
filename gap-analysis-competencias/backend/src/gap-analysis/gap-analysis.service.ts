@@ -9,6 +9,7 @@ import {
   CandidatoCarreira,
   CandidatosCarreiraResponse,
   CandidatosPorColaboradorResponse,
+  CargoEvolucao,
   CertificacaoCandidata,
   CertificacaoColaboradorInput,
   ColaboradorEmRisco,
@@ -16,6 +17,7 @@ import {
   CompetenciaCritica,
   DashboardResponse,
   DimensaoSkillMatrix,
+  EvolucaoCarreirasResponse,
   FiltrosOrganizacionais,
   FormacaoCandidata,
   PesosProntidao,
@@ -329,6 +331,60 @@ export class GapAnalysisService {
     });
 
     return { dimensao, colunas, linhas };
+  }
+
+  /**
+   * Mapa de progressão de cargos ("Evolução de Carreiras", pedido do
+   * utilizador) — TODOS os Cargos e ligações `cargo_progressao` do
+   * catálogo (a topologia é sempre a mesma, independentemente de quem
+   * pergunta); só os agregados por Cargo (nº de colaboradores, prontidão
+   * média) respeitam o RBAC/filtros, tal como no Dashboard e na Skill
+   * Matrix — MANAGER só conta a sua equipa, EMPLOYEE não tem acesso.
+   */
+  async obterEvolucaoCarreiras(filtros: FiltrosOrganizacionais, user: AuthenticatedUser): Promise<EvolucaoCarreirasResponse> {
+    if (user.role === PapelUtilizador.EMPLOYEE) {
+      throw new ForbiddenException('A evolução de carreiras é uma vista de equipa/organização — usa a tua ficha pessoal.');
+    }
+
+    const [todosOsCargos, progressoes] = await Promise.all([
+      this.prisma.cargo.findMany({ include: { carreira: true, categoria: true } }),
+      this.prisma.cargoProgressao.findMany(),
+    ]);
+
+    const where: Prisma.ColaboradorWhereInput = {
+      cargoId: { not: null },
+      ...(user.role === PapelUtilizador.MANAGER ? { managerId: user.colaboradorId ?? -1 } : {}),
+      ...(filtros.direcaoId ? { direcaoId: filtros.direcaoId } : {}),
+      ...(filtros.areaId ? { areaId: filtros.areaId } : {}),
+      ...(filtros.nucleoId ? { nucleoId: filtros.nucleoId } : {}),
+    };
+    const { resumos } = await this.calcularResumos(where);
+
+    const porCargo = new Map<string, ResumoColaboradorDashboard[]>();
+    for (const r of resumos) {
+      if (!porCargo.has(r.cargoId)) porCargo.set(r.cargoId, []);
+      porCargo.get(r.cargoId)!.push(r);
+    }
+
+    const cargos: CargoEvolucao[] = todosOsCargos.map((c) => {
+      const itens = porCargo.get(c.id) ?? [];
+      return {
+        cargoId: c.id,
+        cargoNome: c.nome,
+        carreiraId: c.carreiraId,
+        carreiraNome: c.carreira.nome,
+        carreiraRelevante: c.carreira.relevante,
+        categoriaId: c.categoriaId,
+        categoriaNome: c.categoria.nome,
+        totalColaboradores: itens.length,
+        prontidaoMedia: itens.length ? Math.round(itens.reduce((soma, i) => soma + i.prontidaoMedia, 0) / itens.length) : 0,
+      };
+    });
+
+    return {
+      cargos,
+      progressoes: progressoes.map((p) => ({ cargoId: p.cargoId, proximoCargoId: p.proximoCargoId })),
+    };
   }
 
   /**

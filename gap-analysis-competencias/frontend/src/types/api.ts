@@ -512,6 +512,28 @@ export interface SkillMatrixResponse {
   linhas: SkillMatrixLinha[];
 }
 
+export interface CargoEvolucao {
+  cargoId: string;
+  cargoNome: string;
+  carreiraId: string;
+  carreiraNome: string;
+  carreiraRelevante: boolean;
+  categoriaId: string;
+  categoriaNome: string;
+  totalColaboradores: number;
+  prontidaoMedia: number;
+}
+
+export interface ProgressaoCargo {
+  cargoId: string;
+  proximoCargoId: string;
+}
+
+export interface EvolucaoCarreirasResponse {
+  cargos: CargoEvolucao[];
+  progressoes: ProgressaoCargo[];
+}
+
 export interface FiltrosOrganizacionais {
   direcaoId?: number;
   areaId?: number;

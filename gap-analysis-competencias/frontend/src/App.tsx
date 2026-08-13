@@ -11,6 +11,7 @@ import { FormacoesPage } from './pages/FormacoesPage';
 import { AdminPage } from './pages/AdminPage';
 import { CatalogoPage } from './pages/CatalogoPage';
 import { CandidatosPage } from './pages/CandidatosPage';
+import { EvolucaoCarreirasPage } from './pages/EvolucaoCarreirasPage';
 import { AtribuicoesPage } from './pages/AtribuicoesPage';
 import { SkillMatrixPage } from './pages/SkillMatrixPage';
 import { ComoFuncionaPage } from './pages/ComoFuncionaPage';
@@ -45,6 +46,7 @@ export function App() {
 
             <Route element={<ProtectedRoute allowedRoles={['ADMIN_RH', 'MANAGER', 'VIEWER']} />}>
               <Route path="/candidatos" element={<CandidatosPage />} />
+              <Route path="/evolucao-carreiras" element={<EvolucaoCarreirasPage />} />
               <Route path="/skill-matrix" element={<SkillMatrixPage />} />
             </Route>
 

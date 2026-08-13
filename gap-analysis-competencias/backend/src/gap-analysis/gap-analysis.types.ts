@@ -328,6 +328,35 @@ export interface SkillMatrixResponse {
   linhas: SkillMatrixLinha[];
 }
 
+// --- Evolução de Carreiras (mapa de progressão de cargos) ----------------
+
+/** Um Cargo do catálogo, com a Carreira/Categoria a que pertence e agregados da população atual (colaboradores ativos que respeitam `filtros`). */
+export interface CargoEvolucao {
+  cargoId: string;
+  cargoNome: string;
+  carreiraId: string;
+  carreiraNome: string;
+  carreiraRelevante: boolean;
+  categoriaId: string;
+  categoriaNome: string;
+  /** Nº de colaboradores atualmente neste cargo (0 se nenhum). */
+  totalColaboradores: number;
+  /** Média de prontidaoMedia dos colaboradores deste cargo — 0 se totalColaboradores for 0. */
+  prontidaoMedia: number;
+}
+
+/** Uma seta cargo_progressao — pode ligar cargos de Carreiras diferentes (ver GapAnalysisService.sugerirCandidatosPorColaborador). */
+export interface ProgressaoCargo {
+  cargoId: string;
+  proximoCargoId: string;
+}
+
+/** Resposta de `GET /gap-analysis/evolucao-carreiras` — TODOS os Cargos e progressões do catálogo (a topologia não é filtrada), só os agregados por Cargo respeitam `filtros`/RBAC. */
+export interface EvolucaoCarreirasResponse {
+  cargos: CargoEvolucao[];
+  progressoes: ProgressaoCargo[];
+}
+
 export interface FiltrosOrganizacionais {
   direcaoId?: number;
   areaId?: number;

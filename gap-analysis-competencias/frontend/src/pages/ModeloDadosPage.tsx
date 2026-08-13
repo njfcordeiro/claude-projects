@@ -519,6 +519,213 @@ const TABELAS: TabelaModelo[] = [
 
 const GRUPOS = Array.from(new Set(TABELAS.map((t) => t.grupo)));
 
+// --- Diagrama de relações (pedido do utilizador: "verificar de forma gráfica a ligação entre as diferentes tabelas") ---------
+
+const COR_ORG = '#0070F2'; // fiori-primary
+const COR_CATALOGO = '#107E3E'; // fiori-success
+const COR_HISTORICO = '#E76500'; // fiori-warning
+
+/**
+ * Ligações mais estruturantes do schema (não as ~40 FKs todas — ver nota no
+ * rodapé do diagrama para o que fica de fora por legibilidade). Coordenadas
+ * fixas por ser um diagrama de documentação do schema, não dados ao vivo —
+ * ao contrário do gráfico em "Evolução de Carreiras", que é gerado a partir
+ * do catálogo real.
+ */
+function DiagramaRelacoes() {
+  return (
+    <figure>
+      <div className="overflow-x-auto">
+        <svg
+          viewBox="0 0 1200 620"
+          role="img"
+          aria-label="Diagrama entidade-relação simplificado: Colaborador ao centro, ligado à Organização (Direção, Área, Núcleo, Carreira, Categoria, Cargo), ao Catálogo (Competência, Certificação, Formação, LOB) através do histórico (Avaliação, Certificação do colaborador, PDI, Utilizador)."
+          style={{ width: '100%', height: 'auto', minWidth: 900 }}
+        >
+          <defs>
+            <marker id="arrowRelacoes" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
+            </marker>
+          </defs>
+
+          <text x={20} y={24} fontSize={11} fontWeight={700} fill={COR_ORG}>
+            ORGANIZAÇÃO
+          </text>
+          <text x={20} y={300} fontSize={11} fontWeight={700} fill={COR_CATALOGO}>
+            CATÁLOGO
+          </text>
+          <text x={20} y={450} fontSize={11} fontWeight={700} fill={COR_HISTORICO}>
+            HISTÓRICO DO COLABORADOR
+          </text>
+
+          {/* Organização -> Hub (fan) */}
+          <g stroke={COR_ORG} strokeWidth={1.3} opacity={0.65} fill="none" markerEnd="url(#arrowRelacoes)">
+            <line x1={100} y1={80} x2={480} y2={175} />
+            <line x1={290} y1={80} x2={510} y2={172} />
+            <line x1={480} y1={80} x2={545} y2={170} />
+            <line x1={670} y1={80} x2={590} y2={170} />
+            <line x1={860} y1={80} x2={630} y2={172} />
+            <line x1={1050} y1={80} x2={665} y2={175} />
+          </g>
+          {/* Cargo -> Carreira / Categoria (dentro da Organização) */}
+          <g stroke={COR_ORG} strokeWidth={1.3} opacity={0.65} fill="none" markerEnd="url(#arrowRelacoes)">
+            <path d="M 1050 55 Q 860 5 670 55" />
+            <path d="M 1050 55 Q 955 18 860 55" />
+          </g>
+          {/* Área -> LOB (scoping, contorna o hub) */}
+          <path d="M 330 80 Q 1050 130 940 320" stroke={COR_CATALOGO} strokeWidth={1.3} fill="none" opacity={0.7} markerEnd="url(#arrowRelacoes)" />
+          {/* LOB -> Competência / Certificação (requisitos) */}
+          <g stroke={COR_CATALOGO} strokeWidth={1.3} opacity={0.7} fill="none" markerEnd="url(#arrowRelacoes)">
+            <path d="M 890 372 Q 500 440 130 372" />
+            <path d="M 890 372 Q 700 420 490 372" />
+          </g>
+          {/* Hub -> Histórico (fan) */}
+          <g stroke={COR_HISTORICO} strokeWidth={1.3} opacity={0.7} markerEnd="url(#arrowRelacoes)">
+            <line x1={520} y1={240} x2={115} y2={470} />
+            <line x1={560} y1={240} x2={345} y2={470} />
+            <line x1={640} y1={240} x2={575} y2={470} />
+            <line x1={680} y1={240} x2={805} y2={470} />
+          </g>
+          {/* Item de histórico -> entidade de Catálogo a que se refere */}
+          <g stroke={COR_HISTORICO} strokeWidth={1.3} opacity={0.7} markerEnd="url(#arrowRelacoes)">
+            <line x1={345} y1={470} x2={150} y2={372} />
+            <line x1={575} y1={470} x2={420} y2={372} />
+            <line x1={805} y1={470} x2={940} y2={372} />
+          </g>
+
+          {/* Nós — Organização */}
+          <g fontSize={12} fontWeight={600} textAnchor="middle">
+            {[
+              { x: 20, label: 'Direção' },
+              { x: 210, label: 'Área' },
+              { x: 400, label: 'Núcleo' },
+              { x: 590, label: 'Carreira' },
+              { x: 780, label: 'Categoria' },
+              { x: 970, label: 'Cargo' },
+            ].map((no) => (
+              <g key={no.label}>
+                <rect x={no.x} y={40} width={160} height={40} rx={6} fill="#FFFFFF" stroke={COR_ORG} strokeWidth={1.5} />
+                <text x={no.x + 80} y={65} fill="currentColor" className="text-fiori-text">
+                  {no.label}
+                </text>
+              </g>
+            ))}
+          </g>
+
+          {/* Hub */}
+          <rect x={460} y={170} width={280} height={70} rx={8} fill="#F5FAFF" stroke={COR_ORG} strokeWidth={2.2} />
+          <text x={600} y={200} fontSize={14} fontWeight={700} textAnchor="middle" fill={COR_ORG}>
+            Colaborador
+          </text>
+          <text x={600} y={220} fontSize={10.5} textAnchor="middle" fill="currentColor" className="text-fiori-text-secondary">
+            entidade central
+          </text>
+
+          {/* Nós — Catálogo */}
+          <g fontSize={12} fontWeight={600} textAnchor="middle">
+            {[
+              { x: 40, label: 'Competência' },
+              { x: 310, label: 'Certificação' },
+              { x: 580, label: 'Formação' },
+              { x: 850, label: 'LOB', sub: 'o motor de gap' },
+            ].map((no) => (
+              <g key={no.label}>
+                <rect x={no.x} y={326} width={180} height={46} rx={6} fill="#FFFFFF" stroke={COR_CATALOGO} strokeWidth={1.5} />
+                <text x={no.x + 90} y={no.sub ? 349 : 354} fill="currentColor" className="text-fiori-text">
+                  {no.label}
+                </text>
+                {no.sub && (
+                  <text x={no.x + 90} y={364} fontSize={9.5} fontWeight={400} fill="currentColor" className="text-fiori-text-secondary">
+                    {no.sub}
+                  </text>
+                )}
+              </g>
+            ))}
+          </g>
+
+          {/* Nós — Histórico */}
+          <g fontSize={12} fontWeight={600} textAnchor="middle">
+            {[
+              { x: 20, label: 'Utilizador (User)' },
+              { x: 250, label: 'Avaliação', sub: 'histórico de competência' },
+              { x: 480, label: 'Certificação do colab.', sub: 'com validade' },
+              { x: 710, label: 'PDI (item)' },
+            ].map((no) => (
+              <g key={no.label}>
+                <rect x={no.x} y={470} width={190} height={46} rx={6} fill="#FFFFFF" stroke={COR_HISTORICO} strokeWidth={1.5} />
+                <text x={no.x + 95} y={no.sub ? 493 : 498} fill="currentColor" className="text-fiori-text">
+                  {no.label}
+                </text>
+                {no.sub && (
+                  <text x={no.x + 95} y={507} fontSize={9.5} fontWeight={400} fill="currentColor" className="text-fiori-text-secondary">
+                    {no.sub}
+                  </text>
+                )}
+              </g>
+            ))}
+          </g>
+        </svg>
+      </div>
+      <figcaption className="mt-3 text-xs text-fiori-text-secondary">
+        Mostra as ~15 tabelas e ligações mais estruturantes, não as ~40 chaves estrangeiras todas (essas estão listadas por tabela nos cartões
+        abaixo). Simplificações: "Área" liga-se do mesmo modo a Formação e a LOB (só a ligação a Competência está desenhada); "PDI" pode
+        referenciar diretamente Competência, Certificação ou Formação além de LOB (campos opcionais na mesma tabela); Projeto e Recomendação de
+        LOB seguem o mesmo padrão do bloco "Histórico" mas foram omitidos para caber no diagrama.
+      </figcaption>
+    </figure>
+  );
+}
+
+// --- Ecrã ↔ Dados ------------------------------------------------------------
+
+const MAPA_ECRA_DADOS: { ecra: string; novo?: boolean; dados: string[]; nota?: string }[] = [
+  { ecra: 'Dashboard', dados: ['Colaborador', 'Cargo', 'Direção/Área/Núcleo', 'LOB (agregado)'] },
+  { ecra: 'Colaboradores', dados: ['Colaborador', 'Direção/Área/Núcleo', 'Cargo', 'Carreira', 'Categoria'] },
+  { ecra: 'Candidatos', dados: ['Colaborador', 'Cargo', 'CargoProgressao', 'Carreira'] },
+  { ecra: 'Evolução de Carreiras', novo: true, dados: ['Carreira', 'Cargo', 'Categoria', 'CargoProgressao', 'Colaborador (contagens)'] },
+  { ecra: 'Skill Matrix', dados: ['Colaborador', 'Competência', 'LOB'] },
+  {
+    ecra: 'Ficha do Colaborador / PDI',
+    dados: ['Colaborador', 'Avaliação', 'Certificação do colab.', 'PDI', 'LOB', 'Competência', 'Certificação', 'Formação', 'Projeto'],
+  },
+  { ecra: 'Gestão de Dados', dados: ['todas as tabelas de catálogo'], nota: '(Direção…Formação, LOB, Projeto)' },
+  { ecra: 'Como Funciona', dados: ['ConfiguracaoProntidao'], nota: '(leitura)' },
+  { ecra: 'Modelo de Dados', dados: ['todas as tabelas'], nota: '(este ecrã)' },
+];
+
+function TabelaEcraDados() {
+  return (
+    <div className="overflow-x-auto rounded border border-fiori-border">
+      <table className="fiori-table">
+        <thead>
+          <tr>
+            <th>Ecrã</th>
+            <th>Dados principais</th>
+          </tr>
+        </thead>
+        <tbody>
+          {MAPA_ECRA_DADOS.map((linha) => (
+            <tr key={linha.ecra}>
+              <td className="whitespace-nowrap text-xs font-semibold text-fiori-text">
+                {linha.ecra}
+                {linha.novo && <span className="ml-1.5 rounded bg-fiori-primary-bg px-1.5 py-0.5 text-[10px] font-semibold text-fiori-primary">novo</span>}
+              </td>
+              <td className="text-xs">
+                {linha.dados.map((d) => (
+                  <span key={d} className="mr-1.5 mb-1 inline-block rounded-full bg-fiori-primary-bg px-2 py-0.5 text-[11px] font-medium text-fiori-primary">
+                    {d}
+                  </span>
+                ))}
+                {linha.nota && <span className="text-[11px] text-fiori-text-secondary">{linha.nota}</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 const VISIBILIDADE_BADGE: Record<TabelaModelo['visibilidade'], { status: BadgeStatus; label: string }> = {
   total: { status: 'success', label: 'Visível' },
   parcial: { status: 'warning', label: 'Parcialmente visível' },
@@ -576,6 +783,15 @@ export function ModeloDadosPage() {
             <Badge status="neutral">Não visível</Badge> só existe no schema/base de dados
           </span>
         </div>
+      </Card>
+
+      <Card title="Visão gráfica — como as tabelas se ligam">
+        <DiagramaRelacoes />
+      </Card>
+
+      <Card title="Ecrã ↔ Dados">
+        <p className="mb-3 text-sm text-fiori-text-secondary">Que tabelas cada ecrã lê ou escreve.</p>
+        <TabelaEcraDados />
       </Card>
 
       {GRUPOS.map((grupo) => {
