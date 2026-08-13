@@ -240,6 +240,13 @@ export interface RelatorioGapCargo {
   lobs: ResumoGapLob[];
 }
 
+/** Pesos globais do cálculo de prontidão (ver ComoFuncionaPage) — os três têm de somar 100. */
+export interface PesosProntidao {
+  pesoCompetencias: number;
+  pesoCertificacoes: number;
+  pesoPontos: number;
+}
+
 export interface ResumoColaboradorDashboard {
   colaboradorId: number;
   nome: string;

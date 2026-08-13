@@ -745,6 +745,25 @@ model GapAnalysisCargoResult {
 }
 
 // ---------------------------------------------------------------------
+// Configuração — parâmetros globais do motor de gap (pedido do utilizador:
+// pesos configuráveis para o cálculo de prontidão, ver
+// gap-analysis.logic.ts calcularGapLob). Singleton: uma única linha,
+// id fixo 1, sem chave estrangeira nenhuma tabela aponta para aqui.
+// ---------------------------------------------------------------------
+
+model ConfiguracaoProntidao {
+  id                Int      @id @default(1)
+  // Os três pesos têm de somar 100 (validado em ConfiguracaoProntidaoService.atualizar).
+  pesoCompetencias  Int      @default(40) @map("peso_competencias")
+  pesoCertificacoes Int      @default(40) @map("peso_certificacoes")
+  pesoPontos        Int      @default(20) @map("peso_pontos")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  updatedBy         Int?     @map("updated_by")
+
+  @@map("configuracao_prontidao")
+}
+
+// ---------------------------------------------------------------------
 // Auditoria técnica genérica
 // ---------------------------------------------------------------------
 

@@ -19,6 +19,19 @@ export interface RequisitoCertificacaoInput {
   obrigatorio: boolean;
 }
 
+/**
+ * Pesos do cálculo de prontidão (pedido do utilizador), em pontos
+ * percentuais, sempre a somar 100 — validado em
+ * ConfiguracaoProntidaoService.atualizar, nunca dentro do motor puro.
+ * Configuração global (não por LOB), lida de `ConfiguracaoProntidao`
+ * (singleton, id=1).
+ */
+export interface PesosProntidao {
+  pesoCompetencias: number;
+  pesoCertificacoes: number;
+  pesoPontos: number;
+}
+
 export interface CertificacaoColaboradorInput {
   dataValidade: Date | null;
   dataObtencao: Date | null;
@@ -50,8 +63,11 @@ export interface ResultadoGapLob {
   lobNome: string;
   pontosObtidos: number;
   pontosMinimos: number;
-  /** 0-100, capado — pontosObtidos/pontosMinimos. Não implica `atingido`
-   *  sozinho: um obrigatório em falta bloqueia mesmo com 100%. */
+  /** 0-100 — média ponderada (ver PesosProntidao) de 3 rácios: competências
+   *  obrigatórias cumpridas, certificações obrigatórias cumpridas e pontos
+   *  obtidos/mínimos (capado a 100%). Cada rácio só atinge 1 quando esse
+   *  critério está totalmente cumprido, por isso prontidaoPercentual === 100
+   *  ⇔ atingido === true — nunca diverge. */
   prontidaoPercentual: number;
   atingido: boolean;
   obrigatoriosEmFalta: number;

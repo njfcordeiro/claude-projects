@@ -18,6 +18,7 @@ import {
   DimensaoSkillMatrix,
   FiltrosOrganizacionais,
   FormacaoCandidata,
+  PesosProntidao,
   PreparacaoCertificacao,
   ProjetoVertenteCandidata,
   RelatorioGapCargo,
@@ -30,6 +31,10 @@ import {
   SkillMatrixResponse,
   SugestoesCompetencia,
 } from './gap-analysis.types';
+import { UpdateConfiguracaoProntidaoDto } from './dto/update-configuracao-prontidao.dto';
+
+/** Pesos por omissão quando ainda não existe uma linha em `configuracao_prontidao` (nunca configurados). */
+const PESOS_PRONTIDAO_PADRAO: PesosProntidao = { pesoCompetencias: 40, pesoCertificacoes: 40, pesoPontos: 20 };
 
 const LIMIAR_PRONTIDAO_RISCO_FUGA = 85;
 const ANOS_MINIMOS_RISCO_FUGA = 2;
@@ -69,12 +74,13 @@ export class GapAnalysisService {
     await this.colaboradores.obterComVerificacaoDeAcesso(colaboradorId, user);
 
     const lob = await this.buscarLobComRequisitos(lobId);
-    const [niveisAtuais, certsColaborador] = await Promise.all([
+    const [niveisAtuais, certsColaborador, pesos] = await Promise.all([
       this.buscarNiveisAtuais(colaboradorId),
       this.buscarCertificacoesColaborador(colaboradorId),
+      this.buscarPesosProntidao(),
     ]);
 
-    return this.avaliarLobParaColaborador(lob, niveisAtuais, certsColaborador, colaboradorId);
+    return this.avaliarLobParaColaborador(lob, niveisAtuais, certsColaborador, pesos, colaboradorId);
   }
 
   async avaliarColaboradorCargo(colaboradorId: number, user: AuthenticatedUser): Promise<RelatorioGapCargo> {
@@ -84,7 +90,7 @@ export class GapAnalysisService {
     }
     const cargo = await this.prisma.cargo.findUniqueOrThrow({ where: { id: colaborador.cargoId } });
 
-    const [niveisAtuais, certsColaborador, todasAsLobs] = await Promise.all([
+    const [niveisAtuais, certsColaborador, todasAsLobs, pesos] = await Promise.all([
       this.buscarNiveisAtuais(colaboradorId),
       this.buscarCertificacoesColaborador(colaboradorId),
       this.prisma.lob.findMany({
@@ -94,13 +100,14 @@ export class GapAnalysisService {
           requisitosCertificacao: { include: { certificacao: true } },
         },
       }),
+      this.buscarPesosProntidao(),
     ]);
 
 
     const lobs: ResumoGapLob[] = todasAsLobs.map((lob) => {
       const requisitosCompetencia = this.mapearRequisitosCompetencia(lob.requisitosCompetencia);
       const requisitosCertificacao = this.mapearRequisitosCertificacao(lob.requisitosCertificacao);
-      const resultado = calcularGapLob(lob, requisitosCompetencia, requisitosCertificacao, niveisAtuais, certsColaborador);
+      const resultado = calcularGapLob(lob, requisitosCompetencia, requisitosCertificacao, niveisAtuais, certsColaborador, pesos);
       const certificacoesObrigatorias = resultado.certificacoes.filter((c) => c.obrigatorio);
       const competenciasObrigatorias = resultado.competencias.filter((c) => c.obrigatorio);
       return {
@@ -253,7 +260,7 @@ export class GapAnalysisService {
     const ids = colaboradores.map((c) => c.id);
 
     if (dimensao === 'lob') {
-      const [niveisPorColaborador, certsPorColaborador, todasAsLobs] = await Promise.all([
+      const [niveisPorColaborador, certsPorColaborador, todasAsLobs, pesos] = await Promise.all([
         this.buscarNiveisAtuaisEmLote(ids),
         this.buscarCertificacoesEmLote(ids),
         this.prisma.lob.findMany({
@@ -264,6 +271,7 @@ export class GapAnalysisService {
           },
           orderBy: [{ area: { nome: 'asc' } }, { nome: 'asc' }],
         }),
+        this.buscarPesosProntidao(),
       ]);
 
       const colunas = todasAsLobs.map((l) => ({ id: l.id, nome: l.nome, areaId: l.areaId, areaNome: l.area.nome }));
@@ -274,7 +282,7 @@ export class GapAnalysisService {
         for (const lob of todasAsLobs) {
           const requisitosCompetencia = this.mapearRequisitosCompetencia(lob.requisitosCompetencia);
           const requisitosCertificacao = this.mapearRequisitosCertificacao(lob.requisitosCertificacao);
-          const resultado = calcularGapLob(lob, requisitosCompetencia, requisitosCertificacao, niveisAtuais, certsColaborador);
+          const resultado = calcularGapLob(lob, requisitosCompetencia, requisitosCertificacao, niveisAtuais, certsColaborador, pesos);
           valores[String(lob.id)] = resultado.prontidaoPercentual;
         }
         return {
@@ -723,7 +731,7 @@ export class GapAnalysisService {
     if (colaboradores.length === 0) return { resumos: [], competenciasCriticas: [] };
 
     const ids = colaboradores.map((c) => c.id);
-    const [niveisPorColaborador, certsPorColaborador, cargosPorId, todasAsLobs] = await Promise.all([
+    const [niveisPorColaborador, certsPorColaborador, cargosPorId, todasAsLobs, pesos] = await Promise.all([
       this.buscarNiveisAtuaisEmLote(ids),
       this.buscarCertificacoesEmLote(ids),
       this.buscarCargosPorId(),
@@ -733,6 +741,7 @@ export class GapAnalysisService {
           requisitosCertificacao: { include: { certificacao: true } },
         },
       }),
+      this.buscarPesosProntidao(),
     ]);
 
     /**
@@ -755,7 +764,7 @@ export class GapAnalysisService {
       const lobsResultados = todasAsLobs.map((lob) => {
         const requisitosCompetencia = this.mapearRequisitosCompetencia(lob.requisitosCompetencia);
         const requisitosCertificacao = this.mapearRequisitosCertificacao(lob.requisitosCertificacao);
-        const resultado = calcularGapLob(lob, requisitosCompetencia, requisitosCertificacao, niveisAtuais, certsColaborador);
+        const resultado = calcularGapLob(lob, requisitosCompetencia, requisitosCertificacao, niveisAtuais, certsColaborador, pesos);
 
         for (const comp of resultado.competencias) {
           if (comp.cumprido || !comp.obrigatorio) continue;
@@ -902,6 +911,36 @@ export class GapAnalysisService {
     return insights;
   }
 
+  /**
+   * Pesos globais do cálculo de prontidão (pedido do utilizador — ver
+   * calcularGapLob). Leitura aberta a qualquer papel autenticado (o ecrã
+   * "Como Funciona" mostra a fórmula a todos); escrita restrita a
+   * ADMIN_RH no controller.
+   */
+  async obterConfiguracaoProntidao(): Promise<PesosProntidao> {
+    return this.buscarPesosProntidao();
+  }
+
+  async atualizarConfiguracaoProntidao(dto: UpdateConfiguracaoProntidaoDto, user: AuthenticatedUser): Promise<PesosProntidao> {
+    const soma = dto.pesoCompetencias + dto.pesoCertificacoes + dto.pesoPontos;
+    if (soma !== 100) {
+      throw new BadRequestException(`Os três pesos têm de somar 100 pontos percentuais (soma atual: ${soma}).`);
+    }
+
+    const config = await this.prisma.runAsUser(user.sub, (tx) =>
+      tx.configuracaoProntidao.upsert({
+        where: { id: 1 },
+        create: { id: 1, ...dto, updatedBy: user.sub },
+        update: { ...dto, updatedBy: user.sub },
+      }),
+    );
+    return {
+      pesoCompetencias: config.pesoCompetencias,
+      pesoCertificacoes: config.pesoCertificacoes,
+      pesoPontos: config.pesoPontos,
+    };
+  }
+
   // -----------------------------------------------------------------
   // Privados
   // -----------------------------------------------------------------
@@ -1006,12 +1045,13 @@ export class GapAnalysisService {
     lob: Awaited<ReturnType<GapAnalysisService['buscarLobComRequisitos']>>,
     niveisAtuais: Map<number, number>,
     certsColaborador: Map<string, CertificacaoColaboradorInput>,
+    pesos: PesosProntidao,
     colaboradorId: number,
   ): Promise<RelatorioGapLob> {
     const requisitosCompetencia = this.mapearRequisitosCompetencia(lob.requisitosCompetencia);
     const requisitosCertificacao = this.mapearRequisitosCertificacao(lob.requisitosCertificacao);
 
-    const resultado = calcularGapLob(lob, requisitosCompetencia, requisitosCertificacao, niveisAtuais, certsColaborador);
+    const resultado = calcularGapLob(lob, requisitosCompetencia, requisitosCertificacao, niveisAtuais, certsColaborador, pesos);
 
     const competencias = await Promise.all(
       resultado.competencias.map(async (gap) => ({
@@ -1185,5 +1225,13 @@ export class GapAnalysisService {
   private async buscarCargosPorId(): Promise<Map<string, { nome: string; lobsExigidos: number | null }>> {
     const cargos = await this.prisma.cargo.findMany({ select: { id: true, nome: true, lobsExigidos: true } });
     return new Map(cargos.map((c) => [c.id, { nome: c.nome, lobsExigidos: c.lobsExigidos }]));
+  }
+
+  /** Pesos globais de `configuracao_prontidao` (singleton, id=1) — pesos por omissão se ainda não configurados. */
+  private async buscarPesosProntidao(): Promise<PesosProntidao> {
+    const config = await this.prisma.configuracaoProntidao.findUnique({ where: { id: 1 } });
+    return config
+      ? { pesoCompetencias: config.pesoCompetencias, pesoCertificacoes: config.pesoCertificacoes, pesoPontos: config.pesoPontos }
+      : PESOS_PRONTIDAO_PADRAO;
   }
 }

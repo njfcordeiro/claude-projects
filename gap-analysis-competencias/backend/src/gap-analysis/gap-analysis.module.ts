@@ -4,11 +4,12 @@ import { GapAnalysisController } from './gap-analysis.controller';
 import { DashboardController } from './dashboard.controller';
 import { CandidatosController } from './candidatos.controller';
 import { SkillMatrixController } from './skill-matrix.controller';
+import { ConfiguracaoProntidaoController } from './configuracao-prontidao.controller';
 import { GapAnalysisService } from './gap-analysis.service';
 
 @Module({
   imports: [ColaboradoresModule],
-  controllers: [GapAnalysisController, DashboardController, CandidatosController, SkillMatrixController],
+  controllers: [GapAnalysisController, DashboardController, CandidatosController, SkillMatrixController, ConfiguracaoProntidaoController],
   providers: [GapAnalysisService],
   exports: [GapAnalysisService],
 })

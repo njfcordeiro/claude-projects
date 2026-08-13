@@ -9,6 +9,13 @@
  *                 E todas as certificações obrigatórias na posse do
  *                   colaborador e dentro da validade
  *
+ * Prontidão (pedido do utilizador): média ponderada de 3 rácios —
+ * competências obrigatórias cumpridas, certificações obrigatórias
+ * cumpridas, pontos obtidos/mínimos — para que 100% de prontidão implique
+ * sempre "atingida" (ver calcularGapLob). Um critério sem obrigatórias
+ * (0 competências ou 0 certificações obrigatórias nessa LOB) conta como
+ * cumprido por vacuidade, mesmo princípio já usado em obrigatoriosEmFalta.
+ *
  * Mantido sem dependências externas de propósito — é a parte do sistema
  * com mais regras de negócio, por isso é a mais valiosa a testar
  * exaustivamente sem precisar de uma base de dados (ver
@@ -20,6 +27,7 @@ import {
   FormacaoCandidata,
   GapCertificacao,
   GapCompetencia,
+  PesosProntidao,
   RequisitoCertificacaoInput,
   RequisitoCompetenciaInput,
   ResultadoGapLob,
@@ -66,6 +74,7 @@ export function calcularGapLob(
   requisitosCertificacao: RequisitoCertificacaoInput[],
   niveisAtuais: Map<number, number>, // competenciaId -> nivel
   certificacoesColaborador: Map<string, CertificacaoColaboradorInput>,
+  pesos: PesosProntidao,
   hoje: Date = new Date(),
 ): ResultadoGapLob {
   const competencias = requisitosCompetencia.map((r) =>
@@ -76,13 +85,24 @@ export function calcularGapLob(
   );
 
   const pontosObtidos = competencias.reduce((soma, c) => soma + c.pontosObtidos, 0);
+  const obrigatoriosCompetencia = competencias.filter((c) => c.obrigatorio);
+  const obrigatoriosCertificacao = certificacoes.filter((c) => c.obrigatorio);
   const obrigatoriosEmFalta =
-    competencias.filter((c) => c.obrigatorio && !c.cumprido).length +
-    certificacoes.filter((c) => c.obrigatorio && !c.cumprido).length;
+    obrigatoriosCompetencia.filter((c) => !c.cumprido).length + obrigatoriosCertificacao.filter((c) => !c.cumprido).length;
 
   const atingido = pontosObtidos >= lob.pontosMinimos && obrigatoriosEmFalta === 0;
-  const prontidaoPercentual =
-    lob.pontosMinimos > 0 ? Math.min(100, Math.round((pontosObtidos / lob.pontosMinimos) * 100)) : 100;
+
+  // Rácio binário (sem crédito parcial, mesmo princípio de calcularGapCompetencia
+  // acima) — LOB sem obrigatórias desse tipo conta como 1 (cumprido por vacuidade).
+  const ratioCompetencias =
+    obrigatoriosCompetencia.length === 0 ? 1 : obrigatoriosCompetencia.filter((c) => c.cumprido).length / obrigatoriosCompetencia.length;
+  const ratioCertificacoes =
+    obrigatoriosCertificacao.length === 0 ? 1 : obrigatoriosCertificacao.filter((c) => c.cumprido).length / obrigatoriosCertificacao.length;
+  const ratioPontos = lob.pontosMinimos > 0 ? Math.min(1, pontosObtidos / lob.pontosMinimos) : 1;
+
+  const prontidaoPercentual = Math.round(
+    pesos.pesoCompetencias * ratioCompetencias + pesos.pesoCertificacoes * ratioCertificacoes + pesos.pesoPontos * ratioPontos,
+  );
 
   return {
     lobId: lob.id,

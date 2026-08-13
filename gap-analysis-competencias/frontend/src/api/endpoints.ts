@@ -25,6 +25,7 @@ import {
   PapelUtilizador,
   ParticipacaoProjeto,
   PdiItem,
+  PesosProntidao,
   ProjetoVertenteDetalhe,
   RegistarParticipacaoProjetoInput,
   RelatorioGapCargo,
@@ -88,6 +89,10 @@ export const endpoints = {
       `/gap-analysis/candidatos?carreiraId=${encodeURIComponent(carreiraId)}${cargoId ? `&cargoId=${encodeURIComponent(cargoId)}` : ''}`,
     ),
   candidatosPorColaborador: () => api.get<CandidatosPorColaboradorResponse>('/gap-analysis/candidatos/por-colaborador'),
+
+  // --- Configuração de prontidão (pesos globais) -----------------------------
+  configuracaoProntidao: () => api.get<PesosProntidao>('/gap-analysis/configuracao-prontidao'),
+  atualizarConfiguracaoProntidao: (dto: PesosProntidao) => api.patch<PesosProntidao>('/gap-analysis/configuracao-prontidao', dto),
 
   // --- Catálogo genérico (Gestão de Dados) --------------------------------
   catalogoMeta: () => api.get<CatalogoTabelaMeta[]>('/catalogo/meta'),

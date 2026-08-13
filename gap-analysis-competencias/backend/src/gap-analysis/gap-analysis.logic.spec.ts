@@ -9,11 +9,13 @@ import {
   CertificacaoCandidata,
   CertificacaoColaboradorInput,
   FormacaoCandidata,
+  PesosProntidao,
   RequisitoCertificacaoInput,
   RequisitoCompetenciaInput,
 } from './gap-analysis.types';
 
 const HOJE = new Date('2026-07-31');
+const PESOS_PADRAO: PesosProntidao = { pesoCompetencias: 40, pesoCertificacoes: 40, pesoPontos: 20 };
 
 function requisitoCompetencia(overrides: Partial<RequisitoCompetenciaInput> = {}): RequisitoCompetenciaInput {
   return {
@@ -101,14 +103,14 @@ describe('calcularGapLob', () => {
       [1, 2],
       [2, 1],
     ]);
-    const r = calcularGapLob(lob, requisitos, [], niveis, new Map(), HOJE);
+    const r = calcularGapLob(lob, requisitos, [], niveis, new Map(), PESOS_PADRAO, HOJE);
     expect(r.pontosObtidos).toBe(50);
     expect(r.atingido).toBe(true);
     expect(r.obrigatoriosEmFalta).toBe(0);
     expect(r.prontidaoPercentual).toBe(100);
   });
 
-  it('NÃO atinge a LOB se falta uma competência obrigatória, mesmo com pontos suficientes', () => {
+  it('NÃO atinge a LOB se falta uma competência obrigatória, mesmo com pontos suficientes — e a prontidão fica abaixo de 100%', () => {
     // Um requisito não-obrigatório de 60 pontos cobre sozinho o mínimo de 50,
     // mas o obrigatório de nível 3 fica por cumprir.
     const requisitos = [
@@ -119,22 +121,27 @@ describe('calcularGapLob', () => {
       [1, 5],
       [2, 1], // abaixo do nível 3 exigido
     ]);
-    const r = calcularGapLob(lob, requisitos, [], niveis, new Map(), HOJE);
+    const r = calcularGapLob(lob, requisitos, [], niveis, new Map(), PESOS_PADRAO, HOJE);
     expect(r.pontosObtidos).toBe(60);
     expect(r.pontosObtidos).toBeGreaterThanOrEqual(lob.pontosMinimos);
     expect(r.obrigatoriosEmFalta).toBe(1);
     expect(r.atingido).toBe(false); // bloqueado apesar dos pontos
+    // 40% competências (0/1 obrigatória cumprida) + 40% certificações (sem obrigatórias, vacuamente 1) + 20% pontos (100%)
+    expect(r.prontidaoPercentual).toBe(60);
+    expect(r.prontidaoPercentual).toBeLessThan(100); // a inconsistência do bug antigo (100% sem estar atingida) já não acontece
   });
 
-  it('NÃO atinge a LOB se falta uma certificação obrigatória, mesmo com todas as competências cumpridas', () => {
+  it('NÃO atinge a LOB se falta uma certificação obrigatória, mesmo com todas as competências cumpridas — e a prontidão fica abaixo de 100%', () => {
     const requisitos = [requisitoCompetencia({ competenciaId: 1, pontos: 60, nivelMinimo: 1, obrigatorio: true })];
     const niveis = new Map([[1, 5]]);
     const requisitosCert = [requisitoCertificacao({ obrigatorio: true })];
-    const r = calcularGapLob(lob, requisitos, requisitosCert, niveis, new Map(), HOJE);
+    const r = calcularGapLob(lob, requisitos, requisitosCert, niveis, new Map(), PESOS_PADRAO, HOJE);
     expect(r.pontosObtidos).toBeGreaterThanOrEqual(lob.pontosMinimos);
     expect(r.competencias.every((c) => c.cumprido)).toBe(true);
     expect(r.obrigatoriosEmFalta).toBe(1);
     expect(r.atingido).toBe(false);
+    // 40% competências (100%) + 40% certificações (0/1 obrigatória cumprida) + 20% pontos (100%)
+    expect(r.prontidaoPercentual).toBe(60);
   });
 
   it('NÃO atinge a LOB se a certificação obrigatória está expirada', () => {
@@ -142,45 +149,105 @@ describe('calcularGapLob', () => {
     const niveis = new Map([[1, 5]]);
     const requisitosCert = [requisitoCertificacao({ certificacaoId: 'C_X', obrigatorio: true })];
     const certs = new Map([['C_X', { dataValidade: new Date('2020-01-01'), dataObtencao: null }]]);
-    const r = calcularGapLob(lob, requisitos, requisitosCert, niveis, certs, HOJE);
+    const r = calcularGapLob(lob, requisitos, requisitosCert, niveis, certs, PESOS_PADRAO, HOJE);
     expect(r.atingido).toBe(false);
     expect(r.certificacoes[0].cumprido).toBe(false);
+    expect(r.prontidaoPercentual).toBeLessThan(100);
   });
 
   it('não atinge a LOB se os pontos ficam abaixo do mínimo, mesmo sem obrigatórios em falta', () => {
     const requisitos = [requisitoCompetencia({ competenciaId: 1, pontos: 10, nivelMinimo: 1, obrigatorio: false })];
     const niveis = new Map([[1, 1]]);
-    const r = calcularGapLob(lob, requisitos, [], niveis, new Map(), HOJE);
+    const r = calcularGapLob(lob, requisitos, [], niveis, new Map(), PESOS_PADRAO, HOJE);
     expect(r.pontosObtidos).toBe(10);
     expect(r.obrigatoriosEmFalta).toBe(0);
     expect(r.atingido).toBe(false);
-    expect(r.prontidaoPercentual).toBe(20); // 10/50
+    // Sem nenhuma competência/certificação obrigatória nesta LOB, esses dois critérios
+    // contam como cumpridos por vacuidade (40%+40%); só os 20% de pontos refletem o
+    // progresso real (10/50 = 20% desse critério, ou seja 20%×20%=4 pontos percentuais).
+    expect(r.prontidaoPercentual).toBe(84);
+    expect(r.prontidaoPercentual).toBeLessThan(100);
   });
 
   it('capa a prontidão em 100% mesmo que os pontos obtidos excedam o mínimo', () => {
     const requisitos = [requisitoCompetencia({ competenciaId: 1, pontos: 200, nivelMinimo: 1, obrigatorio: false })];
     const niveis = new Map([[1, 1]]);
-    const r = calcularGapLob(lob, requisitos, [], niveis, new Map(), HOJE);
+    const r = calcularGapLob(lob, requisitos, [], niveis, new Map(), PESOS_PADRAO, HOJE);
     expect(r.pontosObtidos).toBe(200);
     expect(r.prontidaoPercentual).toBe(100);
   });
 
-  it('trata pontosMinimos=0 como 100% de prontidão em pontos (mas obrigatórios ainda bloqueiam)', () => {
+  it('CORRIGE o bug: pontosMinimos=0 já não dá 100% de prontidão se houver um obrigatório em falta', () => {
     const lobSemMinimo = { id: 2, nome: 'LOB vazia', pontosMinimos: 0 };
     const requisitos = [requisitoCompetencia({ competenciaId: 1, pontos: 0, nivelMinimo: 3, obrigatorio: true })];
     const niveis = new Map<number, number>();
-    const r = calcularGapLob(lobSemMinimo, requisitos, [], niveis, new Map(), HOJE);
-    expect(r.prontidaoPercentual).toBe(100);
+    const r = calcularGapLob(lobSemMinimo, requisitos, [], niveis, new Map(), PESOS_PADRAO, HOJE);
     expect(r.atingido).toBe(false); // obrigatório de competência ainda em falta
+    // 40% competências (0/1 obrigatória cumprida) + 40% certificações (vacuamente 1) + 20% pontos (pontosMinimos=0 → vacuamente 1)
+    expect(r.prontidaoPercentual).toBe(60);
+    expect(r.prontidaoPercentual).toBeLessThan(100); // já não diverge de `atingido` como antes
   });
 
   it('funciona com listas de requisitos vazias (LOB sem requisitos definidos)', () => {
-    const r = calcularGapLob({ id: 3, nome: 'LOB nova', pontosMinimos: 0 }, [], [], new Map(), new Map(), HOJE);
+    const r = calcularGapLob({ id: 3, nome: 'LOB nova', pontosMinimos: 0 }, [], [], new Map(), new Map(), PESOS_PADRAO, HOJE);
     expect(r.pontosObtidos).toBe(0);
     expect(r.obrigatoriosEmFalta).toBe(0);
     expect(r.atingido).toBe(true);
+    expect(r.prontidaoPercentual).toBe(100); // atingido ⟺ prontidão 100%
     expect(r.competencias).toHaveLength(0);
     expect(r.certificacoes).toHaveLength(0);
+  });
+
+  it('prontidaoPercentual === 100 sempre que atingido === true, e nunca ao contrário (a garantia central da fórmula ponderada)', () => {
+    const requisitos = [
+      requisitoCompetencia({ competenciaId: 1, pontos: 30, nivelMinimo: 2, obrigatorio: true }),
+      requisitoCompetencia({ competenciaId: 2, pontos: 20, nivelMinimo: 1, obrigatorio: false }),
+    ];
+    const requisitosCert = [requisitoCertificacao({ obrigatorio: true })];
+    const certsCumprida = new Map([['C_THR81', { dataValidade: null, dataObtencao: new Date('2020-01-01') }]]);
+
+    const completo = calcularGapLob(
+      lob,
+      requisitos,
+      requisitosCert,
+      new Map([
+        [1, 2],
+        [2, 1],
+      ]),
+      certsCumprida,
+      PESOS_PADRAO,
+      HOJE,
+    );
+    expect(completo.atingido).toBe(true);
+    expect(completo.prontidaoPercentual).toBe(100);
+
+    const semCertificacao = calcularGapLob(
+      lob,
+      requisitos,
+      requisitosCert,
+      new Map([
+        [1, 2],
+        [2, 1],
+      ]),
+      new Map(), // certificação obrigatória em falta
+      PESOS_PADRAO,
+      HOJE,
+    );
+    expect(semCertificacao.atingido).toBe(false);
+    expect(semCertificacao.prontidaoPercentual).toBeLessThan(100);
+  });
+
+  it('respeita pesos diferentes de 40/40/20 (configuração global editável)', () => {
+    // Só o critério de pontos por cumprir (60%); competências e certificações
+    // obrigatórias 100% cumpridas — com pesos 10/10/80, o resultado deve
+    // refletir sobretudo o critério de pontos, não os 40/40/20 por omissão.
+    const requisitos = [requisitoCompetencia({ competenciaId: 1, pontos: 30, nivelMinimo: 1, obrigatorio: true })];
+    const niveis = new Map([[1, 1]]);
+    const pesosPontosDominantes: PesosProntidao = { pesoCompetencias: 10, pesoCertificacoes: 10, pesoPontos: 80 };
+    const r = calcularGapLob(lob, requisitos, [], niveis, new Map(), pesosPontosDominantes, HOJE);
+    // ratioCompetencias=1 (obrigatória cumprida), ratioCertificacoes=1 (vacuidade), ratioPontos=30/50=0.6
+    // 10%×1 + 10%×1 + 80%×0.6 = 10+10+48 = 68
+    expect(r.prontidaoPercentual).toBe(68);
   });
 });
 

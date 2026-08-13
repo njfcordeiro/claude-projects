@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   Award,
@@ -10,6 +11,7 @@ import {
   Layers,
   Lock,
   Puzzle,
+  Scale,
   Sparkles,
   Star,
   Target,
@@ -19,6 +21,12 @@ import {
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { PrintButton } from '../components/ui/PrintButton';
+import { Button, Field, Input } from '../components/ui/form';
+import { useAuth } from '../auth/useAuth';
+import { endpoints } from '../api/endpoints';
+import { PesosProntidao } from '../types/api';
+
+const PESOS_PADRAO: PesosProntidao = { pesoCompetencias: 40, pesoCertificacoes: 40, pesoPontos: 20 };
 
 // --- Modelo de dados: diagrama ---------------------------------------------
 
@@ -127,7 +135,7 @@ const REQUISITOS_INICIAIS: RequisitoSimulado[] = [
   { nome: 'Gestão de Projeto', obrigatorio: true, pontos: 3, nivelExigido: 2, nivelAtual: 2 },
 ];
 
-function SimuladorMotorGap() {
+function SimuladorMotorGap({ pesos }: { pesos: PesosProntidao }) {
   const [pontosMinimos, setPontosMinimos] = useState(6);
   const [requisitos, setRequisitos] = useState(REQUISITOS_INICIAIS);
   const [certPossui, setCertPossui] = useState(true);
@@ -144,17 +152,28 @@ function SimuladorMotorGap() {
     });
     const pontosObtidos = competencias.reduce((soma, c) => soma + c.pontosObtidos, 0);
     const certCumprida = certPossui && certValida;
-    const obrigatoriosEmFalta = competencias.filter((c) => c.obrigatorio && !c.cumprido).length + (certCumprida ? 0 : 1);
+
+    const obrigComp = competencias.filter((c) => c.obrigatorio);
+    // Sem crédito parcial (mesmo princípio de calcularGapCompetencia) — uma competência
+    // obrigatória conta 1 (cumprida) ou 0. LOB sem obrigatórias desse tipo conta como 1.
+    const ratioComp = obrigComp.length === 0 ? 1 : obrigComp.filter((c) => c.cumprido).length / obrigComp.length;
+    // A certificação do simulador é sempre obrigatória (badge fixa) — 1 obrigatória, ratio binário.
+    const ratioCert = certCumprida ? 1 : 0;
+    const ratioPontos = pontosMinimos > 0 ? Math.min(1, pontosObtidos / pontosMinimos) : 1;
+
+    const obrigatoriosEmFalta = obrigComp.filter((c) => !c.cumprido).length + (certCumprida ? 0 : 1);
     const atingido = pontosObtidos >= pontosMinimos && obrigatoriosEmFalta === 0;
-    const prontidao = pontosMinimos > 0 ? Math.min(100, Math.round((pontosObtidos / pontosMinimos) * 100)) : 100;
-    return { competencias, pontosObtidos, obrigatoriosEmFalta, atingido, prontidao, certCumprida };
-  }, [requisitos, certPossui, certValida, pontosMinimos]);
+    const prontidao = Math.round(pesos.pesoCompetencias * ratioComp + pesos.pesoCertificacoes * ratioCert + pesos.pesoPontos * ratioPontos);
+
+    return { competencias, pontosObtidos, obrigatoriosEmFalta, atingido, prontidao, certCumprida, ratioComp, ratioCert, ratioPontos };
+  }, [requisitos, certPossui, certValida, pontosMinimos, pesos]);
 
   return (
     <div className="space-y-3">
       <p className="text-sm text-fiori-text-secondary">
         Ajusta os "níveis atuais" e o botão da certificação — o resultado (prontidão, atingido?) recalcula-se em tempo real, exatamente
-        com a fórmula do backend (<code className="rounded bg-fiori-canvas px-1 font-mono text-xs">gap-analysis.logic.ts</code>).
+        com a fórmula do backend (<code className="rounded bg-fiori-canvas px-1 font-mono text-xs">gap-analysis.logic.ts</code>), usando
+        os pesos atualmente configurados ({pesos.pesoCompetencias}% / {pesos.pesoCertificacoes}% / {pesos.pesoPontos}%).
       </p>
 
       <div className="flex items-center gap-2">
@@ -221,6 +240,27 @@ function SimuladorMotorGap() {
         </div>
       </div>
 
+      <div className="space-y-2 rounded-md border border-fiori-border p-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-fiori-text-secondary">Repartição por critério</p>
+        {(
+          [
+            { label: `Competências obrigatórias (${pesos.pesoCompetencias}%)`, ratio: resultado.ratioComp, peso: pesos.pesoCompetencias, cor: 'bg-fiori-primary' },
+            { label: `Certificações obrigatórias (${pesos.pesoCertificacoes}%)`, ratio: resultado.ratioCert, peso: pesos.pesoCertificacoes, cor: 'bg-fiori-warning' },
+            { label: `Pontos mínimos (${pesos.pesoPontos}%)`, ratio: resultado.ratioPontos, peso: pesos.pesoPontos, cor: 'bg-fiori-success' },
+          ] as const
+        ).map((linha) => (
+          <div key={linha.label} className="flex items-center gap-2">
+            <span className="w-56 shrink-0 text-xs text-fiori-text-secondary">{linha.label}</span>
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-fiori-surface">
+              <div className={`h-full rounded-full ${linha.cor}`} style={{ width: `${Math.round(linha.ratio * 100)}%` }} />
+            </div>
+            <span className="w-24 shrink-0 text-right text-xs font-medium text-fiori-text">
+              {Math.round(linha.ratio * 100)}% × {linha.peso}% = {Math.round(linha.ratio * linha.peso)}pp
+            </span>
+          </div>
+        ))}
+      </div>
+
       <div className={`rounded-md border p-3 ${resultado.atingido ? 'border-fiori-success bg-fiori-success-bg' : 'border-fiori-error bg-fiori-error-bg'}`}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className={`text-sm font-semibold ${resultado.atingido ? 'text-fiori-success' : 'text-fiori-error'}`}>
@@ -237,7 +277,9 @@ function SimuladorMotorGap() {
             style={{ width: `${resultado.prontidao}%` }}
           />
         </div>
-        <p className="mt-1 text-xs text-fiori-text-secondary">Prontidão: {resultado.prontidao}%</p>
+        <p className="mt-1 text-xs text-fiori-text-secondary">
+          Prontidão: {resultado.prontidao}% {resultado.atingido ? '' : resultado.prontidao === 100 ? '(nunca acontece — atingido implica sempre 100%)' : ''}
+        </p>
       </div>
     </div>
   );
@@ -246,6 +288,14 @@ function SimuladorMotorGap() {
 // --- Cartões de regras -------------------------------------------------------
 
 const REGRAS = [
+  {
+    icone: Scale,
+    titulo: 'Fórmula de Prontidão',
+    texto:
+      'A prontidão de uma LOB é a média ponderada de 3 critérios, cada um um rácio entre 0 e 1: Competências obrigatórias (nº cumpridas ÷ nº obrigatórias totais dessa LOB — sem crédito parcial, mesmo princípio de "cumprido"/"não cumprido" usado no resto do motor), Certificações obrigatórias (nº válidas ÷ nº obrigatórias totais) e Pontos (pontos obtidos ÷ pontos mínimos, capado a 100%). Uma LOB sem nenhuma competência (ou certificação) obrigatória conta esse critério como cumprido por vacuidade (rácio 1) — não há nada a bloquear nesse eixo. Os pesos são globais (uma única configuração para toda a organização, não por LOB) e editáveis em Gestão de Dados por ADMIN_RH, sempre a somar 100 pontos percentuais — ver secção "Pesos de Prontidão" acima. Esta fórmula garante que 100% de prontidão implica sempre LOB atingida, e vice-versa: já não é possível mostrar 100% com um obrigatório em falta.',
+    formula:
+      'prontidão = pesoCompetências × ratioCompetências + pesoCertificações × ratioCertificações + pesoPontos × ratioPontos · ratioPontos = mín(1, pontosObtidos ÷ pontosMínimos) · atingido ⇔ prontidão = 100%',
+  },
   {
     icone: Compass,
     titulo: 'Candidatos a carreira',
@@ -361,6 +411,108 @@ function CartoesRegras() {
   );
 }
 
+// --- Pesos de Prontidão -------------------------------------------------------
+
+const CRITERIOS_PESO: { chave: keyof PesosProntidao; label: string; calculo: string }[] = [
+  { chave: 'pesoCompetencias', label: 'Competências obrigatórias', calculo: 'nº obrigatórias cumpridas ÷ nº obrigatórias totais' },
+  { chave: 'pesoCertificacoes', label: 'Certificações obrigatórias', calculo: 'nº obrigatórias válidas ÷ nº obrigatórias totais' },
+  { chave: 'pesoPontos', label: 'Pontos mínimos', calculo: 'mín(1, pontos obtidos ÷ pontos mínimos)' },
+];
+
+/** Leitura para todos os papéis; edição só para ADMIN_RH (mesmo RBAC do backend, ver ConfiguracaoProntidaoController). */
+function SecaoPesosProntidao({ pesos, podeEditar }: { pesos: PesosProntidao; podeEditar: boolean }) {
+  const queryClient = useQueryClient();
+  const [aEditar, setAEditar] = useState(false);
+  const [rascunho, setRascunho] = useState<PesosProntidao>(pesos);
+
+  const soma = rascunho.pesoCompetencias + rascunho.pesoCertificacoes + rascunho.pesoPontos;
+  const somaValida = soma === 100;
+
+  const atualizar = useMutation({
+    mutationFn: () => endpoints.atualizarConfiguracaoProntidao(rascunho),
+    onSuccess: (novo) => {
+      queryClient.setQueryData(['configuracao-prontidao'], novo);
+      setAEditar(false);
+    },
+  });
+
+  function iniciarEdicao() {
+    setRascunho(pesos);
+    atualizar.reset();
+    setAEditar(true);
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-fiori-text-secondary">
+        Os pesos que o motor de gap usa para calcular a prontidão de uma LOB (ver "Fórmula de Prontidão" nas regras de negócio abaixo) —
+        configuração global, aplicada a toda a organização, não por LOB.
+      </p>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead>
+            <tr className="border-b border-fiori-border text-xs uppercase tracking-wide text-fiori-text-secondary">
+              <th className="py-2 pr-3">Critério</th>
+              <th className="py-2 pr-3">Peso</th>
+              <th className="py-2">Cálculo dentro do critério</th>
+            </tr>
+          </thead>
+          <tbody>
+            {CRITERIOS_PESO.map((c) => (
+              <tr key={c.chave} className="border-b border-fiori-border last:border-0">
+                <td className="py-2 pr-3 font-medium text-fiori-text">{c.label}</td>
+                <td className="py-2 pr-3">
+                  {aEditar ? (
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={rascunho[c.chave]}
+                      onChange={(e) => setRascunho((prev) => ({ ...prev, [c.chave]: Math.max(0, Math.min(100, Number(e.target.value))) }))}
+                      className="w-20"
+                    />
+                  ) : (
+                    <span className="font-semibold text-fiori-primary">{pesos[c.chave]}%</span>
+                  )}
+                </td>
+                <td className="py-2 font-mono text-xs text-fiori-text-secondary">{c.calculo}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {aEditar && (
+        <p className={`text-xs font-medium ${somaValida ? 'text-fiori-success' : 'text-fiori-error'}`}>
+          Soma: {soma}% {somaValida ? '✓' : '— os três pesos têm de somar exatamente 100%'}
+        </p>
+      )}
+
+      {atualizar.isError && <p className="text-xs text-fiori-error">Não foi possível guardar. Tenta novamente.</p>}
+
+      {podeEditar && (
+        <div className="flex gap-2">
+          {aEditar ? (
+            <>
+              <Button onClick={() => atualizar.mutate()} disabled={!somaValida || atualizar.isPending}>
+                {atualizar.isPending ? 'A guardar…' : 'Guardar pesos'}
+              </Button>
+              <Button variant="secondary" onClick={() => setAEditar(false)} disabled={atualizar.isPending}>
+                Cancelar
+              </Button>
+            </>
+          ) : (
+            <Button variant="secondary" onClick={iniciarEdicao}>
+              Editar pesos
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // --- Tabela RBAC --------------------------------------------------------------
 
 const RBAC: { papel: string; dashboard: boolean; colaboradores: boolean; candidatosSkill: boolean; fichaPessoal: string; gestaoDados: boolean }[] = [
@@ -415,8 +567,11 @@ function TabelaRbac() {
 
 // --- Página -------------------------------------------------------------------
 
-/** Documentação viva do modelo de dados e das regras de negócio — sem chamadas à API, acessível a todos os papéis autenticados. */
+/** Documentação viva do modelo de dados e das regras de negócio, acessível a todos os papéis autenticados — a única chamada à API é a leitura/edição dos pesos de prontidão. */
 export function ComoFuncionaPage() {
+  const { user } = useAuth();
+  const { data: pesos } = useQuery({ queryKey: ['configuracao-prontidao'], queryFn: endpoints.configuracaoProntidao });
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -434,7 +589,11 @@ export function ComoFuncionaPage() {
       </Card>
 
       <Card title="Motor de gap — experimenta">
-        <SimuladorMotorGap />
+        <SimuladorMotorGap pesos={pesos ?? PESOS_PADRAO} />
+      </Card>
+
+      <Card title="Pesos de Prontidão">
+        <SecaoPesosProntidao pesos={pesos ?? PESOS_PADRAO} podeEditar={user?.role === 'ADMIN_RH'} />
       </Card>
 
       <Card title="Regras de negócio">
