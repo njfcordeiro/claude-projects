@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { endpoints } from '../api/endpoints';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
-import { DataTable } from '../components/ui/DataTable';
+import { DataTable, DataTableColumn } from '../components/ui/DataTable';
 import { PrintButton } from '../components/ui/PrintButton';
 import { Select } from '../components/ui/form';
 import { CandidatoCarreira, CatalogoRegisto } from '../types/api';
@@ -13,7 +13,7 @@ import { CandidatoCarreira, CatalogoRegisto } from '../types/api';
 const TODOS_OS_CARGOS = '';
 
 type Visao = 'carreira' | 'colaborador';
-type AgrupamentoCandidatos = 'nenhum' | 'direcao' | 'area' | 'nucleo';
+type AgrupamentoCandidatos = 'nenhum' | 'direcao' | 'area' | 'nucleo' | 'cargo';
 
 function textoElegibilidade(c: CandidatoCarreira): string {
   if (c.apto) return 'Apto';
@@ -21,6 +21,10 @@ function textoElegibilidade(c: CandidatoCarreira): string {
   if (!c.aptoAntiguidade) motivos.push('Antiguidade insuficiente');
   if (!c.aptoLobs) motivos.push('LOBs insuficientes');
   return motivos.join(' · ');
+}
+
+function contarPessoas(linhas: CandidatoCarreira[]): number {
+  return new Set(linhas.map((l) => l.colaboradorId)).size;
 }
 
 /** Opções de filtro derivadas dos próprios dados (só o que existe realmente aparece), ordenadas por nome. */
@@ -50,6 +54,235 @@ function agruparLinhasContiguas(linhas: CandidatoCarreira[]): CandidatoCarreira[
   return grupos;
 }
 
+/** Agrupa uma lista (já filtrada) de candidatos por Direção/Área/Núcleo/Cargo atual — usado nas duas visões. */
+function agruparCandidatosPorAtributo(
+  lista: CandidatoCarreira[],
+  agrupamento: AgrupamentoCandidatos,
+): [string, CandidatoCarreira[]][] | null {
+  if (agrupamento === 'nenhum') return null;
+  const chaveDe = (c: CandidatoCarreira) =>
+    agrupamento === 'direcao'
+      ? c.direcaoNome
+      : agrupamento === 'area'
+        ? c.areaNome
+        : agrupamento === 'nucleo'
+          ? c.nucleoNome
+          : c.cargoAtualNome;
+  const semLabel =
+    agrupamento === 'direcao'
+      ? 'Sem direção'
+      : agrupamento === 'area'
+        ? 'Sem área'
+        : agrupamento === 'nucleo'
+          ? 'Sem núcleo'
+          : 'Sem cargo';
+
+  const mapa = new Map<string, CandidatoCarreira[]>();
+  for (const c of lista) {
+    const chave = chaveDe(c) ?? semLabel;
+    if (!mapa.has(chave)) mapa.set(chave, []);
+    mapa.get(chave)!.push(c);
+  }
+  return Array.from(mapa.entries()).sort(([a], [b]) => {
+    if (a === semLabel) return 1;
+    if (b === semLabel) return -1;
+    return a.localeCompare(b);
+  });
+}
+
+/**
+ * Estado partilhado de filtros (Direção/Área/Núcleo/Cargo atual) +
+ * agrupamento, usado pelas duas visões do ecrã — cada uma tem a sua própria
+ * instância (dados de origem diferentes), mas a mesma lógica.
+ */
+function useFiltrosCandidatos(base: CandidatoCarreira[]) {
+  const [agrupamento, setAgrupamento] = useState<AgrupamentoCandidatos>('nenhum');
+  const [filtroDirecaoId, setFiltroDirecaoId] = useState('');
+  const [filtroAreaId, setFiltroAreaId] = useState('');
+  const [filtroNucleoId, setFiltroNucleoId] = useState('');
+  const [filtroCargoAtualId, setFiltroCargoAtualId] = useState('');
+
+  const opcoesDirecao = useMemo(() => opcoesDistintas(base.map((c) => [c.direcaoId, c.direcaoNome])), [base]);
+  const opcoesArea = useMemo(() => opcoesDistintas(base.map((c) => [c.areaId, c.areaNome])), [base]);
+  const opcoesNucleo = useMemo(() => opcoesDistintas(base.map((c) => [c.nucleoId, c.nucleoNome])), [base]);
+  const opcoesCargoAtual = useMemo(() => opcoesDistintas(base.map((c) => [c.cargoAtualId, c.cargoAtualNome])), [base]);
+
+  const candidatosFiltrados = useMemo(() => {
+    let filtrados = base;
+    if (filtroDirecaoId) filtrados = filtrados.filter((c) => String(c.direcaoId) === filtroDirecaoId);
+    if (filtroAreaId) filtrados = filtrados.filter((c) => String(c.areaId) === filtroAreaId);
+    if (filtroNucleoId) filtrados = filtrados.filter((c) => String(c.nucleoId) === filtroNucleoId);
+    if (filtroCargoAtualId) filtrados = filtrados.filter((c) => c.cargoAtualId === filtroCargoAtualId);
+    return filtrados;
+  }, [base, filtroDirecaoId, filtroAreaId, filtroNucleoId, filtroCargoAtualId]);
+
+  return {
+    agrupamento,
+    setAgrupamento,
+    filtroDirecaoId,
+    setFiltroDirecaoId,
+    opcoesDirecao,
+    filtroAreaId,
+    setFiltroAreaId,
+    opcoesArea,
+    filtroNucleoId,
+    setFiltroNucleoId,
+    opcoesNucleo,
+    filtroCargoAtualId,
+    setFiltroCargoAtualId,
+    opcoesCargoAtual,
+    candidatosFiltrados,
+  };
+}
+
+type FiltrosCandidatos = ReturnType<typeof useFiltrosCandidatos>;
+
+const OPCOES_AGRUPAMENTO: [AgrupamentoCandidatos, string][] = [
+  ['nenhum', 'Nenhum'],
+  ['direcao', 'Direção'],
+  ['area', 'Área'],
+  ['nucleo', 'Núcleo'],
+  ['cargo', 'Cargo atual'],
+];
+
+/** Card de "Agrupar por" + filtros de Direção/Área/Núcleo/Cargo atual — comum às duas visões. `pesquisa` é opcional (só a visão "Por colaborador" usa, a "Por carreira" já tem pesquisa embutida na DataTable). */
+function CardFiltrosCandidatos({
+  f,
+  pesquisa,
+  onPesquisaChange,
+}: {
+  f: FiltrosCandidatos;
+  pesquisa?: string;
+  onPesquisaChange?: (valor: string) => void;
+}) {
+  return (
+    <Card>
+      <div className="flex flex-wrap items-end gap-4">
+        <div>
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-fiori-text-secondary">Agrupar por</p>
+          <div className="flex gap-1 rounded bg-fiori-canvas p-0.5">
+            {OPCOES_AGRUPAMENTO.map(([valor, label]) => (
+              <button
+                key={valor}
+                type="button"
+                onClick={() => f.setAgrupamento(valor)}
+                className={`rounded px-2.5 py-1 text-xs font-medium ${
+                  f.agrupamento === valor ? 'bg-fiori-surface text-fiori-primary shadow-fiori' : 'text-fiori-text-secondary'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-fiori-text-secondary">Direção</p>
+          <Select value={f.filtroDirecaoId} onChange={(e) => f.setFiltroDirecaoId(e.target.value)} className="w-auto">
+            <option value="">Todas</option>
+            {f.opcoesDirecao.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.nome}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div>
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-fiori-text-secondary">Área</p>
+          <Select value={f.filtroAreaId} onChange={(e) => f.setFiltroAreaId(e.target.value)} className="w-auto">
+            <option value="">Todas</option>
+            {f.opcoesArea.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.nome}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div>
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-fiori-text-secondary">Núcleo</p>
+          <Select value={f.filtroNucleoId} onChange={(e) => f.setFiltroNucleoId(e.target.value)} className="w-auto">
+            <option value="">Todos</option>
+            {f.opcoesNucleo.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.nome}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div>
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-fiori-text-secondary">Cargo atual</p>
+          <Select value={f.filtroCargoAtualId} onChange={(e) => f.setFiltroCargoAtualId(e.target.value)} className="w-auto">
+            <option value="">Todos</option>
+            {f.opcoesCargoAtual.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.nome}
+              </option>
+            ))}
+          </Select>
+        </div>
+        {onPesquisaChange && (
+          <div className="min-w-[220px] flex-1">
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-fiori-text-secondary">Pesquisar</p>
+            <div className="flex items-center gap-2 rounded border border-fiori-border bg-fiori-surface px-3 py-1.5">
+              <Search size={16} className="text-fiori-text-secondary" aria-hidden="true" />
+              <input
+                type="text"
+                value={pesquisa ?? ''}
+                onChange={(e) => onPesquisaChange(e.target.value)}
+                placeholder="Nome, cargo, próximo cargo, carreira…"
+                className="w-full border-none bg-transparent text-sm text-fiori-text outline-none placeholder:text-fiori-text-secondary"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+const COLUNAS_POR_CARREIRA: DataTableColumn<CandidatoCarreira>[] = [
+  { key: 'nome', header: 'Nome', render: (c) => c.nome, sortValue: (c) => c.nome },
+  {
+    key: 'direcao',
+    header: 'Direção',
+    render: (c) => c.direcaoNome ?? '—',
+    sortValue: (c) => c.direcaoNome ?? '',
+    searchValue: (c) => c.direcaoNome ?? '',
+  },
+  { key: 'cargoAtual', header: 'Cargo atual', render: (c) => c.cargoAtualNome, sortValue: (c) => c.cargoAtualNome },
+  {
+    key: 'proximoCargo',
+    header: 'Próximo cargo',
+    render: (c) => c.proximoCargoNome,
+    sortValue: (c) => c.proximoCargoNome,
+  },
+  {
+    key: 'prontidao',
+    header: 'Prontidão',
+    render: (c) => (c.prontidao !== null ? `${c.prontidao}%` : '—'),
+    sortValue: (c) => c.prontidao ?? -1,
+  },
+  {
+    key: 'lobs',
+    header: 'LOBs atingidas',
+    render: (c) => `${c.lobsAtingidos} / ${c.lobsExigidos}`,
+    sortValue: (c) => c.lobsAtingidos,
+  },
+  { key: 'gap', header: 'Gap', render: (c) => c.gap, sortValue: (c) => c.gap },
+  {
+    key: 'antiguidade',
+    header: 'Antiguidade',
+    render: (c) => (c.anosExperiencia !== null ? `${c.anosExperiencia} anos` : '—'),
+    sortValue: (c) => c.anosExperiencia ?? -1,
+  },
+  {
+    key: 'elegibilidade',
+    header: 'Elegibilidade',
+    render: (c) => (c.apto ? <Badge status="success">Apto</Badge> : <Badge status="warning">{textoElegibilidade(c)}</Badge>),
+    sortValue: (c) => (c.apto ? 1 : 0),
+    searchValue: (c) => textoElegibilidade(c).toLowerCase(),
+  },
+];
+
 /**
  * Candidatos a uma carreira (ex. Arquiteto): para cada Cargo-alvo (ou todos
  * os Cargos da carreira), os colaboradores cujo Cargo atual é um
@@ -60,6 +293,7 @@ export function CandidatosPage() {
   const navigate = useNavigate();
   const [visao, setVisao] = useState<Visao>('carreira');
 
+  // --- Visão "Por carreira" (existente) -----------------------------------
   const { data: carreiras } = useQuery({ queryKey: ['catalogo', 'carreiras'], queryFn: () => endpoints.catalogoListar('carreiras') });
   const { data: cargos } = useQuery({ queryKey: ['catalogo', 'cargos'], queryFn: () => endpoints.catalogoListar('cargos') });
   const [carreiraId, setCarreiraId] = useState<string | null>(null);
@@ -88,7 +322,14 @@ export function CandidatosPage() {
     enabled: visao === 'carreira' && !!carreiraId,
   });
 
-  // --- Visão "Por colaborador" -------------------------------------------
+  const candidatosCarreiraBase = useMemo(() => data?.candidatos ?? [], [data]);
+  const filtrosCarreira = useFiltrosCandidatos(candidatosCarreiraBase);
+  const gruposCarreira = useMemo(
+    () => agruparCandidatosPorAtributo(filtrosCarreira.candidatosFiltrados, filtrosCarreira.agrupamento),
+    [filtrosCarreira.candidatosFiltrados, filtrosCarreira.agrupamento],
+  );
+
+  // --- Visão "Por colaborador" --------------------------------------------
   const {
     data: porColaborador,
     isLoading: isLoadingPorColaborador,
@@ -99,23 +340,12 @@ export function CandidatosPage() {
     enabled: visao === 'colaborador',
   });
 
-  const [agrupamento, setAgrupamento] = useState<AgrupamentoCandidatos>('nenhum');
-  const [filtroDirecaoId, setFiltroDirecaoId] = useState('');
-  const [filtroAreaId, setFiltroAreaId] = useState('');
-  const [filtroNucleoId, setFiltroNucleoId] = useState('');
+  const candidatosColaboradorBase = useMemo(() => porColaborador?.candidatos ?? [], [porColaborador]);
+  const filtrosColaborador = useFiltrosCandidatos(candidatosColaboradorBase);
   const [pesquisa, setPesquisa] = useState('');
 
-  const candidatosBase = useMemo(() => porColaborador?.candidatos ?? [], [porColaborador]);
-  const opcoesDirecao = useMemo(() => opcoesDistintas(candidatosBase.map((c) => [c.direcaoId, c.direcaoNome])), [candidatosBase]);
-  const opcoesArea = useMemo(() => opcoesDistintas(candidatosBase.map((c) => [c.areaId, c.areaNome])), [candidatosBase]);
-  const opcoesNucleo = useMemo(() => opcoesDistintas(candidatosBase.map((c) => [c.nucleoId, c.nucleoNome])), [candidatosBase]);
-
-  const candidatosFiltrados = useMemo(() => {
-    let base = candidatosBase;
-    if (filtroDirecaoId) base = base.filter((c) => String(c.direcaoId) === filtroDirecaoId);
-    if (filtroAreaId) base = base.filter((c) => String(c.areaId) === filtroAreaId);
-    if (filtroNucleoId) base = base.filter((c) => String(c.nucleoId) === filtroNucleoId);
-
+  const candidatosColaboradorComPesquisa = useMemo(() => {
+    let base = filtrosColaborador.candidatosFiltrados;
     if (pesquisa.trim()) {
       const termo = pesquisa.trim().toLowerCase();
       // Pesquisa ao nível da pessoa: se alguma das suas linhas bater, mantém
@@ -131,32 +361,13 @@ export function CandidatosPage() {
       );
       base = base.filter((c) => idsCorrespondentes.has(c.colaboradorId));
     }
-
     return base;
-  }, [candidatosBase, filtroDirecaoId, filtroAreaId, filtroNucleoId, pesquisa]);
+  }, [filtrosColaborador.candidatosFiltrados, pesquisa]);
 
-  const grupos = useMemo(() => {
-    if (agrupamento === 'nenhum') return null;
-    const chaveDe = (c: CandidatoCarreira) =>
-      agrupamento === 'direcao' ? c.direcaoNome : agrupamento === 'area' ? c.areaNome : c.nucleoNome;
-    const semLabel = agrupamento === 'direcao' ? 'Sem direção' : agrupamento === 'area' ? 'Sem área' : 'Sem núcleo';
-
-    const mapa = new Map<string, CandidatoCarreira[]>();
-    for (const c of candidatosFiltrados) {
-      const chave = chaveDe(c) ?? semLabel;
-      if (!mapa.has(chave)) mapa.set(chave, []);
-      mapa.get(chave)!.push(c);
-    }
-    return Array.from(mapa.entries()).sort(([a], [b]) => {
-      if (a === semLabel) return 1;
-      if (b === semLabel) return -1;
-      return a.localeCompare(b);
-    });
-  }, [candidatosFiltrados, agrupamento]);
-
-  function contarPessoas(linhas: CandidatoCarreira[]): number {
-    return new Set(linhas.map((l) => l.colaboradorId)).size;
-  }
+  const gruposColaborador = useMemo(
+    () => agruparCandidatosPorAtributo(candidatosColaboradorComPesquisa, filtrosColaborador.agrupamento),
+    [candidatosColaboradorComPesquisa, filtrosColaborador.agrupamento],
+  );
 
   return (
     <div className="space-y-4">
@@ -220,147 +431,51 @@ export function CandidatosPage() {
             </div>
           </Card>
 
+          <CardFiltrosCandidatos f={filtrosCarreira} />
+
           {isLoading && <p className="text-sm text-fiori-text-secondary">A calcular…</p>}
           {error && <p className="text-sm text-fiori-error">Não foi possível carregar os candidatos.</p>}
 
-          {data && (
-            <Card title={`Candidatos a ${data.carreiraNome}`}>
-              <DataTable
-                data={data.candidatos}
-                getRowKey={(c) => `${c.colaboradorId}::${c.proximoCargoId}`}
-                onRowClick={(c) => navigate(`/colaboradores/${c.colaboradorId}`)}
-                searchPlaceholder="Pesquisar por nome, direção, cargo atual…"
-                emptyMessage="Sem candidatos para este cargo/carreira."
-                columns={[
-                  { key: 'nome', header: 'Nome', render: (c) => c.nome, sortValue: (c) => c.nome },
-                  {
-                    key: 'direcao',
-                    header: 'Direção',
-                    render: (c) => c.direcaoNome ?? '—',
-                    sortValue: (c) => c.direcaoNome ?? '',
-                    searchValue: (c) => c.direcaoNome ?? '',
-                  },
-                  { key: 'cargoAtual', header: 'Cargo atual', render: (c) => c.cargoAtualNome, sortValue: (c) => c.cargoAtualNome },
-                  {
-                    key: 'proximoCargo',
-                    header: 'Próximo cargo',
-                    render: (c) => c.proximoCargoNome,
-                    sortValue: (c) => c.proximoCargoNome,
-                  },
-                  {
-                    key: 'prontidao',
-                    header: 'Prontidão',
-                    render: (c) => (c.prontidao !== null ? `${c.prontidao}%` : '—'),
-                    sortValue: (c) => c.prontidao ?? -1,
-                  },
-                  {
-                    key: 'lobs',
-                    header: 'LOBs atingidas',
-                    render: (c) => `${c.lobsAtingidos} / ${c.lobsExigidos}`,
-                    sortValue: (c) => c.lobsAtingidos,
-                  },
-                  { key: 'gap', header: 'Gap', render: (c) => c.gap, sortValue: (c) => c.gap },
-                  {
-                    key: 'antiguidade',
-                    header: 'Antiguidade',
-                    render: (c) => (c.anosExperiencia !== null ? `${c.anosExperiencia} anos` : '—'),
-                    sortValue: (c) => c.anosExperiencia ?? -1,
-                  },
-                  {
-                    key: 'elegibilidade',
-                    header: 'Elegibilidade',
-                    render: (c) =>
-                      c.apto ? <Badge status="success">Apto</Badge> : <Badge status="warning">{textoElegibilidade(c)}</Badge>,
-                    sortValue: (c) => (c.apto ? 1 : 0),
-                    searchValue: (c) => textoElegibilidade(c).toLowerCase(),
-                  },
-                ]}
-              />
-            </Card>
-          )}
+          {data &&
+            (gruposCarreira ? (
+              <div className="space-y-4">
+                {gruposCarreira.map(([nomeGrupo, linhasGrupo]) => (
+                  <Card key={nomeGrupo} title={`${nomeGrupo} (${contarPessoas(linhasGrupo)})`}>
+                    <DataTable
+                      data={linhasGrupo}
+                      getRowKey={(c) => `${c.colaboradorId}::${c.proximoCargoId}`}
+                      onRowClick={(c) => navigate(`/colaboradores/${c.colaboradorId}`)}
+                      searchPlaceholder="Pesquisar por nome, direção, cargo atual…"
+                      emptyMessage="Sem candidatos para este cargo/carreira."
+                      columns={COLUNAS_POR_CARREIRA}
+                    />
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <Card title={`Candidatos a ${data.carreiraNome}`}>
+                <DataTable
+                  data={filtrosCarreira.candidatosFiltrados}
+                  getRowKey={(c) => `${c.colaboradorId}::${c.proximoCargoId}`}
+                  onRowClick={(c) => navigate(`/colaboradores/${c.colaboradorId}`)}
+                  searchPlaceholder="Pesquisar por nome, direção, cargo atual…"
+                  emptyMessage="Sem candidatos para este cargo/carreira."
+                  columns={COLUNAS_POR_CARREIRA}
+                />
+              </Card>
+            ))}
         </>
       ) : (
         <>
-          <Card>
-            <div className="flex flex-wrap items-end gap-4">
-              <div>
-                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-fiori-text-secondary">Agrupar por</p>
-                <div className="flex gap-1 rounded bg-fiori-canvas p-0.5">
-                  {([
-                    ['nenhum', 'Nenhum'],
-                    ['direcao', 'Direção'],
-                    ['area', 'Área'],
-                    ['nucleo', 'Núcleo'],
-                  ] as [AgrupamentoCandidatos, string][]).map(([valor, label]) => (
-                    <button
-                      key={valor}
-                      type="button"
-                      onClick={() => setAgrupamento(valor)}
-                      className={`rounded px-2.5 py-1 text-xs font-medium ${
-                        agrupamento === valor ? 'bg-fiori-surface text-fiori-primary shadow-fiori' : 'text-fiori-text-secondary'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-fiori-text-secondary">Direção</p>
-                <Select value={filtroDirecaoId} onChange={(e) => setFiltroDirecaoId(e.target.value)} className="w-auto">
-                  <option value="">Todas</option>
-                  {opcoesDirecao.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.nome}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div>
-                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-fiori-text-secondary">Área</p>
-                <Select value={filtroAreaId} onChange={(e) => setFiltroAreaId(e.target.value)} className="w-auto">
-                  <option value="">Todas</option>
-                  {opcoesArea.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.nome}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div>
-                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-fiori-text-secondary">Núcleo</p>
-                <Select value={filtroNucleoId} onChange={(e) => setFiltroNucleoId(e.target.value)} className="w-auto">
-                  <option value="">Todos</option>
-                  {opcoesNucleo.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.nome}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="min-w-[220px] flex-1">
-                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-fiori-text-secondary">Pesquisar</p>
-                <div className="flex items-center gap-2 rounded border border-fiori-border bg-fiori-surface px-3 py-1.5">
-                  <Search size={16} className="text-fiori-text-secondary" aria-hidden="true" />
-                  <input
-                    type="text"
-                    value={pesquisa}
-                    onChange={(e) => setPesquisa(e.target.value)}
-                    placeholder="Nome, cargo, próximo cargo, carreira…"
-                    className="w-full border-none bg-transparent text-sm text-fiori-text outline-none placeholder:text-fiori-text-secondary"
-                  />
-                </div>
-              </div>
-            </div>
-          </Card>
+          <CardFiltrosCandidatos f={filtrosColaborador} pesquisa={pesquisa} onPesquisaChange={setPesquisa} />
 
           {isLoadingPorColaborador && <p className="text-sm text-fiori-text-secondary">A calcular…</p>}
           {errorPorColaborador && <p className="text-sm text-fiori-error">Não foi possível carregar os candidatos.</p>}
 
           {porColaborador &&
-            (grupos ? (
+            (gruposColaborador ? (
               <div className="space-y-4">
-                {grupos.map(([nomeGrupo, linhasGrupo]) => (
+                {gruposColaborador.map(([nomeGrupo, linhasGrupo]) => (
                   <Card key={nomeGrupo} title={`${nomeGrupo} (${contarPessoas(linhasGrupo)})`}>
                     <TabelaCandidatosPorColaborador linhas={linhasGrupo} onRowClick={(id) => navigate(`/colaboradores/${id}`)} />
                   </Card>
@@ -368,7 +483,10 @@ export function CandidatosPage() {
               </div>
             ) : (
               <Card>
-                <TabelaCandidatosPorColaborador linhas={candidatosFiltrados} onRowClick={(id) => navigate(`/colaboradores/${id}`)} />
+                <TabelaCandidatosPorColaborador
+                  linhas={candidatosColaboradorComPesquisa}
+                  onRowClick={(id) => navigate(`/colaboradores/${id}`)}
+                />
               </Card>
             ))}
         </>
