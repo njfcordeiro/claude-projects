@@ -207,8 +207,10 @@ export function EvolucaoCarreirasPage() {
 
   const layout = useMemo(() => calcularLayout(data?.cargos ?? [], data?.progressoes ?? []), [data]);
 
-  function abrirCandidatos(cargo: CargoEvolucao) {
-    navigate('/candidatos', { state: { carreiraId: cargo.carreiraId, cargoId: cargo.cargoId } });
+  // Abre os colaboradores atualmente NESSE Cargo (o "X colab." mostrado no nó) — não confundir com
+  // "Candidatos", que mostra quem poderia ser promovido PARA lá (os predecessores, nunca os atuais).
+  function abrirColaboradoresDoCargo(cargo: CargoEvolucao) {
+    navigate('/colaboradores', { state: { cargoId: cargo.cargoId } });
   }
 
   return (
@@ -342,7 +344,7 @@ export function EvolucaoCarreirasPage() {
                   <g
                     key={no.cargo.cargoId}
                     transform={`translate(${no.x}, ${no.y})`}
-                    onClick={() => abrirCandidatos(no.cargo)}
+                    onClick={() => abrirColaboradoresDoCargo(no.cargo)}
                     style={{ cursor: 'pointer' }}
                   >
                     <rect width={LARGURA_NO} height={ALTURA_NO} rx={6} fill="#FFFFFF" stroke={no.cor} strokeWidth={1.5} />
@@ -357,7 +359,7 @@ export function EvolucaoCarreirasPage() {
               </svg>
             </div>
             <p className="mt-3 text-xs text-fiori-text-secondary">
-              Clicar num Cargo abre "Candidatos" já filtrado para a sua Carreira. Coluna = profundidade da progressão a partir de um Cargo de
+              Clicar num Cargo abre "Colaboradores" já filtrado para esse Cargo. Coluna = profundidade da progressão a partir de um Cargo de
               entrada (sem predecessores) — não é a Categoria, por isso um Cargo pode ficar numa coluna diferente da sua Carreira quando só é
               alcançável a partir de outra.
               {layout.grupos.length > 0 && (

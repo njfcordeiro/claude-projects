@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { endpoints } from '../api/endpoints';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -291,23 +291,16 @@ const COLUNAS_POR_CARREIRA: DataTableColumn<CandidatoCarreira>[] = [
  */
 export function CandidatosPage() {
   const navigate = useNavigate();
-  const location = useLocation();
-  // Chegada a partir de "Evolução de Carreiras" (clicar num Cargo) — pré-seleciona a Carreira/Cargo em vez do default (Arquiteto).
-  const estadoInicial = location.state as { carreiraId?: string; cargoId?: string } | null;
   const [visao, setVisao] = useState<Visao>('carreira');
 
   // --- Visão "Por carreira" (existente) -----------------------------------
   const { data: carreiras } = useQuery({ queryKey: ['catalogo', 'carreiras'], queryFn: () => endpoints.catalogoListar('carreiras') });
   const { data: cargos } = useQuery({ queryKey: ['catalogo', 'cargos'], queryFn: () => endpoints.catalogoListar('cargos') });
   const [carreiraId, setCarreiraId] = useState<string | null>(null);
-  const [cargoId, setCargoId] = useState<string>(estadoInicial?.cargoId ?? TODOS_OS_CARGOS);
+  const [cargoId, setCargoId] = useState<string>(TODOS_OS_CARGOS);
 
   useEffect(() => {
     if (carreiraId || !carreiras || carreiras.length === 0) return;
-    if (estadoInicial?.carreiraId) {
-      setCarreiraId(estadoInicial.carreiraId);
-      return;
-    }
     const arquiteto = carreiras.find((c) => /arquitet|architect/i.test(String(c.nome ?? '')));
     setCarreiraId(String((arquiteto ?? carreiras[0]).id));
     // eslint-disable-next-line react-hooks/exhaustive-deps

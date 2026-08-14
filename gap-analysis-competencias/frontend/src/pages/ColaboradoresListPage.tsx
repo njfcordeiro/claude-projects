@@ -1,6 +1,6 @@
 import { FormEvent, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Download, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import { endpoints } from '../api/endpoints';
 import { ApiError } from '../api/client';
@@ -120,6 +120,7 @@ function construirColunas(
 /** Restrito a ADMIN_RH/VIEWER (RolesGuard do backend em GET /colaboradores). */
 export function ColaboradoresListPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const { data, isLoading, error } = useQuery({ queryKey: ['colaboradores'], queryFn: endpoints.colaboradores });
@@ -132,7 +133,8 @@ export function ColaboradoresListPage() {
   const [filtroDirecaoId, setFiltroDirecaoId] = useState('');
   const [filtroAreaId, setFiltroAreaId] = useState('');
   const [filtroNucleoId, setFiltroNucleoId] = useState('');
-  const [filtroCargoId, setFiltroCargoId] = useState('');
+  // Chegada a partir de "Evolução de Carreiras" (clicar num Cargo) — pré-seleciona esse Cargo.
+  const [filtroCargoId, setFiltroCargoId] = useState((location.state as { cargoId?: string } | null)?.cargoId ?? '');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const eliminar = useMutation({
