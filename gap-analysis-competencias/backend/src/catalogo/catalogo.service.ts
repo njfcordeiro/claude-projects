@@ -288,13 +288,17 @@ export class CatalogoService {
 
   private coagirValor(campo: CatalogoCampoDef, bruto: unknown): unknown {
     switch (campo.tipo) {
-      case 'int':
+      case 'int': {
+        if (typeof bruto === 'number') return bruto;
+        return Number(String(bruto).trim());
+      }
       case 'relation': {
-        // Campos de relação com FK string (ex. carreiraId) ficam como string; os com FK int passam por Number.
         if (typeof bruto === 'number') return bruto;
         const texto = String(bruto).trim();
-        if (/^-?\d+$/.test(texto)) return Number(texto);
-        return texto;
+        // O tipo da FK segue o tipo do campo de identidade da tabela relacionada
+        // (ex. grupoCarreiraId fica string porque GrupoCarreira.id é string,
+        // mesmo que o código escolhido pelo utilizador seja só dígitos como "1").
+        return this.relacaoUsaIdInt(campo) ? Number(texto) : texto;
       }
       case 'boolean': {
         if (typeof bruto === 'boolean') return bruto;
@@ -305,6 +309,14 @@ export class CatalogoService {
       default:
         return String(bruto).trim();
     }
+  }
+
+  /** Verdadeiro se o campo de identidade da tabela relacionada for 'int' (ex. areaId, lobId). */
+  private relacaoUsaIdInt(campo: CatalogoCampoDef): boolean {
+    if (!campo.relatedTable) return false;
+    const relDef = encontrarTabela(campo.relatedTable);
+    const idCampo = relDef.campos.find((c) => c.key === relDef.identityFields[0]);
+    return idCampo?.tipo === 'int';
   }
 
   private construirWhereIdentidade(def: CatalogoTabelaDef, dados: Record<string, unknown>): Record<string, unknown> {
