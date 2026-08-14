@@ -8,7 +8,38 @@ export function formatarValorCatalogo(campo: CatalogoCampoDef, registo: Catalogo
   const bruto = registo[campo.key];
   if (campo.tipo === 'boolean') return bruto ? 'Sim' : 'Não';
   if (campo.tipo === 'relation') return String(registo[`${campo.key}Label`] ?? bruto ?? '—');
+  if (campo.tipo === 'enum') return campo.opcoes?.find((o) => o.value === bruto)?.label ?? String(bruto ?? '—');
   return bruto === null || bruto === undefined || bruto === '' ? '—' : String(bruto);
+}
+
+function CampoEnumInline({
+  campo,
+  valorInicial,
+  onSalvar,
+  onCancelar,
+}: {
+  campo: CatalogoCampoDef;
+  valorInicial: string;
+  onSalvar: (v: string) => void;
+  onCancelar: () => void;
+}) {
+  return (
+    <select
+      autoFocus
+      defaultValue={valorInicial}
+      onBlur={onCancelar}
+      onChange={(e) => onSalvar(e.target.value)}
+      onClick={(e) => e.stopPropagation()}
+      className="w-full rounded border border-fiori-primary bg-fiori-surface px-1 py-0.5 text-sm text-fiori-text outline-none"
+    >
+      <option value="">— selecionar —</option>
+      {(campo.opcoes ?? []).map((opcao) => (
+        <option key={opcao.value} value={opcao.value}>
+          {opcao.label}
+        </option>
+      ))}
+    </select>
+  );
 }
 
 function CampoRelacaoInline({
@@ -98,6 +129,20 @@ export function CatalogoCelula({ campo, registo, editavel, onSalvar }: Props) {
   if (campo.tipo === 'relation') {
     return (
       <CampoRelacaoInline
+        campo={campo}
+        valorInicial={String(registo[campo.key] ?? '')}
+        onSalvar={async (v) => {
+          setAEditar(false);
+          await onSalvar(v);
+        }}
+        onCancelar={() => setAEditar(false)}
+      />
+    );
+  }
+
+  if (campo.tipo === 'enum') {
+    return (
+      <CampoEnumInline
         campo={campo}
         valorInicial={String(registo[campo.key] ?? '')}
         onSalvar={async (v) => {

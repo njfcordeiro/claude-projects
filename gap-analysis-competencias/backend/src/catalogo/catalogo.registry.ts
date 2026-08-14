@@ -20,7 +20,12 @@ import { NotFoundException } from '@nestjs/common';
  * `@@unique`/`@@id` composta do schema Prisma — nunca o autoincrement.
  */
 
-export type CatalogoTipoCampo = 'string' | 'int' | 'boolean' | 'relation';
+export type CatalogoTipoCampo = 'string' | 'int' | 'boolean' | 'relation' | 'enum';
+
+export interface CatalogoOpcaoEnum {
+  value: string;
+  label: string;
+}
 
 export interface CatalogoCampoDef {
   key: string;
@@ -31,6 +36,8 @@ export interface CatalogoCampoDef {
   relatedTable?: string;
   /** Só para tipo 'relation': nome do accessor de include no Prisma Client (ex. 'carreira' para 'carreiraId'). */
   relationAccessor?: string;
+  /** Só para tipo 'enum': valores válidos (ex. TipoDesenvolvimento) e o texto a mostrar por cada um. */
+  opcoes?: CatalogoOpcaoEnum[];
 }
 
 export interface CatalogoTabelaDef {
@@ -51,6 +58,12 @@ function campo(
 ): CatalogoCampoDef {
   return { key, label, tipo, obrigatorio, ...extra };
 }
+
+/** Partilhado por Competências e LOBs — pedido do utilizador: "divididas em técnicas e comportamentais". */
+const TIPO_DESENVOLVIMENTO_OPCOES: CatalogoOpcaoEnum[] = [
+  { value: 'TECNICA', label: 'Técnica' },
+  { value: 'COMPORTAMENTAL', label: 'Comportamental' },
+];
 
 export const CATALOGO_REGISTRY: CatalogoTabelaDef[] = [
   {
@@ -178,6 +191,7 @@ export const CATALOGO_REGISTRY: CatalogoTabelaDef[] = [
       campo('id', 'ID', 'int'),
       campo('nome', 'Nome', 'string'),
       campo('areaId', 'Área', 'relation', true, { relatedTable: 'areas', relationAccessor: 'area' }),
+      campo('tipo', 'Tipo', 'enum', false, { opcoes: TIPO_DESENVOLVIMENTO_OPCOES }),
     ],
   },
   {
@@ -254,6 +268,18 @@ export const CATALOGO_REGISTRY: CatalogoTabelaDef[] = [
       campo('nome', 'Nome', 'string'),
       campo('areaId', 'Área', 'relation', true, { relatedTable: 'areas', relationAccessor: 'area' }),
       campo('pontosMinimos', 'Pontos mínimos', 'int'),
+      campo('tipo', 'Tipo', 'enum', false, { opcoes: TIPO_DESENVOLVIMENTO_OPCOES }),
+    ],
+  },
+  {
+    tabela: 'cargo-lob',
+    label: 'LOBs por Cargo',
+    delegate: 'cargoLob',
+    identityFields: ['cargoId', 'lobId'],
+    campos: [
+      campo('cargoId', 'Cargo', 'relation', true, { relatedTable: 'cargos', relationAccessor: 'cargo' }),
+      campo('lobId', 'LOB', 'relation', true, { relatedTable: 'lobs', relationAccessor: 'lob' }),
+      campo('obrigatorio', 'Obrigatória', 'boolean', false),
     ],
   },
   {

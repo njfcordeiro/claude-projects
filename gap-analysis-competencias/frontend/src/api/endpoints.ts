@@ -19,6 +19,7 @@ import {
   FiltrosOrganizacionais,
   FormacaoResumo,
   GerarPdiParaLobInput,
+  GerarPdiParaProximoCargoInput,
   GerarPdiResponse,
   LobDetalhe,
   LobResumo,
@@ -118,6 +119,10 @@ export const endpoints = {
   pdiGerar: (colaboradorId: number) => api.post<GerarPdiResponse>(`/colaboradores/${colaboradorId}/pdi/gerar`),
   pdiGerarParaLob: (colaboradorId: number, dto: GerarPdiParaLobInput) =>
     api.post<GerarPdiResponse>(`/colaboradores/${colaboradorId}/pdi/gerar-para-lob`, dto),
+  pdiGerarParaCargoAtual: (colaboradorId: number) =>
+    api.post<GerarPdiResponse>(`/colaboradores/${colaboradorId}/pdi/gerar-para-cargo-atual`, {}),
+  pdiGerarParaProximoCargo: (colaboradorId: number, dto: GerarPdiParaProximoCargoInput) =>
+    api.post<GerarPdiResponse>(`/colaboradores/${colaboradorId}/pdi/gerar-para-proximo-cargo`, dto),
   pdiCriar: (colaboradorId: number, dto: CreatePdiItemInput) => api.post<PdiItem>(`/colaboradores/${colaboradorId}/pdi`, dto),
   pdiAtualizar: (colaboradorId: number, itemId: number, dto: UpdatePdiItemInput) =>
     api.patch<PdiItem>(`/colaboradores/${colaboradorId}/pdi/${itemId}`, dto),

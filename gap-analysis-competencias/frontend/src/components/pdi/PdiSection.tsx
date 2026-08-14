@@ -1,6 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ListChecks, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { Briefcase, ListChecks, Plus, Sparkles, TrendingUp, Trash2 } from 'lucide-react';
 import { endpoints } from '../../api/endpoints';
 import { ApiError } from '../../api/client';
 import { EstadoPdi, PdiItem } from '../../types/api';
@@ -159,6 +159,74 @@ function GerarParaLobModal({
   );
 }
 
+/**
+ * "Gerar para o Próximo Cargo" quando há mais que uma possibilidade de
+ * progressão a partir do cargo atual (pedido do utilizador: "é obrigatório
+ * indicar qual o cargo seguinte") — com uma única possibilidade, o backend
+ * escolhe-a sozinho e este modal nem chega a abrir (ver PdiSection abaixo).
+ */
+function GerarParaProximoCargoModal({
+  colaboradorId,
+  proximosCargos,
+  onClose,
+}: {
+  colaboradorId: number;
+  proximosCargos: { id: string; nome: string }[];
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [proximoCargoId, setProximoCargoId] = useState('');
+  const [erro, setErro] = useState<string | null>(null);
+
+  const gerar = useMutation({
+    mutationFn: () => endpoints.pdiGerarParaProximoCargo(colaboradorId, { proximoCargoId }),
+    onSuccess: (resultado) => {
+      queryClient.invalidateQueries({ queryKey: ['pdi', colaboradorId] });
+      onClose();
+      if (resultado.criados === 0) {
+        window.alert('Sem gaps novos para sugerir — ou este Cargo ainda não tem LOBs associadas em "LOBs por Cargo" (Gestão de Dados).');
+      }
+    },
+    onError: (err) => setErro(err instanceof ApiError ? err.message : 'Não foi possível gerar sugestões para este cargo.'),
+  });
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!proximoCargoId) return;
+    setErro(null);
+    gerar.mutate();
+  }
+
+  return (
+    <Modal title="Gerar para o Próximo Cargo" onClose={onClose}>
+      <form onSubmit={handleSubmit}>
+        <p className="mb-3 text-sm text-fiori-text-secondary">
+          Há mais que um Próximo Cargo possível a partir do cargo atual — escolhe qual.
+        </p>
+        <Field label="Próximo Cargo">
+          <Select value={proximoCargoId} onChange={(e) => setProximoCargoId(e.target.value)} autoFocus>
+            <option value="">— selecionar —</option>
+            {proximosCargos.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nome}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        {erro && <p className="mb-3 text-sm text-fiori-error">{erro}</p>}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={gerar.isPending || !proximoCargoId}>
+            {gerar.isPending ? 'A gerar…' : 'Gerar'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 function ItemPdi({
   item,
   onAtualizar,
@@ -225,8 +293,15 @@ export function PdiSection({ colaboradorId }: { colaboradorId: number }) {
   const { data: itens, isLoading } = useQuery({ queryKey: ['pdi', colaboradorId], queryFn: () => endpoints.pdiListar(colaboradorId) });
   const { data: objetivos } = useQuery({ queryKey: ['objetivos-lob', colaboradorId], queryFn: () => endpoints.objetivosLob(colaboradorId) });
   const { data: colaborador } = useQuery({ queryKey: ['colaborador', colaboradorId], queryFn: () => endpoints.colaborador(colaboradorId) });
+  const { data: cargoLob } = useQuery({ queryKey: ['catalogo', 'cargo-lob'], queryFn: () => endpoints.catalogoListar('cargo-lob') });
+  const { data: cargoProgressao } = useQuery({
+    queryKey: ['catalogo', 'cargo-progressao'],
+    queryFn: () => endpoints.catalogoListar('cargo-progressao'),
+  });
+  const { data: cargos } = useQuery({ queryKey: ['catalogo', 'cargos'], queryFn: () => endpoints.catalogoListar('cargos') });
   const [aAdicionar, setAAdicionar] = useState(false);
   const [aGerarParaLob, setAGerarParaLob] = useState(false);
+  const [aGerarParaProximoCargo, setAGerarParaProximoCargo] = useState(false);
 
   const gerar = useMutation({
     mutationFn: () => endpoints.pdiGerar(colaboradorId),
@@ -236,6 +311,35 @@ export function PdiSection({ colaboradorId }: { colaboradorId: number }) {
     },
     onError: (err) => window.alert(err instanceof ApiError ? err.message : 'Não foi possível gerar o PDI.'),
   });
+
+  const gerarParaCargoAtual = useMutation({
+    mutationFn: () => endpoints.pdiGerarParaCargoAtual(colaboradorId),
+    onSuccess: (resultado) => {
+      queryClient.invalidateQueries({ queryKey: ['pdi', colaboradorId] });
+      if (resultado.criados === 0) {
+        window.alert('Sem gaps novos para sugerir — ou o cargo atual ainda não tem LOBs associadas em "LOBs por Cargo" (Gestão de Dados).');
+      }
+    },
+    onError: (err) => window.alert(err instanceof ApiError ? err.message : 'Não foi possível gerar sugestões para o cargo atual.'),
+  });
+
+  const gerarParaProximoCargoDireto = useMutation({
+    mutationFn: () => endpoints.pdiGerarParaProximoCargo(colaboradorId, {}),
+    onSuccess: (resultado) => {
+      queryClient.invalidateQueries({ queryKey: ['pdi', colaboradorId] });
+      if (resultado.criados === 0) {
+        window.alert('Sem gaps novos para sugerir — ou o próximo cargo ainda não tem LOBs associadas em "LOBs por Cargo" (Gestão de Dados).');
+      }
+    },
+    onError: (err) => window.alert(err instanceof ApiError ? err.message : 'Não foi possível gerar sugestões para o próximo cargo.'),
+  });
+
+  const proximosCargosIds = (cargoProgressao ?? [])
+    .filter((p) => p.cargoId === colaborador?.cargoId)
+    .map((p) => String(p.proximoCargoId));
+  const proximosCargos = (cargos ?? [])
+    .filter((c) => proximosCargosIds.includes(String(c.id)))
+    .map((c) => ({ id: String(c.id), nome: String(c.nome) }));
 
   const atualizar = useMutation({
     mutationFn: ({ itemId, estado }: { itemId: number; estado: EstadoPdi }) => endpoints.pdiAtualizar(colaboradorId, itemId, { estado }),
@@ -277,6 +381,24 @@ export function PdiSection({ colaboradorId }: { colaboradorId: number }) {
               <ListChecks size={14} /> Gerar sugestões para LOB
             </span>
           </Button>
+          <Button variant="secondary" onClick={() => gerarParaCargoAtual.mutate()} disabled={gerarParaCargoAtual.isPending || !colaborador?.cargoId}>
+            <span className="flex items-center gap-1.5">
+              <Briefcase size={14} /> {gerarParaCargoAtual.isPending ? 'A gerar…' : 'Gerar para o Cargo Atual'}
+            </span>
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              if (proximosCargos.length > 1) setAGerarParaProximoCargo(true);
+              else gerarParaProximoCargoDireto.mutate();
+            }}
+            disabled={gerarParaProximoCargoDireto.isPending || proximosCargos.length === 0}
+            title={proximosCargos.length === 0 ? 'Sem Próximo Cargo definido em Progressão de Cargos para o cargo atual.' : undefined}
+          >
+            <span className="flex items-center gap-1.5">
+              <TrendingUp size={14} /> {gerarParaProximoCargoDireto.isPending ? 'A gerar…' : 'Gerar para o Próximo Cargo'}
+            </span>
+          </Button>
           <Button
             variant="secondary"
             onClick={() => {
@@ -304,9 +426,26 @@ export function PdiSection({ colaboradorId }: { colaboradorId: number }) {
         (() => {
           const budLobIds = new Set((objetivos?.bud ?? []).map((o) => o.lobId));
           const autoLobIds = new Set((objetivos?.auto ?? []).map((o) => o.lobId));
+          // Cargo Atual/Próximo Cargo (pedido do utilizador) — cruza item.lobId com "LOBs por
+          // Cargo" (Gestão de Dados) para o cargo atual do colaborador e para o(s) seu(s)
+          // próximo(s) cargo(s) possível(eis) em Progressão de Cargos, sempre ao vivo, nunca
+          // guardado — mesmo princípio já usado para BUD/Sistema acima.
+          const cargoAtualLobIds = new Set(
+            (cargoLob ?? []).filter((r) => String(r.cargoId) === String(colaborador?.cargoId ?? '')).map((r) => Number(r.lobId)),
+          );
+          const proximoCargoLobIds = new Set(
+            (cargoLob ?? []).filter((r) => proximosCargosIds.includes(String(r.cargoId))).map((r) => Number(r.lobId)),
+          );
           const grupoBud = itens.filter((i) => i.lobId !== null && budLobIds.has(i.lobId));
           const grupoSistema = itens.filter((i) => i.lobId !== null && !budLobIds.has(i.lobId) && autoLobIds.has(i.lobId));
-          const grupoOutras = itens.filter((i) => i.lobId === null || (!budLobIds.has(i.lobId) && !autoLobIds.has(i.lobId)));
+          const naoBudNemSistema = (i: PdiItem) => i.lobId !== null && !budLobIds.has(i.lobId) && !autoLobIds.has(i.lobId);
+          const grupoCargoAtual = itens.filter((i) => naoBudNemSistema(i) && cargoAtualLobIds.has(i.lobId!));
+          const grupoProximoCargo = itens.filter((i) => naoBudNemSistema(i) && !cargoAtualLobIds.has(i.lobId!) && proximoCargoLobIds.has(i.lobId!));
+          const grupoOutras = itens.filter(
+            (i) =>
+              i.lobId === null ||
+              (naoBudNemSistema(i) && !cargoAtualLobIds.has(i.lobId!) && !proximoCargoLobIds.has(i.lobId!)),
+          );
 
           // Pedido do utilizador: dentro de BUD/Sistema, sub-agrupar por LOB
           // objetivo — "Outras" não tem LOB objetivo por definição, fica plana.
@@ -325,6 +464,8 @@ export function PdiSection({ colaboradorId }: { colaboradorId: number }) {
           const grupos: { titulo: string; subgrupos: { lobNome: string | null; itens: PdiItem[] }[] }[] = [
             { titulo: 'Recomendadas pelo BUD', subgrupos: porLob(grupoBud) },
             { titulo: 'Sugeridas pelo sistema', subgrupos: porLob(grupoSistema) },
+            { titulo: 'Necessidades do Cargo Atual', subgrupos: porLob(grupoCargoAtual) },
+            { titulo: 'Necessidades do Próximo Cargo', subgrupos: porLob(grupoProximoCargo) },
             { titulo: 'Outras competências', subgrupos: grupoOutras.length > 0 ? [{ lobNome: null, itens: grupoOutras }] : [] },
           ].filter((g) => g.subgrupos.length > 0);
 
@@ -366,6 +507,13 @@ export function PdiSection({ colaboradorId }: { colaboradorId: number }) {
       {aAdicionar && <AdicionarPdiItemModal colaboradorId={colaboradorId} onClose={() => setAAdicionar(false)} />}
       {aGerarParaLob && (
         <GerarParaLobModal colaboradorId={colaboradorId} areaId={colaborador?.areaId ?? null} onClose={() => setAGerarParaLob(false)} />
+      )}
+      {aGerarParaProximoCargo && (
+        <GerarParaProximoCargoModal
+          colaboradorId={colaboradorId}
+          proximosCargos={proximosCargos}
+          onClose={() => setAGerarParaProximoCargo(false)}
+        />
       )}
     </Card>
   );

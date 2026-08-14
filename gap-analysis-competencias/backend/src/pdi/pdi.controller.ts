@@ -8,6 +8,7 @@ import { PdiService } from './pdi.service';
 import { CreatePdiItemDto } from './dto/create-pdi-item.dto';
 import { UpdatePdiItemDto } from './dto/update-pdi-item.dto';
 import { GerarParaLobDto } from './dto/gerar-para-lob.dto';
+import { GerarParaProximoCargoDto } from './dto/gerar-para-proximo-cargo.dto';
 
 /**
  * Plano de Desenvolvimento Individual — mesmo RBAC fino de leitura/escrita
@@ -35,6 +36,22 @@ export class PdiController {
   @Post('gerar-para-lob')
   gerarParaLob(@Param('id', ParseIntPipe) id: number, @Body() dto: GerarParaLobDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.gerarParaLobEscolhida(id, dto, user);
+  }
+
+  /** Ver PdiService.gerarParaCargoAtual — LOBs (técnicas e comportamentais) associadas ao Cargo atual em "LOBs por Cargo". */
+  @Post('gerar-para-cargo-atual')
+  gerarParaCargoAtual(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.gerarParaCargoAtual(id, user);
+  }
+
+  /** Ver PdiService.gerarParaProximoCargo — resolve o Próximo Cargo via Progressão de Cargos. */
+  @Post('gerar-para-proximo-cargo')
+  gerarParaProximoCargo(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: GerarParaProximoCargoDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.gerarParaProximoCargo(id, dto, user);
   }
 
   @Post()

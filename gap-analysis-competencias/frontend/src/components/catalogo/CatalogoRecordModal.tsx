@@ -123,6 +123,20 @@ export function CatalogoRecordModal({ tabelaDef, registoInicial, onClose }: Prop
                   disabled={disabled}
                   onChange={(val) => setValores((v) => ({ ...v, [c.key]: val }))}
                 />
+              ) : c.tipo === 'enum' ? (
+                <Select
+                  value={String(valores[c.key] ?? '')}
+                  onChange={(e) => setValores((v) => ({ ...v, [c.key]: e.target.value }))}
+                  disabled={disabled}
+                  required={c.obrigatorio}
+                >
+                  <option value="">— selecionar —</option>
+                  {(c.opcoes ?? []).map((opcao) => (
+                    <option key={opcao.value} value={opcao.value}>
+                      {opcao.label}
+                    </option>
+                  ))}
+                </Select>
               ) : (
                 <Input
                   type={c.tipo === 'int' ? 'number' : 'text'}

@@ -96,6 +96,13 @@ enum OrigemPdi {
   @@map("origem_pdi")
 }
 
+enum TipoDesenvolvimento {
+  TECNICA
+  COMPORTAMENTAL
+
+  @@map("tipo_desenvolvimento")
+}
+
 // ---------------------------------------------------------------------
 // Organização
 // ---------------------------------------------------------------------
@@ -252,6 +259,8 @@ model Cargo {
   progressoesOrigem  CargoProgressao[] @relation("CargoOrigem")
   progressoesDestino CargoProgressao[] @relation("CargoDestino")
 
+  lobs CargoLob[]
+
   @@map("cargos")
 }
 
@@ -287,11 +296,14 @@ model Nivel {
 // ---------------------------------------------------------------------
 
 model Competencia {
-  id        Int      @id
+  id        Int                 @id
   nome      String
-  areaId    Int      @map("area_id")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  areaId    Int                 @map("area_id")
+  // Técnica ou Comportamental (pedido do utilizador). Tudo o que já existia
+  // fica Técnica por omissão — reclassificável em Gestão de Dados.
+  tipo      TipoDesenvolvimento @default(TECNICA)
+  createdAt DateTime            @default(now()) @map("created_at")
+  updatedAt DateTime            @updatedAt @map("updated_at")
 
   area Area @relation(fields: [areaId], references: [id])
 
@@ -449,12 +461,15 @@ model ColaboradorProjetoVertente {
 // ---------------------------------------------------------------------
 
 model Lob {
-  id            Int      @id
+  id            Int                 @id
   nome          String
-  areaId        Int      @map("area_id")
-  pontosMinimos Int      @map("pontos_minimos")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  areaId        Int                 @map("area_id")
+  pontosMinimos Int                 @map("pontos_minimos")
+  // Técnica ou Comportamental (pedido do utilizador). Tudo o que já existia
+  // fica Técnica por omissão — reclassificável em Gestão de Dados.
+  tipo          TipoDesenvolvimento @default(TECNICA)
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
 
   area Area @relation(fields: [areaId], references: [id])
 
@@ -464,8 +479,27 @@ model Lob {
   gapAnalysisLobResults          GapAnalysisLobResult[]
   colaboradoresComEstaProximaLob Colaborador[]                @relation("ProximaLob")
   pdiItems                       PdiItem[]
+  cargos                         CargoLob[]
 
   @@map("lobs")
+}
+
+// LOBs (técnicas ou comportamentais) exigidas por um Cargo — pedido do
+// utilizador: "para cada cargo, pode ser associado um ou vários LOBs
+// Comportamentais... obrigatórios ou não". Alimenta só os 2 botões novos do
+// PDI ("Gerar para o Cargo Atual"/"...Próximo Cargo") — não entra no
+// cálculo de prontidão/gap já existente (Cargo.lobsExigidos continua a ser
+// a única fonte disso, ver docs/gap-analysis.logic.ts).
+model CargoLob {
+  cargoId     String  @map("cargo_id")
+  lobId       Int     @map("lob_id")
+  obrigatorio Boolean @default(true)
+
+  cargo Cargo @relation(fields: [cargoId], references: [id])
+  lob   Lob   @relation(fields: [lobId], references: [id])
+
+  @@id([cargoId, lobId])
+  @@map("cargo_lob")
 }
 
 model LobRequisitoCompetencia {

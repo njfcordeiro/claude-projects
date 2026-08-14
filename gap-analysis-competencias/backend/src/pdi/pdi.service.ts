@@ -7,6 +7,7 @@ import { AuthenticatedUser } from '../auth/jwt-payload.interface';
 import { CreatePdiItemDto } from './dto/create-pdi-item.dto';
 import { UpdatePdiItemDto } from './dto/update-pdi-item.dto';
 import { GerarParaLobDto } from './dto/gerar-para-lob.dto';
+import { GerarParaProximoCargoDto } from './dto/gerar-para-proximo-cargo.dto';
 import { LobObjetivosService } from './lob-objetivos.service';
 
 const INCLUDE_ITEM = {
@@ -105,6 +106,73 @@ export class PdiService {
     }
 
     return this.gerarParaLob(colaboradorId, dto.lobId, user);
+  }
+
+  /**
+   * "Gerar para o Cargo Atual" (pedido do utilizador) — visa todas as LOBs
+   * (técnicas e comportamentais) associadas ao Cargo atual do colaborador em
+   * "LOBs por Cargo" (Gestão de Dados), obrigatórias ou não.
+   */
+  async gerarParaCargoAtual(colaboradorId: number, user: AuthenticatedUser) {
+    await this.colaboradores.podeEditar(colaboradorId, user);
+
+    const colaborador = await this.prisma.colaborador.findUnique({ where: { id: colaboradorId }, select: { cargoId: true } });
+    if (!colaborador?.cargoId) {
+      throw new BadRequestException('Este colaborador não tem Cargo atribuído.');
+    }
+
+    return this.gerarParaLobsDoCargo(colaboradorId, colaborador.cargoId, user);
+  }
+
+  /**
+   * "Gerar para o Próximo Cargo" (pedido do utilizador) — resolve o Próximo
+   * Cargo via Progressão de Cargos (mesmo grafo já usado em Evolução de
+   * Carreiras/Candidatos): escolhe-o automaticamente se só houver um
+   * possível, exige `proximoCargoId` se houver mais que um. Depois visa as
+   * LOBs (técnicas e comportamentais) desse Cargo em "LOBs por Cargo".
+   */
+  async gerarParaProximoCargo(colaboradorId: number, dto: GerarParaProximoCargoDto, user: AuthenticatedUser) {
+    await this.colaboradores.podeEditar(colaboradorId, user);
+
+    const colaborador = await this.prisma.colaborador.findUnique({ where: { id: colaboradorId }, select: { cargoId: true } });
+    if (!colaborador?.cargoId) {
+      throw new BadRequestException('Este colaborador não tem Cargo atribuído.');
+    }
+
+    const progressoes = await this.prisma.cargoProgressao.findMany({ where: { cargoId: colaborador.cargoId } });
+    if (progressoes.length === 0) {
+      throw new BadRequestException('Não há Próximo Cargo definido em Progressão de Cargos para o cargo atual deste colaborador.');
+    }
+
+    let proximoCargoId: string;
+    if (progressoes.length === 1) {
+      proximoCargoId = progressoes[0].proximoCargoId;
+    } else {
+      if (!dto.proximoCargoId) {
+        throw new BadRequestException('Há mais que um Próximo Cargo possível a partir do cargo atual — indica qual escolher.');
+      }
+      if (!progressoes.some((p) => p.proximoCargoId === dto.proximoCargoId)) {
+        throw new BadRequestException(`"${dto.proximoCargoId}" não é um Próximo Cargo possível a partir do cargo atual deste colaborador.`);
+      }
+      proximoCargoId = dto.proximoCargoId;
+    }
+
+    return this.gerarParaLobsDoCargo(colaboradorId, proximoCargoId, user);
+  }
+
+  /** Núcleo partilhado por `gerarParaCargoAtual`/`gerarParaProximoCargo`: gera para todas as LOBs associadas a um Cargo em "LOBs por Cargo". */
+  private async gerarParaLobsDoCargo(colaboradorId: number, cargoId: string, user: AuthenticatedUser) {
+    const lobsDoCargo = await this.prisma.cargoLob.findMany({ where: { cargoId } });
+    if (lobsDoCargo.length === 0) {
+      return { criados: 0, itens: await this.listar(colaboradorId, user) };
+    }
+
+    let criados = 0;
+    for (const { lobId } of lobsDoCargo) {
+      const resultado = await this.gerarParaLob(colaboradorId, lobId, user);
+      criados += resultado.criados;
+    }
+    return { criados, itens: await this.listar(colaboradorId, user) };
   }
 
   /** Núcleo partilhado por `gerar`/`gerarParaLobEscolhida`: avalia o gap de UMA LOB e persiste um item por gap ainda não coberto. */

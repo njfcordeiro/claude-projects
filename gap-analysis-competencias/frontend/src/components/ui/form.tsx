@@ -43,16 +43,17 @@ interface ButtonProps {
   type?: 'button' | 'submit';
   variant?: 'primary' | 'secondary';
   disabled?: boolean;
+  title?: string;
 }
 
-export function Button({ children, onClick, type = 'button', variant = 'primary', disabled }: ButtonProps) {
+export function Button({ children, onClick, type = 'button', variant = 'primary', disabled, title }: ButtonProps) {
   const base = 'rounded px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50';
   const styles =
     variant === 'primary'
       ? 'bg-fiori-primary text-white hover:bg-fiori-primary-hover active:bg-fiori-primary-active'
       : 'border border-fiori-border bg-fiori-surface text-fiori-text hover:bg-fiori-canvas';
   return (
-    <button type={type} onClick={onClick} disabled={disabled} className={`${base} ${styles}`}>
+    <button type={type} onClick={onClick} disabled={disabled} title={title} className={`${base} ${styles}`}>
       {children}
     </button>
   );

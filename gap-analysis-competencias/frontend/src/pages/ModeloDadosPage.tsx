@@ -175,6 +175,7 @@ const TABELAS: TabelaModelo[] = [
     relacoes: [
       '1—N Colaborador.cargoId',
       'N—N consigo mesmo via CargoProgressao (progressão de carreira)',
+      'N—N Lob via CargoLob (LOBs exigidas por este Cargo, para o PDI)',
       '1—N GapAnalysisRun/GapAnalysisCargoResult (tabelas não usadas)',
     ],
     visibilidade: 'total',
@@ -220,6 +221,7 @@ const TABELAS: TabelaModelo[] = [
       { nome: 'id', tipo: 'Int (PK)' },
       { nome: 'nome', tipo: 'String', nota: 'único' },
       { nome: 'areaId', tipo: 'Int', nota: '→ Area' },
+      { nome: 'tipo', tipo: 'TipoDesenvolvimento', nota: 'TECNICA (default) | COMPORTAMENTAL' },
       { nome: 'createdAt / updatedAt', tipo: 'DateTime' },
     ],
     relacoes: [
@@ -297,14 +299,30 @@ const TABELAS: TabelaModelo[] = [
       { nome: 'nome', tipo: 'String' },
       { nome: 'areaId', tipo: 'Int', nota: '→ Area' },
       { nome: 'pontosMinimos', tipo: 'Int' },
+      { nome: 'tipo', tipo: 'TipoDesenvolvimento', nota: 'TECNICA (default) | COMPORTAMENTAL' },
       { nome: 'createdAt / updatedAt', tipo: 'DateTime' },
     ],
     relacoes: [
       '1—N LobRequisitoCompetencia, LobRequisitoCertificacao, ColaboradorLobRecomendacao, GapAnalysisLobResult',
       '1—N Colaborador.proximaLobId ("Próxima LOB" escolhida pelo colaborador)',
+      '1—N CargoLob (LOBs associadas a um Cargo)',
     ],
     visibilidade: 'total',
     visibilidadeTexto: 'Gestão de Dados → "LOBs"; ecrã dedicado "LOBs". É o motor de gap real da aplicação.',
+  },
+  {
+    grupo: 'Organização',
+    model: 'CargoLob',
+    tabela: 'cargo_lob',
+    campos: [
+      { nome: 'cargoId', tipo: 'String (PK composta)', nota: '→ Cargo' },
+      { nome: 'lobId', tipo: 'Int (PK composta)', nota: '→ Lob' },
+      { nome: 'obrigatorio', tipo: 'Boolean', nota: 'default true' },
+    ],
+    relacoes: ['Bridge — LOBs (técnicas ou comportamentais) exigidas por um Cargo, obrigatórias ou não.'],
+    visibilidade: 'total',
+    visibilidadeTexto:
+      'Gestão de Dados → "LOBs por Cargo". Alimenta só os botões "Gerar para o Cargo Atual"/"...Próximo Cargo" no PDI — não entra no cálculo de prontidão/gap já existente (Cargo.lobsExigidos continua a ser a única fonte disso).',
   },
   {
     grupo: 'LOBs',
@@ -701,7 +719,19 @@ const MAPA_ECRA_DADOS: { ecra: string; novo?: boolean; dados: string[]; nota?: s
   { ecra: 'Skill Matrix', dados: ['Colaborador', 'Competência', 'LOB'] },
   {
     ecra: 'Ficha do Colaborador / PDI',
-    dados: ['Colaborador', 'Avaliação', 'Certificação do colab.', 'PDI', 'LOB', 'Competência', 'Certificação', 'Formação', 'Projeto'],
+    dados: [
+      'Colaborador',
+      'Avaliação',
+      'Certificação do colab.',
+      'PDI',
+      'LOB',
+      'Competência',
+      'Certificação',
+      'Formação',
+      'Projeto',
+      'CargoLob',
+      'CargoProgressao',
+    ],
   },
   { ecra: 'Gestão de Dados', dados: ['todas as tabelas de catálogo'], nota: '(Direção…Formação, LOB, Projeto)' },
   { ecra: 'Como Funciona', dados: ['ConfiguracaoProntidao'], nota: '(leitura)' },

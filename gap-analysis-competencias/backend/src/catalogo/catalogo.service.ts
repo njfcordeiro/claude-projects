@@ -305,6 +305,15 @@ export class CatalogoService {
         const texto = String(bruto).trim().toLowerCase();
         return texto === 'true' || texto === '1' || texto === 'sim' || texto === 'x';
       }
+      case 'enum': {
+        const texto = String(bruto).trim().toUpperCase();
+        const opcao = campo.opcoes?.find((o) => o.value === texto);
+        if (!opcao) {
+          const validos = (campo.opcoes ?? []).map((o) => o.value).join(', ');
+          throw new BadRequestException(`Valor inválido para "${campo.label}": "${bruto}". Valores aceites: ${validos}.`);
+        }
+        return opcao.value;
+      }
       case 'string':
       default:
         return String(bruto).trim();

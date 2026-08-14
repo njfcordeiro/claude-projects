@@ -360,7 +360,12 @@ export interface CandidatosPorColaboradorResponse {
 
 // --- Catálogo genérico (backend/src/catalogo) -----------------------------
 
-export type CatalogoTipoCampo = 'string' | 'int' | 'boolean' | 'relation';
+export type CatalogoTipoCampo = 'string' | 'int' | 'boolean' | 'relation' | 'enum';
+
+export interface CatalogoOpcaoEnum {
+  value: string;
+  label: string;
+}
 
 export interface CatalogoCampoDef {
   key: string;
@@ -369,6 +374,8 @@ export interface CatalogoCampoDef {
   obrigatorio: boolean;
   relatedTable?: string;
   relationAccessor?: string;
+  /** Só para tipo 'enum'. */
+  opcoes?: CatalogoOpcaoEnum[];
 }
 
 export interface CatalogoTabelaMeta {
@@ -461,6 +468,10 @@ export interface CreatePdiItemInput {
 
 export interface GerarPdiParaLobInput {
   lobId: number;
+}
+
+export interface GerarPdiParaProximoCargoInput {
+  proximoCargoId?: string;
 }
 
 export interface EliminarSugestoesPdiResponse {

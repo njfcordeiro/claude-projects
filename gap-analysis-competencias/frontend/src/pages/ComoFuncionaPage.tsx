@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Award,
   BookOpen,
+  Briefcase,
   Building2,
   Compass,
   Grid3x3,
@@ -16,6 +17,7 @@ import {
   Star,
   Target,
   Trash2,
+  TrendingUp,
   UserCircle,
   UserX,
 } from 'lucide-react';
@@ -322,6 +324,20 @@ const REGRAS = [
     texto:
       '"Gerar sugestões" já não visa uma única LOB: percorre TODOS os objetivos de LOB ativos do colaborador (sistema + BUD, ver "Objetivos de LOB" acima) e sugere o que estiver em falta em cada uma, sem duplicar entre elas. No PDI, os itens aparecem separados em 3 grupos, por esta ordem: "Recomendadas pelo BUD", "Sugeridas pelo sistema" e "Outras competências" (itens manuais, ou cuja LOB de origem já não é um objetivo atual); dentro de "Recomendadas pelo BUD" e "Sugeridas pelo sistema", os itens aparecem ainda sub-agrupados pela LOB de origem. Se uma LOB for, ao mesmo tempo, sugestão do sistema e recomendação do BUD, os seus itens contam para o grupo BUD. Qualquer item — gerado ou adicionado manualmente — pode ser eliminado, e "Gerar sugestões" pode ser chamado de novo a qualquer momento (não duplica o que já existe).',
     formula: 'itens sugeridos = ⋃ᴸᴼᴮ∈objetivos { competências/certificações em falta nessa LOB }, sem duplicados · grupo do item = BUD, senão Sistema, senão Outras · sub-agrupado por LOB dentro de BUD/Sistema',
+  },
+  {
+    icone: Layers,
+    titulo: 'Competências e LOBs — Técnicas vs. Comportamentais',
+    texto:
+      'Competência e LOB têm um campo "Tipo" (Técnica ou Comportamental), editável em Gestão de Dados — tudo o que já existia fica "Técnica" por omissão, sem quebrar nada. Cada Cargo pode ainda ter uma ou mais LOBs associadas na nova tabela "LOBs por Cargo" (Gestão de Dados), cada uma marcada Obrigatória ou não — técnicas e comportamentais indistintamente. Esta associação não entra no cálculo de prontidão/gap já existente em nenhum ecrã (Dashboard, Candidatos, Skill Matrix, Evolução de Carreiras) — serve só de fonte para os 2 botões novos do PDI, abaixo.',
+    formula: 'Competencia.tipo, Lob.tipo ∈ {TECNICA, COMPORTAMENTAL} · CargoLob(cargoId, lobId, obrigatorio) — só alimenta o PDI',
+  },
+  {
+    icone: Briefcase,
+    titulo: 'PDI — necessidades do Cargo Atual e do Próximo Cargo',
+    texto:
+      '"Gerar para o Cargo Atual" percorre todas as LOBs (técnicas e comportamentais) associadas ao cargo atual do colaborador em "LOBs por Cargo" e sugere o que estiver em falta em cada uma — mesmo motor de "Gerar sugestões", só muda a origem das LOBs-alvo. "Gerar para o Próximo Cargo" faz o mesmo para o cargo seguinte, resolvido via Progressão de Cargos: com um único cargo seguinte possível, escolhe-o sozinho; havendo mais que um, pede para escolher qual antes de gerar. Os itens resultantes aparecem no PDI em dois grupos próprios, "Necessidades do Cargo Atual" e "Necessidades do Próximo Cargo" — a seguir a BUD/Sistema e antes de Outras, pela mesma prioridade (um item já classificado em BUD ou Sistema não é reclassificado aqui). Sem nenhuma LOB associada ao Cargo em "LOBs por Cargo", o botão não gera nada — avisa em vez de falhar.',
+    formula: 'LOBs-alvo = CargoLob.where(cargoId = atual OU próximo) · próximo cargo = único predecessor→sucessor em CargoProgressao, ou escolhido manualmente se houver mais que um',
   },
   {
     icone: Puzzle,
