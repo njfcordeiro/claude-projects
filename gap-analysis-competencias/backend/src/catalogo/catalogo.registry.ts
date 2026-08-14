@@ -111,6 +111,13 @@ export const CATALOGO_REGISTRY: CatalogoTabelaDef[] = [
     campos: [campo('id', 'ID', 'int'), campo('nome', 'Nome', 'string')],
   },
   {
+    tabela: 'grupos-carreira',
+    label: 'Grupos de Carreira',
+    delegate: 'grupoCarreira',
+    identityFields: ['id'],
+    campos: [campo('id', 'Código', 'string'), campo('nome', 'Nome', 'string')],
+  },
+  {
     tabela: 'carreiras',
     label: 'Carreiras',
     delegate: 'carreira',
@@ -119,6 +126,7 @@ export const CATALOGO_REGISTRY: CatalogoTabelaDef[] = [
       campo('id', 'Código', 'string'),
       campo('nome', 'Nome', 'string'),
       campo('relevante', 'Relevante', 'boolean', false),
+      campo('grupoCarreiraId', 'Grupo', 'relation', false, { relatedTable: 'grupos-carreira', relationAccessor: 'grupoCarreira' }),
     ],
   },
   {

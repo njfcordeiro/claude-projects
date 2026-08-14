@@ -518,6 +518,8 @@ export interface CargoEvolucao {
   carreiraId: string;
   carreiraNome: string;
   carreiraRelevante: boolean;
+  grupoCarreiraId: string | null;
+  grupoCarreiraNome: string | null;
   categoriaId: string;
   categoriaNome: string;
   totalColaboradores: number;
@@ -539,6 +541,10 @@ export interface FiltrosOrganizacionais {
   areaId?: number;
   nucleoId?: number;
   cargoId?: string;
+}
+
+export interface FiltrosEvolucaoCarreiras extends FiltrosOrganizacionais {
+  grupoCarreiraId?: string;
 }
 
 // --- Catálogo (backend/src/lobs, backend/src/formacoes) -------------------

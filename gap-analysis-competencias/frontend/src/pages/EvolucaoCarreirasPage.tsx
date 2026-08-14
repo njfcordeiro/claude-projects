@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { GitBranch } from 'lucide-react';
 import { endpoints } from '../api/endpoints';
 import { CargoEvolucao, ProgressaoCargo } from '../types/api';
 import { Card } from '../components/ui/Card';
@@ -14,6 +13,11 @@ const LARGURA_COLUNA = 216;
 const ALTURA_SUBLINHA = ALTURA_NO + 14;
 const MARGEM = 24;
 const ESPACO_ROTULO_RAIA = 26;
+const GAP_RAIA = 10;
+const ESPACO_ROTULO_GRUPO = 30;
+const GAP_GRUPO_PADDING_INFERIOR = 14;
+const GAP_ENTRE_GRUPOS = 24;
+const SEM_GRUPO = '__sem_grupo__';
 
 const CORES_RAIA = ['#0070F2', '#107E3E', '#E76500', '#BB0000', '#6A5ACD', '#00838F'];
 
@@ -27,9 +31,24 @@ interface NoPosicionado {
   cor: string;
 }
 
+interface RaiaPosicionada {
+  nome: string;
+  cor: string;
+  y: number;
+  altura: number;
+}
+
+interface GrupoPosicionado {
+  nome: string;
+  y: number;
+  altura: number;
+}
+
 interface Layout {
   nos: Map<string, NoPosicionado>;
-  raias: { nome: string; cor: string; y: number; altura: number }[];
+  raias: RaiaPosicionada[];
+  /** Vazio quando todas as Carreiras estão "sem grupo" — nesse caso o mapa fica igual ao de antes desta funcionalidade, sem bandas extra. */
+  grupos: GrupoPosicionado[];
   largura: number;
   altura: number;
 }
@@ -40,7 +59,12 @@ interface Layout {
  * independentemente da Carreira — é por isso que "Associate Architect" (só
  * alcançável a partir de "Senior Consultant") fica na mesma coluna que
  * "Senior Consultant", não na primeira coluna da sua própria Carreira.
- * Raia = Carreira (relevantes primeiro, depois por nome).
+ * Raia = Carreira (relevantes primeiro, depois por nome), aninhada dentro
+ * de uma banda por Grupo de Carreira (pedido do utilizador: "agrupar
+ * carreira e desenhar o gráfico... onde se percebe quais têm ligação entre
+ * elas e as que não têm") — grupos ordenados por nome, "Sem grupo" por
+ * último. Cargos cuja Carreira ainda não tem Grupo atribuído (campo
+ * opcional) caem todos no mesmo balde "Sem grupo".
  */
 function calcularLayout(cargos: CargoEvolucao[], progressoes: ProgressaoCargo[]): Layout {
   const predecessores = new Map<string, string[]>();
@@ -61,76 +85,119 @@ function calcularLayout(cargos: CargoEvolucao[], progressoes: ProgressaoCargo[])
     return valor;
   }
 
-  const carreiras = Array.from(new Map(cargos.map((c) => [c.carreiraId, c])).values())
-    .sort((a, b) => (b.carreiraRelevante ? 1 : 0) - (a.carreiraRelevante ? 1 : 0) || a.carreiraNome.localeCompare(b.carreiraNome));
-
-  const porRaia = new Map<string, CargoEvolucao[]>();
+  const nomesGrupo = new Map<string, string>();
+  const porGrupo = new Map<string, CargoEvolucao[]>();
   for (const c of cargos) {
-    if (!porRaia.has(c.carreiraId)) porRaia.set(c.carreiraId, []);
-    porRaia.get(c.carreiraId)!.push(c);
+    const chave = c.grupoCarreiraId ?? SEM_GRUPO;
+    if (c.grupoCarreiraId) nomesGrupo.set(c.grupoCarreiraId, c.grupoCarreiraNome ?? c.grupoCarreiraId);
+    if (!porGrupo.has(chave)) porGrupo.set(chave, []);
+    porGrupo.get(chave)!.push(c);
   }
+  const chavesGrupo = Array.from(porGrupo.keys()).sort((a, b) => {
+    if (a === SEM_GRUPO) return 1;
+    if (b === SEM_GRUPO) return -1;
+    return (nomesGrupo.get(a) ?? '').localeCompare(nomesGrupo.get(b) ?? '');
+  });
+  // Se ninguém usa Grupo de Carreira ainda, o mapa fica exatamente como antes desta funcionalidade (sem bandas de grupo).
+  const temGrupos = !(chavesGrupo.length === 1 && chavesGrupo[0] === SEM_GRUPO);
 
   const nos = new Map<string, NoPosicionado>();
-  const raias: Layout['raias'] = [];
+  const raias: RaiaPosicionada[] = [];
+  const grupos: GrupoPosicionado[] = [];
   let yAtual = MARGEM;
   let maxColuna = 0;
+  let idxRaiaGlobal = 0;
 
-  carreiras.forEach((carreiraRef, idx) => {
-    const cor = CORES_RAIA[idx % CORES_RAIA.length];
-    const cargosDaRaia = porRaia.get(carreiraRef.carreiraId) ?? [];
+  for (const chaveGrupo of chavesGrupo) {
+    const cargosDoGrupo = porGrupo.get(chaveGrupo)!;
+    const carreirasDoGrupo = Array.from(new Map(cargosDoGrupo.map((c) => [c.carreiraId, c])).values()).sort(
+      (a, b) => (b.carreiraRelevante ? 1 : 0) - (a.carreiraRelevante ? 1 : 0) || a.carreiraNome.localeCompare(b.carreiraNome),
+    );
 
-    // Agrupar por coluna para saber quantas sub-linhas esta raia precisa.
-    const porColuna = new Map<number, CargoEvolucao[]>();
-    for (const c of cargosDaRaia) {
-      const col = coluna(c.cargoId, new Set());
-      maxColuna = Math.max(maxColuna, col);
-      if (!porColuna.has(col)) porColuna.set(col, []);
-      porColuna.get(col)!.push(c);
+    const grupoYInicio = yAtual;
+    if (temGrupos) yAtual += ESPACO_ROTULO_GRUPO;
+
+    const porRaia = new Map<string, CargoEvolucao[]>();
+    for (const c of cargosDoGrupo) {
+      if (!porRaia.has(c.carreiraId)) porRaia.set(c.carreiraId, []);
+      porRaia.get(c.carreiraId)!.push(c);
     }
-    const maxSubLinhas = Math.max(1, ...Array.from(porColuna.values()).map((lista) => lista.length));
-    const alturaRaia = ESPACO_ROTULO_RAIA + maxSubLinhas * ALTURA_SUBLINHA;
 
-    for (const [col, lista] of porColuna) {
-      lista.forEach((cargo, subIdx) => {
-        nos.set(cargo.cargoId, {
-          cargo,
-          coluna: col,
-          linha: idx,
-          subLinha: subIdx,
-          x: MARGEM + col * LARGURA_COLUNA,
-          y: yAtual + ESPACO_ROTULO_RAIA + subIdx * ALTURA_SUBLINHA,
-          cor,
+    for (const carreiraRef of carreirasDoGrupo) {
+      const cor = CORES_RAIA[idxRaiaGlobal % CORES_RAIA.length];
+      const linhaAtual = idxRaiaGlobal;
+      idxRaiaGlobal++;
+
+      const cargosDaRaia = porRaia.get(carreiraRef.carreiraId) ?? [];
+      const porColuna = new Map<number, CargoEvolucao[]>();
+      for (const c of cargosDaRaia) {
+        const col = coluna(c.cargoId, new Set());
+        maxColuna = Math.max(maxColuna, col);
+        if (!porColuna.has(col)) porColuna.set(col, []);
+        porColuna.get(col)!.push(c);
+      }
+      const maxSubLinhas = Math.max(1, ...Array.from(porColuna.values()).map((lista) => lista.length));
+      const alturaRaia = ESPACO_ROTULO_RAIA + maxSubLinhas * ALTURA_SUBLINHA;
+
+      for (const [col, lista] of porColuna) {
+        lista.forEach((cargo, subIdx) => {
+          nos.set(cargo.cargoId, {
+            cargo,
+            coluna: col,
+            linha: linhaAtual,
+            subLinha: subIdx,
+            x: MARGEM + col * LARGURA_COLUNA,
+            y: yAtual + ESPACO_ROTULO_RAIA + subIdx * ALTURA_SUBLINHA,
+            cor,
+          });
         });
-      });
+      }
+
+      raias.push({ nome: carreiraRef.carreiraNome, cor, y: yAtual, altura: alturaRaia });
+      yAtual += alturaRaia + GAP_RAIA;
     }
 
-    raias.push({ nome: carreiraRef.carreiraNome, cor, y: yAtual, altura: alturaRaia });
-    yAtual += alturaRaia + 10;
-  });
+    if (temGrupos) {
+      yAtual += GAP_GRUPO_PADDING_INFERIOR;
+      grupos.push({
+        nome: chaveGrupo === SEM_GRUPO ? 'Sem grupo' : (nomesGrupo.get(chaveGrupo) ?? chaveGrupo),
+        y: grupoYInicio,
+        altura: yAtual - grupoYInicio,
+      });
+      yAtual += GAP_ENTRE_GRUPOS;
+    }
+  }
 
   return {
     nos,
     raias,
+    grupos,
     largura: MARGEM * 2 + (maxColuna + 1) * LARGURA_COLUNA,
     altura: yAtual + MARGEM,
   };
 }
 
-/** Mapa de progressão de cargos (pedido do utilizador: "de forma gráfica mostra a evolução das carreiras"). */
+/** Mapa de progressão de cargos (pedido do utilizador: "de forma gráfica mostra a evolução das carreiras"), agora agrupável por Grupo de Carreira. */
 export function EvolucaoCarreirasPage() {
   const navigate = useNavigate();
   const [direcaoId, setDirecaoId] = useState('');
   const [areaId, setAreaId] = useState('');
   const [nucleoId, setNucleoId] = useState('');
+  const [grupoCarreiraId, setGrupoCarreiraId] = useState('');
 
   const { data: direcoes } = useQuery({ queryKey: ['catalogo', 'direcoes'], queryFn: () => endpoints.catalogoListar('direcoes') });
   const { data: areas } = useQuery({ queryKey: ['catalogo', 'areas'], queryFn: () => endpoints.catalogoListar('areas') });
   const { data: nucleos } = useQuery({ queryKey: ['catalogo', 'nucleos'], queryFn: () => endpoints.catalogoListar('nucleos') });
+  const { data: gruposCarreira } = useQuery({
+    queryKey: ['catalogo', 'grupos-carreira'],
+    queryFn: () => endpoints.catalogoListar('grupos-carreira'),
+  });
 
   const filtros = {
     direcaoId: direcaoId ? Number(direcaoId) : undefined,
     areaId: areaId ? Number(areaId) : undefined,
     nucleoId: nucleoId ? Number(nucleoId) : undefined,
+    grupoCarreiraId: grupoCarreiraId || undefined,
   };
 
   const { data, isLoading, error } = useQuery({
@@ -158,8 +225,8 @@ export function EvolucaoCarreirasPage() {
         </div>
       </div>
 
-      <Card title="Filtrar colaboradores">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <Card title="Filtrar">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
           <Field label="Direção">
             <Select value={direcaoId} onChange={(e) => setDirecaoId(e.target.value)}>
               <option value="">Todas</option>
@@ -190,6 +257,16 @@ export function EvolucaoCarreirasPage() {
               ))}
             </Select>
           </Field>
+          <Field label="Grupo de Carreira">
+            <Select value={grupoCarreiraId} onChange={(e) => setGrupoCarreiraId(e.target.value)}>
+              <option value="">Todos</option>
+              {(gruposCarreira ?? []).map((g) => (
+                <option key={String(g.id)} value={String(g.id)}>
+                  {String(g.nome)}
+                </option>
+              ))}
+            </Select>
+          </Field>
         </div>
       </Card>
 
@@ -197,7 +274,7 @@ export function EvolucaoCarreirasPage() {
         {isLoading && <p className="text-sm text-fiori-text-secondary">A carregar…</p>}
         {error && <p className="text-sm text-fiori-error">Não foi possível carregar a evolução de carreiras.</p>}
         {data && data.cargos.length === 0 && (
-          <p className="text-sm text-fiori-text-secondary">Ainda não há Cargos definidos em Gestão de Dados.</p>
+          <p className="text-sm text-fiori-text-secondary">Nenhum Cargo corresponde aos filtros escolhidos.</p>
         )}
 
         {data && data.cargos.length > 0 && (
@@ -206,7 +283,7 @@ export function EvolucaoCarreirasPage() {
               <svg
                 viewBox={`0 0 ${layout.largura} ${layout.altura}`}
                 role="img"
-                aria-label="Mapa de progressão de cargos entre carreiras, com o número de colaboradores e a prontidão média de cada cargo."
+                aria-label="Mapa de progressão de cargos entre carreiras, agrupado por Grupo de Carreira quando aplicável, com o número de colaboradores e a prontidão média de cada cargo."
                 className="text-fiori-text-secondary"
                 style={{ width: '100%', height: 'auto', minWidth: Math.min(layout.largura, 900) }}
               >
@@ -215,6 +292,26 @@ export function EvolucaoCarreirasPage() {
                     <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
                   </marker>
                 </defs>
+
+                {layout.grupos.map((grupo) => (
+                  <g key={grupo.nome}>
+                    <rect
+                      x={4}
+                      y={grupo.y}
+                      width={layout.largura - 8}
+                      height={grupo.altura}
+                      rx={10}
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={1.5}
+                      strokeDasharray="4 3"
+                      opacity={0.5}
+                    />
+                    <text x={16} y={grupo.y + 20} fontSize={13} fontWeight={700} fill="currentColor" className="text-fiori-text">
+                      GRUPO · {grupo.nome.toUpperCase()}
+                    </text>
+                  </g>
+                ))}
 
                 {layout.raias.map((raia) => (
                   <g key={raia.nome}>
@@ -263,6 +360,9 @@ export function EvolucaoCarreirasPage() {
               Clicar num Cargo abre "Candidatos" já filtrado para a sua Carreira. Coluna = profundidade da progressão a partir de um Cargo de
               entrada (sem predecessores) — não é a Categoria, por isso um Cargo pode ficar numa coluna diferente da sua Carreira quando só é
               alcançável a partir de outra.
+              {layout.grupos.length > 0 && (
+                <> As bandas tracejadas agrupam as Carreiras por Grupo de Carreira — a ausência de setas entre duas bandas mostra que não há progressão definida entre esses grupos.</>
+              )}
             </p>
           </>
         )}

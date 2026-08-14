@@ -183,13 +183,35 @@ model LocalTrabalho {
   @@map("locais_trabalho")
 }
 
-model Carreira {
-  id        String   @id // código, ex. "ARC"
+// Agrupador de Carreiras (pedido do utilizador: "Operacional, Administração,
+// Suporte, BPO, etc.") — classificação organizacional independente da
+// Categoria (essa é o nível de senioridade dentro de um Cargo). Usado para
+// filtrar/agrupar visualmente o mapa de progressão em "Evolução de
+// Carreiras" (ver EvolucaoCarreirasPage no frontend). Mesmo padrão de
+// catálogo simples (código + nome) que Categoria.
+model GrupoCarreira {
+  id        String   @id // código, ex. "OPER"
   nome      String
-  relevante Boolean  @default(false)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  carreiras Carreira[]
+
+  @@map("grupos_carreira")
+}
+
+model Carreira {
+  id              String   @id // código, ex. "ARC"
+  nome            String
+  relevante       Boolean  @default(false)
+  // Nullable de propósito — carreiras já existentes ficam "sem grupo" até
+  // serem atribuídas, nunca bloqueadas por falta deste campo (ver nota em
+  // GrupoCarreira).
+  grupoCarreiraId String?  @map("grupo_carreira_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  grupoCarreira GrupoCarreira? @relation(fields: [grupoCarreiraId], references: [id])
   cargos        Cargo[]
   colaboradores Colaborador[]
 

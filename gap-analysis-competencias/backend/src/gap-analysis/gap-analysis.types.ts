@@ -330,13 +330,16 @@ export interface SkillMatrixResponse {
 
 // --- Evolução de Carreiras (mapa de progressão de cargos) ----------------
 
-/** Um Cargo do catálogo, com a Carreira/Categoria a que pertence e agregados da população atual (colaboradores ativos que respeitam `filtros`). */
+/** Um Cargo do catálogo, com a Carreira/Categoria/Grupo de Carreira a que pertence e agregados da população atual (colaboradores ativos que respeitam `filtros`). */
 export interface CargoEvolucao {
   cargoId: string;
   cargoNome: string;
   carreiraId: string;
   carreiraNome: string;
   carreiraRelevante: boolean;
+  /** null se a Carreira ainda não tiver Grupo de Carreira atribuído (campo opcional). */
+  grupoCarreiraId: string | null;
+  grupoCarreiraNome: string | null;
   categoriaId: string;
   categoriaNome: string;
   /** Nº de colaboradores atualmente neste cargo (0 se nenhum). */
@@ -351,7 +354,7 @@ export interface ProgressaoCargo {
   proximoCargoId: string;
 }
 
-/** Resposta de `GET /gap-analysis/evolucao-carreiras` — TODOS os Cargos e progressões do catálogo (a topologia não é filtrada), só os agregados por Cargo respeitam `filtros`/RBAC. */
+/** Resposta de `GET /gap-analysis/evolucao-carreiras` — só os agregados por Cargo respeitam RBAC; `cargos` (e as `progressoes` cujos dois extremos sobrevivem) respeitam também o filtro `grupoCarreiraId`, se indicado. */
 export interface EvolucaoCarreirasResponse {
   cargos: CargoEvolucao[];
   progressoes: ProgressaoCargo[];
@@ -362,6 +365,11 @@ export interface FiltrosOrganizacionais {
   areaId?: number;
   nucleoId?: number;
   cargoId?: string;
+}
+
+/** Filtros do ecrã Evolução de Carreiras — os 3 de sempre (população de colaboradores) mais o Grupo de Carreira (escopo dos próprios Cargos/Carreiras mostrados). */
+export interface FiltrosEvolucaoCarreiras extends FiltrosOrganizacionais {
+  grupoCarreiraId?: string;
 }
 
 // --- Insights automáticos e risco de fuga de talento (dashboard) ---------

@@ -19,6 +19,7 @@ export class EvolucaoCarreirasController {
     @Query('direcaoId') direcaoId: string | undefined,
     @Query('areaId') areaId: string | undefined,
     @Query('nucleoId') nucleoId: string | undefined,
+    @Query('grupoCarreiraId') grupoCarreiraId: string | undefined,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.obterEvolucaoCarreiras(
@@ -26,6 +27,7 @@ export class EvolucaoCarreirasController {
         direcaoId: direcaoId ? Number(direcaoId) : undefined,
         areaId: areaId ? Number(areaId) : undefined,
         nucleoId: nucleoId ? Number(nucleoId) : undefined,
+        grupoCarreiraId: grupoCarreiraId || undefined,
       },
       user,
     );

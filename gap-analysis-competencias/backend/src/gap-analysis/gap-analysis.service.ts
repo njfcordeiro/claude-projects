@@ -18,6 +18,7 @@ import {
   DashboardResponse,
   DimensaoSkillMatrix,
   EvolucaoCarreirasResponse,
+  FiltrosEvolucaoCarreiras,
   FiltrosOrganizacionais,
   FormacaoCandidata,
   PesosProntidao,
@@ -341,13 +342,13 @@ export class GapAnalysisService {
    * média) respeitam o RBAC/filtros, tal como no Dashboard e na Skill
    * Matrix — MANAGER só conta a sua equipa, EMPLOYEE não tem acesso.
    */
-  async obterEvolucaoCarreiras(filtros: FiltrosOrganizacionais, user: AuthenticatedUser): Promise<EvolucaoCarreirasResponse> {
+  async obterEvolucaoCarreiras(filtros: FiltrosEvolucaoCarreiras, user: AuthenticatedUser): Promise<EvolucaoCarreirasResponse> {
     if (user.role === PapelUtilizador.EMPLOYEE) {
       throw new ForbiddenException('A evolução de carreiras é uma vista de equipa/organização — usa a tua ficha pessoal.');
     }
 
     const [todosOsCargos, progressoes] = await Promise.all([
-      this.prisma.cargo.findMany({ include: { carreira: true, categoria: true } }),
+      this.prisma.cargo.findMany({ include: { carreira: { include: { grupoCarreira: true } }, categoria: true } }),
       this.prisma.cargoProgressao.findMany(),
     ]);
 
@@ -366,7 +367,11 @@ export class GapAnalysisService {
       porCargo.get(r.cargoId)!.push(r);
     }
 
-    const cargos: CargoEvolucao[] = todosOsCargos.map((c) => {
+    const cargosFiltrados = filtros.grupoCarreiraId
+      ? todosOsCargos.filter((c) => c.carreira.grupoCarreiraId === filtros.grupoCarreiraId)
+      : todosOsCargos;
+
+    const cargos: CargoEvolucao[] = cargosFiltrados.map((c) => {
       const itens = porCargo.get(c.id) ?? [];
       return {
         cargoId: c.id,
@@ -374,6 +379,8 @@ export class GapAnalysisService {
         carreiraId: c.carreiraId,
         carreiraNome: c.carreira.nome,
         carreiraRelevante: c.carreira.relevante,
+        grupoCarreiraId: c.carreira.grupoCarreiraId,
+        grupoCarreiraNome: c.carreira.grupoCarreira?.nome ?? null,
         categoriaId: c.categoriaId,
         categoriaNome: c.categoria.nome,
         totalColaboradores: itens.length,
@@ -381,9 +388,14 @@ export class GapAnalysisService {
       };
     });
 
+    // Uma progressão só faz sentido no mapa se AMBOS os cargos ainda estiverem visíveis
+    // (relevante quando o filtro de Grupo de Carreira exclui um dos dois extremos).
+    const idsVisiveis = new Set(cargos.map((c) => c.cargoId));
+    const progressoesVisiveis = progressoes.filter((p) => idsVisiveis.has(p.cargoId) && idsVisiveis.has(p.proximoCargoId));
+
     return {
       cargos,
-      progressoes: progressoes.map((p) => ({ cargoId: p.cargoId, proximoCargoId: p.proximoCargoId })),
+      progressoes: progressoesVisiveis.map((p) => ({ cargoId: p.cargoId, proximoCargoId: p.proximoCargoId })),
     };
   }
 

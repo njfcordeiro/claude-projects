@@ -124,11 +124,26 @@ const TABELAS: TabelaModelo[] = [
       { nome: 'id', tipo: 'String (PK)', nota: 'código, ex. "ARC"' },
       { nome: 'nome', tipo: 'String' },
       { nome: 'relevante', tipo: 'Boolean', nota: 'default false' },
+      { nome: 'grupoCarreiraId', tipo: 'String?', nota: '→ GrupoCarreira, opcional — carreiras sem grupo atribuído ficam null' },
       { nome: 'createdAt / updatedAt', tipo: 'DateTime' },
     ],
-    relacoes: ['1—N Cargo.carreiraId', '1—N Colaborador.carreiraId'],
+    relacoes: ['N—1 GrupoCarreira.grupoCarreiraId (opcional)', '1—N Cargo.carreiraId', '1—N Colaborador.carreiraId'],
     visibilidade: 'total',
     visibilidadeTexto: 'Gestão de Dados → "Carreiras". Selecionável no ecrã Candidatos a carreira.',
+  },
+  {
+    grupo: 'Organização',
+    model: 'GrupoCarreira',
+    tabela: 'grupos_carreira',
+    campos: [
+      { nome: 'id', tipo: 'String (PK)', nota: 'código, ex. "OPER"' },
+      { nome: 'nome', tipo: 'String' },
+      { nome: 'createdAt / updatedAt', tipo: 'DateTime' },
+    ],
+    relacoes: ['1—N Carreira.grupoCarreiraId'],
+    visibilidade: 'total',
+    visibilidadeTexto:
+      'Gestão de Dados → "Grupos de Carreira" (ex. Operacional, Administração, Suporte, BPO). Usado para filtrar e agrupar visualmente o mapa em "Evolução de Carreiras".',
   },
   {
     grupo: 'Organização',
@@ -682,7 +697,7 @@ const MAPA_ECRA_DADOS: { ecra: string; novo?: boolean; dados: string[]; nota?: s
   { ecra: 'Dashboard', dados: ['Colaborador', 'Cargo', 'Direção/Área/Núcleo', 'LOB (agregado)'] },
   { ecra: 'Colaboradores', dados: ['Colaborador', 'Direção/Área/Núcleo', 'Cargo', 'Carreira', 'Categoria'] },
   { ecra: 'Candidatos', dados: ['Colaborador', 'Cargo', 'CargoProgressao', 'Carreira'] },
-  { ecra: 'Evolução de Carreiras', novo: true, dados: ['Carreira', 'Cargo', 'Categoria', 'CargoProgressao', 'Colaborador (contagens)'] },
+  { ecra: 'Evolução de Carreiras', novo: true, dados: ['Carreira', 'GrupoCarreira', 'Cargo', 'Categoria', 'CargoProgressao', 'Colaborador (contagens)'] },
   { ecra: 'Skill Matrix', dados: ['Colaborador', 'Competência', 'LOB'] },
   {
     ecra: 'Ficha do Colaborador / PDI',

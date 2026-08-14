@@ -15,6 +15,7 @@ import {
   DimensaoSkillMatrix,
   EliminarSugestoesPdiResponse,
   EvolucaoCarreirasResponse,
+  FiltrosEvolucaoCarreiras,
   FiltrosOrganizacionais,
   FormacaoResumo,
   GerarPdiParaLobInput,
@@ -148,11 +149,12 @@ export const endpoints = {
     if (filtros.cargoId) params.set('cargoId', filtros.cargoId);
     return api.get<SkillMatrixResponse>(`/gap-analysis/skill-matrix?${params.toString()}`);
   },
-  evolucaoCarreiras: (filtros: FiltrosOrganizacionais = {}) => {
+  evolucaoCarreiras: (filtros: FiltrosEvolucaoCarreiras = {}) => {
     const params = new URLSearchParams();
     if (filtros.direcaoId) params.set('direcaoId', String(filtros.direcaoId));
     if (filtros.areaId) params.set('areaId', String(filtros.areaId));
     if (filtros.nucleoId) params.set('nucleoId', String(filtros.nucleoId));
+    if (filtros.grupoCarreiraId) params.set('grupoCarreiraId', filtros.grupoCarreiraId);
     const query = params.toString();
     return api.get<EvolucaoCarreirasResponse>(`/gap-analysis/evolucao-carreiras${query ? `?${query}` : ''}`);
   },
