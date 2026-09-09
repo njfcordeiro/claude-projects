@@ -336,8 +336,9 @@ const REGRAS = [
     icone: Target,
     titulo: 'Perfil de Competências de um Cargo',
     texto:
-      'Cada Cargo pode ter um Perfil de Competências — uma lista de competências com o nível exigido, gerida em Gestão de Dados ("Perfil de Competências por Cargo"), tal como uma LOB tem os seus requisitos de competência. Como as linhas dessa tabela SÃO o perfil (não há uma entidade "Perfil" à parte), um Cargo só pode ter um perfil possível — não faz sentido ter dois. Avaliado pelo mesmo motor de sugestões já usado para LOBs (formações candidatas incluídas). Sem nenhuma linha para um Cargo, o perfil está simplesmente vazio — nada bloqueado, os botões do PDI abaixo só não geram nada para esse Cargo até ser preenchido.',
-    formula: 'CargoRequisitoCompetencia(cargoId, competenciaId, nivelExigidoId) — um único perfil por cargo, imposto pela chave composta',
+      'Cada Cargo pode ter um Perfil de Competências — uma lista de competências com o nível exigido, gerida em Gestão de Dados ("Perfil de Competências por Cargo"), tal como uma LOB tem os seus requisitos de competência. Como as linhas dessa tabela SÃO o perfil (não há uma entidade "Perfil" à parte), um Cargo só pode ter um perfil possível — não faz sentido ter dois. Só é possível escolher competências Comportamentais nesta tabela (as Técnicas continuam a ser cobertas pelas LOBs/Objetivos de LOB, não por aqui) — o próprio formulário só lista Comportamentais, e o backend rejeita a escrita de uma Técnica mesmo por fora do formulário. Avaliado pelo mesmo motor de sugestões já usado para LOBs (formações candidatas incluídas). Sem nenhuma linha para um Cargo, o perfil está simplesmente vazio — nada bloqueado, os botões do PDI abaixo só não geram nada para esse Cargo até ser preenchido.',
+    formula:
+      'CargoRequisitoCompetencia(cargoId, competenciaId, nivelExigidoId) — um único perfil por cargo, imposto pela chave composta · competenciaId restrito a Competencia.tipo = COMPORTAMENTAL',
   },
   {
     icone: Briefcase,

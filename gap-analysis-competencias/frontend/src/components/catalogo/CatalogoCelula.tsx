@@ -54,6 +54,14 @@ function CampoRelacaoInline({
   onCancelar: () => void;
 }) {
   const { data } = useQuery({ queryKey: ['catalogo', campo.relatedTable], queryFn: () => endpoints.catalogoListar(campo.relatedTable!) });
+  // O valor atual aparece sempre, mesmo que não cumpra o filtro (dados antigos) — o filtro só
+  // restringe as opções NOVAS a escolher, nunca esconde o que já está gravado.
+  const opcoesFiltradas = (data ?? []).filter(
+    (opcao) =>
+      !campo.relationFiltro ||
+      String(opcao.id) === valorInicial ||
+      opcao[campo.relationFiltro.campo] === campo.relationFiltro.valor,
+  );
   return (
     <select
       autoFocus
@@ -64,7 +72,7 @@ function CampoRelacaoInline({
       className="w-full rounded border border-fiori-primary bg-fiori-surface px-1 py-0.5 text-sm text-fiori-text outline-none"
     >
       <option value="">— selecionar —</option>
-      {(data ?? []).map((opcao) => {
+      {opcoesFiltradas.map((opcao) => {
         const v = String(opcao.id ?? '');
         const label = (opcao.nome as string | undefined) ?? v;
         return (

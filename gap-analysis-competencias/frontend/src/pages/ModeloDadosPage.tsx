@@ -317,7 +317,7 @@ const TABELAS: TabelaModelo[] = [
     tabela: 'cargo_requisito_competencia',
     campos: [
       { nome: 'cargoId', tipo: 'String (PK composta)', nota: '→ Cargo' },
-      { nome: 'competenciaId', tipo: 'Int (PK composta)', nota: '→ Competencia' },
+      { nome: 'competenciaId', tipo: 'Int (PK composta)', nota: '→ Competencia, restrito a tipo = COMPORTAMENTAL' },
       { nome: 'nivelExigidoId', tipo: 'Int', nota: '→ Nivel' },
     ],
     relacoes: [

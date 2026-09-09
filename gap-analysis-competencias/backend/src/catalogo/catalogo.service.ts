@@ -43,7 +43,7 @@ export class CatalogoService {
 
   async criar(tabela: string, dados: Record<string, unknown>, user: AuthenticatedUser) {
     const def = encontrarTabela(tabela);
-    const data = this.validarEcoagir(def, dados, /* exigirObrigatorios */ true);
+    const data = await this.validarEcoagir(def, dados, /* exigirObrigatorios */ true);
 
     try {
       const criado = await this.prisma.runAsUser<Record<string, unknown>>(user.sub, (tx) =>
@@ -57,7 +57,7 @@ export class CatalogoService {
 
   async atualizar(tabela: string, dados: Record<string, unknown>, user: AuthenticatedUser) {
     const def = encontrarTabela(tabela);
-    const data = this.validarEcoagir(def, dados, /* exigirObrigatorios */ false);
+    const data = await this.validarEcoagir(def, dados, /* exigirObrigatorios */ false);
     const where = this.construirWhereIdentidade(def, data);
     const { ...alteracoes } = data;
     for (const chave of def.identityFields) delete (alteracoes as Record<string, unknown>)[chave];
@@ -78,7 +78,7 @@ export class CatalogoService {
 
   async eliminar(tabela: string, identidade: Record<string, unknown>, user: AuthenticatedUser) {
     const def = encontrarTabela(tabela);
-    const chave = this.extrairIdentidade(def, identidade);
+    const chave = await this.extrairIdentidade(def, identidade);
     const where = this.construirWhereIdentidade(def, chave);
 
     try {
@@ -239,7 +239,19 @@ export class CatalogoService {
     return resultado;
   }
 
-  private validarEcoagir(def: CatalogoTabelaDef, dados: Record<string, unknown>, exigirObrigatorios: boolean): Record<string, unknown> {
+  /**
+   * `validarFiltro=false` (só usado por `extrairIdentidade`, para localizar
+   * uma linha a eliminar) salta a validação de `relationFiltro` — eliminar
+   * uma associação existente tem de funcionar mesmo que essa associação já
+   * não cumprisse o filtro (dados antigos), o filtro só se aplica a criar
+   * uma associação nova, nunca a encontrar uma para apagar.
+   */
+  private async validarEcoagir(
+    def: CatalogoTabelaDef,
+    dados: Record<string, unknown>,
+    exigirObrigatorios: boolean,
+    validarFiltro = true,
+  ): Promise<Record<string, unknown>> {
     const resultado: Record<string, unknown> = {};
     for (const c of def.campos) {
       const bruto = dados[c.key];
@@ -252,9 +264,32 @@ export class CatalogoService {
         continue;
       }
 
-      resultado[c.key] = this.coagirValor(c, bruto);
+      const valor = this.coagirValor(c, bruto);
+      if (validarFiltro && c.tipo === 'relation' && c.relationFiltro) {
+        await this.validarRelationFiltro(c, valor);
+      }
+      resultado[c.key] = valor;
     }
     return resultado;
+  }
+
+  /**
+   * Impõe `relationFiltro` na escrita (não só nas opções do <select>) — sem
+   * isto, um valor fora do filtro (ex. uma Competência Técnica em "Perfil de
+   * Competências por Cargo", que só aceita Comportamentais) passaria pela FK
+   * do Prisma sem qualquer aviso, já que a FK só garante que a linha existe,
+   * não que cumpre este filtro adicional.
+   */
+  private async validarRelationFiltro(campo: CatalogoCampoDef, valor: unknown): Promise<void> {
+    const relDef = encontrarTabela(campo.relatedTable!);
+    const registo = await (this.prisma as any)[relDef.delegate].findUnique({
+      where: { [relDef.identityFields[0]]: valor },
+    });
+    if (!registo || registo[campo.relationFiltro!.campo] !== campo.relationFiltro!.valor) {
+      throw new BadRequestException(
+        `"${campo.label}" só aceita valores com ${campo.relationFiltro!.campo} = "${campo.relationFiltro!.valor}".`,
+      );
+    }
   }
 
   /**
@@ -278,7 +313,9 @@ export class CatalogoService {
       }
 
       if (c.tipo === 'relation' && c.relatedTable) {
-        resultado[c.key] = await this.autoCriacao.resolver(c.relatedTable, bruto as string | number);
+        const valor = await this.autoCriacao.resolver(c.relatedTable, bruto as string | number);
+        if (c.relationFiltro) await this.validarRelationFiltro(c, valor);
+        resultado[c.key] = valor;
       } else {
         resultado[c.key] = this.coagirValor(c, bruto);
       }
@@ -339,9 +376,9 @@ export class CatalogoService {
     return where;
   }
 
-  private extrairIdentidade(def: CatalogoTabelaDef, dados: Record<string, unknown>): Record<string, unknown> {
+  private async extrairIdentidade(def: CatalogoTabelaDef, dados: Record<string, unknown>): Promise<Record<string, unknown>> {
     const camposIdentidade = def.campos.filter((c) => def.identityFields.includes(c.key));
-    return this.validarEcoagir({ ...def, campos: camposIdentidade }, dados, true);
+    return this.validarEcoagir({ ...def, campos: camposIdentidade }, dados, true, /* validarFiltro */ false);
   }
 
   private traduzirErroPrisma(err: unknown, def: CatalogoTabelaDef): Error {

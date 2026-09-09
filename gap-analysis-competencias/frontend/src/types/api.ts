@@ -374,6 +374,8 @@ export interface CatalogoCampoDef {
   obrigatorio: boolean;
   relatedTable?: string;
   relationAccessor?: string;
+  /** Só para tipo 'relation': restringe as opções do <select> a linhas de relatedTable em que campo === valor. */
+  relationFiltro?: { campo: string; valor: string };
   /** Só para tipo 'enum'. */
   opcoes?: CatalogoOpcaoEnum[];
 }

@@ -35,7 +35,12 @@ function CampoRelacao({
     queryKey: ['catalogo', campo.relatedTable],
     queryFn: () => endpoints.catalogoListar(campo.relatedTable!),
   });
-  const identidade = data ?? [];
+  // O valor atual aparece sempre, mesmo que não cumpra o filtro (dados antigos) — o filtro só
+  // restringe as opções NOVAS a escolher, nunca esconde o que já está gravado.
+  const identidade = (data ?? []).filter(
+    (opcao) =>
+      !campo.relationFiltro || String(opcao.id) === valor || opcao[campo.relationFiltro.campo] === campo.relationFiltro.valor,
+  );
 
   return (
     <Select value={valor} onChange={(e) => onChange(e.target.value)} disabled={disabled} required={campo.obrigatorio}>

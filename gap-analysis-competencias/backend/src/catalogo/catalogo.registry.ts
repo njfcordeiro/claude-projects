@@ -36,6 +36,13 @@ export interface CatalogoCampoDef {
   relatedTable?: string;
   /** Só para tipo 'relation': nome do accessor de include no Prisma Client (ex. 'carreira' para 'carreiraId'). */
   relationAccessor?: string;
+  /**
+   * Só para tipo 'relation': restringe as opções aceites a linhas da tabela
+   * relacionada em que `campo === valor` (ex. só Competências Comportamentais
+   * em "Perfil de Competências por Cargo"). Aplicado nas opções do <select>
+   * E validado na escrita (criar/atualizar/importar) — nunca só cosmético.
+   */
+  relationFiltro?: { campo: string; valor: string };
   /** Só para tipo 'enum': valores válidos (ex. TipoDesenvolvimento) e o texto a mostrar por cada um. */
   opcoes?: CatalogoOpcaoEnum[];
 }
@@ -278,7 +285,11 @@ export const CATALOGO_REGISTRY: CatalogoTabelaDef[] = [
     identityFields: ['cargoId', 'competenciaId'],
     campos: [
       campo('cargoId', 'Cargo', 'relation', true, { relatedTable: 'cargos', relationAccessor: 'cargo' }),
-      campo('competenciaId', 'Competência', 'relation', true, { relatedTable: 'competencias', relationAccessor: 'competencia' }),
+      campo('competenciaId', 'Competência', 'relation', true, {
+        relatedTable: 'competencias',
+        relationAccessor: 'competencia',
+        relationFiltro: { campo: 'tipo', valor: 'COMPORTAMENTAL' },
+      }),
       campo('nivelExigidoId', 'Nível exigido', 'relation', true, { relatedTable: 'niveis', relationAccessor: 'nivelExigido' }),
     ],
   },
