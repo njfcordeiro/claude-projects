@@ -38,4 +38,20 @@ export class GapAnalysisController {
   obterCompetenciasComportamentais(@Param('colaboradorId', ParseIntPipe) colaboradorId: number, @CurrentUser() user: AuthenticatedUser) {
     return this.service.obterCompetenciasComportamentais(colaboradorId, user);
   }
+
+  /**
+   * Perfil de Competências Comportamentais de um Cargo à escolha (pedido
+   * do utilizador) — mesmo motor que PdiService.gerarParaCargoAtual/
+   * ...ProximoCargo já usa internamente, agora exposto para qualquer
+   * Cargo, não só o atual/próximo do colaborador (ver
+   * PerfilCargoComportamentalSection no frontend).
+   */
+  @Get('perfil-cargo/:cargoId')
+  avaliarPerfilCargo(
+    @Param('colaboradorId', ParseIntPipe) colaboradorId: number,
+    @Param('cargoId') cargoId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.avaliarColaboradorPerfilCargo(colaboradorId, cargoId, user);
+  }
 }

@@ -36,6 +36,7 @@ import {
   RegistarParticipacaoProjetoInput,
   RelatorioGapCargo,
   RelatorioGapLob,
+  RelatorioGapPerfilCargo,
   ResumoAtribuicao,
   ResumoImportacao,
   ResumoImportacaoNiveis,
@@ -82,6 +83,8 @@ export const endpoints = {
     api.get<RelatorioGapLob>(`/gap-analysis/colaboradores/${colaboradorId}/lobs/${lobId}`),
   competenciasComportamentais: (colaboradorId: number) =>
     api.get<CompetenciaComportamentalColaborador[]>(`/gap-analysis/colaboradores/${colaboradorId}/competencias-comportamentais`),
+  gapPerfilCargo: (colaboradorId: number, cargoId: string) =>
+    api.get<RelatorioGapPerfilCargo>(`/gap-analysis/colaboradores/${colaboradorId}/perfil-cargo/${encodeURIComponent(cargoId)}`),
 
   lobs: () => api.get<LobResumo[]>('/lobs'),
   lob: (id: number) => api.get<LobDetalhe>(`/lobs/${id}`),

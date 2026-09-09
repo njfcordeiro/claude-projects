@@ -18,6 +18,7 @@ import { PerfilRadarChart } from '../components/gap/PerfilRadarChart';
 import { PdiSection } from '../components/pdi/PdiSection';
 import { ObjetivosLobSection } from '../components/pdi/ObjetivosLobSection';
 import { CompetenciasComportamentaisSection } from '../components/pdi/CompetenciasComportamentaisSection';
+import { PerfilCargoComportamentalSection } from '../components/pdi/PerfilCargoComportamentalSection';
 import { FormacoesConcluidasSection } from '../components/pdi/FormacoesConcluidasSection';
 
 function formatarData(iso: string | null): string {
@@ -534,7 +535,10 @@ export function ColaboradorProfilePage() {
         })()
       )}
 
-      <CompetenciasComportamentaisSection colaboradorId={colaboradorId} />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
+        <CompetenciasComportamentaisSection colaboradorId={colaboradorId} />
+        <PerfilCargoComportamentalSection colaboradorId={colaboradorId} cargoAtualId={colaborador?.cargoId ?? null} />
+      </div>
 
       <ObjetivosLobSection colaboradorId={colaboradorId} />
 

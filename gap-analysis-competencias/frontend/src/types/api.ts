@@ -264,6 +264,21 @@ export interface RelatorioGapCargo {
   lobs: ResumoGapLob[];
 }
 
+/** Perfil de Competências (Comportamentais) de um Cargo à escolha — CargoRequisitoCompetencia só admite Comportamentais. */
+export interface GapCompetenciaPerfilCargo {
+  competenciaId: number;
+  competenciaNome: string;
+  nivelExigido: number;
+  nivelAtual: number;
+  cumprido: boolean;
+}
+
+export interface RelatorioGapPerfilCargo {
+  cargoId: string;
+  cargoNome: string;
+  competencias: GapCompetenciaPerfilCargo[];
+}
+
 /** Pesos globais do cálculo de prontidão (ver ComoFuncionaPage) — os três têm de somar 100. */
 export interface PesosProntidao {
   pesoCompetencias: number;
