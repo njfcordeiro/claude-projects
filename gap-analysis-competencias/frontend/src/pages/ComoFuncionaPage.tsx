@@ -56,8 +56,9 @@ const NOS: NoModelo[] = [
 
   { id: 'colaborador', cluster: 'pessoas', nome: 'Colaborador', icone: UserCircle, campos: ['id', 'nome', 'cargoId', 'managerId', 'version'], relacao: 'Entidade central — liga-se a toda a Organização e ao seu próprio histórico.' },
   { id: 'avaliacao', cluster: 'pessoas', nome: 'Avaliação (histórico)', icone: Sparkles, campos: ['colaboradorId', 'competenciaId', 'nivelId', 'origem'], relacao: 'Append-only — o "nível atual" é sempre a mais recente, nunca um UPDATE.' },
-  { id: 'certificacao-colab', cluster: 'pessoas', nome: 'Certificação do colaborador', icone: Award, campos: ['certificacaoId', 'dataValidade', 'version'], relacao: 'Tem locking otimista próprio, tal como o Colaborador.' },
-  { id: 'pdi', cluster: 'pessoas', nome: 'PDI', icone: BookOpen, campos: ['descricao', 'nivelAlvoId', 'estado', 'origem'], relacao: 'Gerado a partir das lacunas do motor de gap; acompanhado manualmente depois.' },
+  { id: 'certificacao-colab', cluster: 'pessoas', nome: 'Certificação do colaborador', icone: Award, campos: ['certificacaoId', 'dataObtencao', 'dataValidade', 'version'], relacao: 'Tem locking otimista próprio, tal como o Colaborador. dataObtencao pode ser apagada — reverte para "em falta".' },
+  { id: 'formacao-colab', cluster: 'pessoas', nome: 'Histórico de Formação', icone: GraduationCap, campos: ['formacaoId', 'dataConclusao', 'horasFormacao', 'avaliacao'], relacao: 'Lista, não upsert — o mesmo colaborador pode repetir a mesma Formação. Aprovado sobe o nível de competência (nunca desce).' },
+  { id: 'pdi', cluster: 'pessoas', nome: 'PDI', icone: BookOpen, campos: ['descricao', 'nivelAlvoId', 'estado', 'origem'], relacao: 'Gerado a partir das lacunas do motor de gap; acompanhado manualmente depois. Concluir um item de Certificação também sobe o nível de competência transmitido, se superior.' },
 ];
 
 const CLUSTERS: { id: ClusterId; label: string; nota: string; corBorda: string; corTexto: string }[] = [
@@ -300,7 +301,7 @@ const REGRAS = [
     icone: Compass,
     titulo: 'Candidatos a carreira',
     texto:
-      'Escolhe-se uma Carreira e, opcionalmente, um Cargo dessa carreira (ou "Todos os cargos"). Para cada Cargo-alvo, os candidatos são os colaboradores cujo Cargo ATUAL é um predecessor direto desse Cargo na tabela Progressão de Cargos — não interessa a Carreira atual do colaborador, só essa ligação. Por isso alguém já dentro da carreira, num cargo anterior, também aparece como candidato ao próximo cargo. Um mesmo colaborador pode aparecer em mais que uma linha se o seu cargo atual progride para mais do que um Cargo-alvo. A Elegibilidade ("Apto") exige DUAS condições em relação ao Cargo-alvo dessa linha — antiguidade e LOBs — e falha se qualquer uma não se verificar, listando qual(is). A Prontidão mostrada é sempre a da "Próxima LOB" do colaborador (editável na ficha, entre as LOBs da sua Área) — nunca a média geral.',
+      'Escolhe-se uma Carreira e, opcionalmente, um Cargo dessa carreira (ou "Todos os cargos"). Para cada Cargo-alvo, os candidatos são os colaboradores cujo Cargo ATUAL é um predecessor direto desse Cargo na tabela Progressão de Cargos — não interessa a Carreira atual do colaborador, só essa ligação. Por isso alguém já dentro da carreira, num cargo anterior, também aparece como candidato ao próximo cargo. Um mesmo colaborador pode aparecer em mais que uma linha se o seu cargo atual progride para mais do que um Cargo-alvo. A Elegibilidade ("Apto") exige DUAS condições em relação ao Cargo-alvo dessa linha — antiguidade e LOBs — e falha se qualquer uma não se verificar, listando qual(is). A Prontidão mostrada é sempre a da "Próxima LOB" do colaborador (só de leitura — sempre derivada dos Objetivos de LOB, ver regra acima) — nunca a média geral.',
     formula:
       'apto = aptoAntiguidade E aptoLOBs · aptoAntiguidade = anosExperienciaMinimo do cargo-alvo = 0 OU antiguidade ≥ esse mínimo · aptoLOBs = lobsAtingidas ≥ lobsExigidas do cargo-alvo',
   },
@@ -308,8 +309,9 @@ const REGRAS = [
     icone: Target,
     titulo: 'Objetivos de LOB',
     texto:
-      'Cada colaborador tem até 3 LOBs sugeridas automaticamente pelo sistema — da sua própria Área, ainda não atingidas, pela maior % de prontidão (as mais próximas de serem alcançadas entram primeiro) — sempre calculadas ao vivo na ficha, nunca guardadas, por isso nunca ficam desatualizadas. A qualquer uma delas soma-se as LOBs recomendadas manualmente pelo BUD (o gestor direto do colaborador, ou ADMIN_RH — mesma permissão de escrita do resto da ficha): sem limite de quantidade, e sem obrigação de pertencerem à Área do colaborador. Todas em conjunto formam os "objetivos de LOB" desse colaborador.',
-    formula: 'auto = até 3 LOBs da Área, não atingidas, ordenadas por prontidão desc · bud = recomendações do gestor/ADMIN_RH (sem restrição de Área)',
+      'Cada colaborador tem até 3 LOBs sugeridas automaticamente pelo sistema — da sua própria Área, ainda não atingidas, pela maior % de prontidão (as mais próximas de serem alcançadas entram primeiro) — sempre calculadas ao vivo na ficha, nunca guardadas, por isso nunca ficam desatualizadas. A qualquer uma delas soma-se as LOBs recomendadas manualmente pelo BUD (o gestor direto do colaborador, ou ADMIN_RH — mesma permissão de escrita do resto da ficha): sem limite de quantidade, e sem obrigação de pertencerem à Área do colaborador. Todas em conjunto formam os "objetivos de LOB" desse colaborador. O campo "Próxima LOB" mostrado (só de leitura) no cabeçalho da ficha é sempre derivado destes mesmos objetivos, nunca um valor guardado à parte: a primeira recomendação do BUD ainda não atingida, senão a sugestão do sistema de maior prontidão ainda não atingida.',
+    formula:
+      'auto = até 3 LOBs da Área, não atingidas, ordenadas por prontidão desc · bud = recomendações do gestor/ADMIN_RH (sem restrição de Área) · próximaLOB = primeira de bud não atingida, senão primeira de auto',
   },
   {
     icone: Layers,
@@ -336,7 +338,7 @@ const REGRAS = [
     icone: Target,
     titulo: 'Perfil de Competências de um Cargo',
     texto:
-      'Cada Cargo pode ter um Perfil de Competências — uma lista de competências com o nível exigido, gerida em Gestão de Dados ("Perfil de Competências por Cargo"), tal como uma LOB tem os seus requisitos de competência. Como as linhas dessa tabela SÃO o perfil (não há uma entidade "Perfil" à parte), um Cargo só pode ter um perfil possível — não faz sentido ter dois. Só é possível escolher competências Comportamentais nesta tabela (as Técnicas continuam a ser cobertas pelas LOBs/Objetivos de LOB, não por aqui) — o próprio formulário só lista Comportamentais, e o backend rejeita a escrita de uma Técnica mesmo por fora do formulário. Avaliado pelo mesmo motor de sugestões já usado para LOBs (formações candidatas incluídas). Sem nenhuma linha para um Cargo, o perfil está simplesmente vazio — nada bloqueado, os botões do PDI abaixo só não geram nada para esse Cargo até ser preenchido.',
+      'Cada Cargo pode ter um Perfil de Competências — uma lista de competências com o nível exigido, gerida em Gestão de Dados ("Perfil de Competências por Cargo"), tal como uma LOB tem os seus requisitos de competência. Como as linhas dessa tabela SÃO o perfil (não há uma entidade "Perfil" à parte), um Cargo só pode ter um perfil possível — não faz sentido ter dois. Só é possível escolher competências Comportamentais nesta tabela (as Técnicas continuam a ser cobertas pelas LOBs/Objetivos de LOB, não por aqui) — o próprio formulário só lista Comportamentais, e o backend rejeita a escrita de uma Técnica mesmo por fora do formulário. Avaliado pelo mesmo motor de sugestões já usado para LOBs (formações candidatas incluídas). Sem nenhuma linha para um Cargo, o perfil está simplesmente vazio — nada bloqueado, os botões do PDI abaixo só não geram nada para esse Cargo até ser preenchido. Na ficha do colaborador, ao lado de "Competências Comportamentais", a secção "Perfil de Competências Comportamentais por Cargo" mostra o mesmo gap para qualquer Cargo à escolha (por omissão o cargo atual) — é só visualização, não gera nada.',
     formula:
       'CargoRequisitoCompetencia(cargoId, competenciaId, nivelExigidoId) — um único perfil por cargo, imposto pela chave composta · competenciaId restrito a Competencia.tipo = COMPORTAMENTAL',
   },
@@ -346,6 +348,20 @@ const REGRAS = [
     texto:
       '"Gerar para o Cargo Atual" avalia o colaborador contra o Perfil de Competências do seu cargo atual e sugere o que estiver em falta — mesmo motor de "Gerar sugestões", só muda a fonte das competências-alvo. "Gerar para o Próximo Cargo" faz o mesmo para o cargo seguinte, resolvido via Progressão de Cargos: com um único cargo seguinte possível, escolhe-o sozinho; havendo mais que um, pede para escolher qual antes de gerar. Os itens resultantes aparecem no PDI em dois grupos próprios, "Necessidades do Cargo Atual" e "Necessidades do Próximo Cargo" — a seguir a BUD/Sistema e antes de Outras. A deduplicação ao gerar é sempre relativa à MESMA origem (a mesma LOB ou o mesmo Cargo): gerar duas vezes para o Cargo Atual não duplica, mas a mesma competência exigida pelo Cargo Atual E pelo Próximo Cargo (com níveis diferentes, ex. "Proficiente" depois "Especialista") produz sempre duas linhas — são dois alvos distintos, o colaborador tem de trabalhar um de cada vez. Sem perfil definido para o Cargo, o botão não gera nada — avisa em vez de falhar.',
     formula: 'competências-alvo = CargoRequisitoCompetencia.where(cargoId = atual OU próximo) · próximo cargo = único predecessor→sucessor em CargoProgressao, ou escolhido manualmente se houver mais que um · dedup = mesma competência/certificação NA MESMA origem (lobId ou cargoId)',
+  },
+  {
+    icone: TrendingUp,
+    titulo: 'PDI — subir de nível ao concluir Certificação ou Formação',
+    texto:
+      'Um item de PDI de Certificação transmite os níveis definidos em "Requisitos de competência das certificações" ao colaborador quando é marcado como Concluído pela primeira vez — mas só sobe, nunca desce: se o nível transmitido for igual ou inferior ao que o colaborador já tem, nada muda. Reabrir o item para Pendente/Em Curso não apaga o nível já atribuído. O mesmo acontece no Histórico de Formação (ver regra abaixo) quando a Avaliação de uma linha fica "Aprovado", usando os níveis de "Requisitos de competência das formações" — via alternativa a Formação/Certificação, ao lado de Projetos, para subir de nível numa competência.',
+    formula: 'novoNível = nível transmitido, aplicado SE novoNível > nívelAtual, senão sem alteração · origem da avaliação = CERTIFICACAO ou FORMACAO',
+  },
+  {
+    icone: GraduationCap,
+    titulo: 'Histórico de Formação',
+    texto:
+      'Secção na ficha do colaborador que regista cada participação numa Formação: Formação, Data de conclusão, Horas (por omissão a "Duração (horas)" do catálogo, sempre editável manualmente) e Avaliação (Aprovado, Reprovado ou Faltou). Ao contrário da Certificação do colaborador (um estado "atual" por certificação), é uma lista — o mesmo colaborador pode repetir a mesma Formação (ex. Reprovado e depois repete), cada participação fica com a sua própria linha, editável e eliminável.',
+    formula: 'ColaboradorFormacao: sem único(colaboradorId, formacaoId) — lista, não upsert · subida de nível só quando avaliacao = APROVADO',
   },
   {
     icone: Puzzle,
@@ -367,6 +383,13 @@ const REGRAS = [
     texto:
       'Direção, Área e Núcleo têm um campo "relevante", editável em Gestão de Dados. Um colaborador é considerado "relevante" no ecrã de Colaboradores se pertencer a QUALQUER uma das três marcada como tal.',
     formula: 'relevante(colaborador) = direção.relevante OU área.relevante OU núcleo.relevante',
+  },
+  {
+    icone: Award,
+    titulo: 'Certificação — apagar a data de obtenção',
+    texto:
+      'Na Certificação do colaborador, a data de obtenção pode ser apagada (voltar a vazia), não só preenchida — corrige um registo feito por engano sem ter de eliminar a linha inteira (a data de validade/anexo já preenchidos não se perdem). Ao contrário do que a existência da linha sozinha podia sugerir, a certificação só conta como "possuída" na análise de gap se a data de obtenção estiver preenchida — apagá-la reverte-a para "em falta" em todas as LOBs onde é exigida.',
+    formula: 'possui = existe registo E dataObtencao !== null · cumprido = possui E (sem dataValidade OU dataValidade ≥ hoje)',
   },
   {
     icone: Lock,
@@ -402,6 +425,13 @@ const REGRAS = [
     texto:
       'No separador "Por Competência", clicar numa célula abre o mesmo formulário de avaliação da ficha do colaborador (locking otimista incluído) — disponível para ADMIN_RH e MANAGER (dentro da sua equipa). "Download níveis" exporta exatamente as colunas visíveis (respeitando os filtros ativos) num ficheiro com o id e o nome associado lado a lado (colaboradorId/Colaborador, competenciaId/Competência, nivelId/Nível); reenviar esse mesmo ficheiro em "Upload níveis" só grava uma nova avaliação (histórico append-only) para as linhas cujo nível pedido é diferente do nível atual — reenviar sem alterações não cria ruído no histórico. Os colaboradores podem ainda ser agrupados em blocos por Direção, Área, Núcleo ou Núcleo+Área, tal como as LOBs (separador "Por LOB") são agrupadas visualmente por Área.',
     formula: 'grava nova avaliação apenas se nivelId do ficheiro ≠ nível atual do colaborador nessa competência',
+  },
+  {
+    icone: Grid3x3,
+    titulo: 'Gestão de Dados — dados de colaboradores em massa',
+    texto:
+      'Além das tabelas de catálogo, Gestão de Dados tem uma secção própria "Dados de colaboradores" para exportar/importar em massa: Competências técnicas, Competências comportamentais, Certificações e Histórico de Formação. Ao contrário do catálogo genérico, não há grelha editável célula-a-célula aqui (cada tabela tem uma regra de escrita própria — append-only, locking otimista, subida automática de nível — que a grelha genérica não modela) — só Download/Upload; a edição linha-a-linha continua nos ecrãs próprios da ficha do colaborador. Reimportar aplica cada linha exatamente como se tivesse sido gravada manualmente nesse ecrã (mesma validação, mesmas regras), nunca um caminho de escrita paralelo.',
+    formula: 'cada linha do ficheiro → mesmo método de serviço do ecrã individual (criarAvaliacao, upsertCertificacao, FormacoesConcluidasService.criar/atualizar)',
   },
   {
     icone: Building2,

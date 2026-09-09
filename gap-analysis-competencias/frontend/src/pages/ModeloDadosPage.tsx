@@ -11,7 +11,7 @@ import { PrintButton } from '../components/ui/PrintButton';
  * do schema — mantém sincronizado sempre que o schema mudar. Distinto do
  * diagrama simplificado em "Como Funciona" (esse é uma introdução
  * narrativa a 14 tabelas-chave; este ecrã é a referência técnica completa
- * das 24 tabelas + enums).
+ * das 36 tabelas + enums).
  */
 
 interface CampoTabela {
@@ -272,7 +272,7 @@ const TABELAS: TabelaModelo[] = [
       { nome: 'duracaoHoras', tipo: 'Int?', nota: 'nullable — formações antigas do Excel não têm' },
       { nome: 'createdAt / updatedAt', tipo: 'DateTime' },
     ],
-    relacoes: ['1—N FormacaoRequisitoCompetencia, PdiItem'],
+    relacoes: ['1—N FormacaoRequisitoCompetencia, PdiItem, ColaboradorFormacao'],
     visibilidade: 'total',
     visibilidadeTexto: 'Gestão de Dados → "Formações"; ecrã dedicado "Formações".',
   },
@@ -290,6 +290,36 @@ const TABELAS: TabelaModelo[] = [
     visibilidade: 'total',
     visibilidadeTexto: 'Gestão de Dados → "Requisitos de competência das formações". Usada nas sugestões de formação no detalhe da LOB.',
   },
+  {
+    grupo: 'Catálogo',
+    model: 'Projeto',
+    tabela: 'projetos',
+    campos: [
+      { nome: 'id', tipo: 'Int (PK)' },
+      { nome: 'nome', tipo: 'String' },
+      { nome: 'areaId', tipo: 'Int?', nota: '→ Area' },
+      { nome: 'descricao', tipo: 'String?' },
+      { nome: 'createdAt / updatedAt', tipo: 'DateTime' },
+    ],
+    relacoes: ['1—N ProjetoVertente, ColaboradorProjeto'],
+    visibilidade: 'total',
+    visibilidadeTexto:
+      'Gestão de Dados → "Projetos". Via alternativa a Formação/Certificação para subir de nível numa competência (pedido do utilizador).',
+  },
+  {
+    grupo: 'Catálogo',
+    model: 'ProjetoVertente',
+    tabela: 'projeto_vertentes',
+    campos: [
+      { nome: 'id', tipo: 'Int (PK)', nota: 'autoincrement' },
+      { nome: 'projetoId', tipo: 'Int', nota: '→ Projeto' },
+      { nome: 'competenciaId', tipo: 'Int', nota: '→ Competencia' },
+      { nome: 'nome', tipo: 'String', nota: 'nome da vertente' },
+    ],
+    relacoes: ['único(projetoId, competenciaId). Uma vertente concluída sobe +1 nível (capado ao nível máximo) na sua competência.'],
+    visibilidade: 'total',
+    visibilidadeTexto: 'Gestão de Dados → "Vertentes de projeto". Escolhidas (mínimo 1) ao registar uma participação num Projeto.',
+  },
 
   // --- LOBs --------------------------------------------------------------
   {
@@ -304,12 +334,10 @@ const TABELAS: TabelaModelo[] = [
       { nome: 'tipo', tipo: 'TipoDesenvolvimento', nota: 'TECNICA (default) | COMPORTAMENTAL' },
       { nome: 'createdAt / updatedAt', tipo: 'DateTime' },
     ],
-    relacoes: [
-      '1—N LobRequisitoCompetencia, LobRequisitoCertificacao, ColaboradorLobRecomendacao, GapAnalysisLobResult',
-      '1—N Colaborador.proximaLobId ("Próxima LOB" escolhida pelo colaborador)',
-    ],
+    relacoes: ['1—N LobRequisitoCompetencia, LobRequisitoCertificacao, ColaboradorLobRecomendacao, GapAnalysisLobResult'],
     visibilidade: 'total',
-    visibilidadeTexto: 'Gestão de Dados → "LOBs"; ecrã dedicado "LOBs". É o motor de gap real da aplicação.',
+    visibilidadeTexto:
+      'Gestão de Dados → "LOBs"; ecrã dedicado "LOBs". É o motor de gap real da aplicação. Também alimenta a "Próxima LOB" mostrada (só leitura) na ficha do colaborador — ver Colaborador abaixo.',
   },
   {
     grupo: 'Organização',
@@ -325,7 +353,7 @@ const TABELAS: TabelaModelo[] = [
     ],
     visibilidade: 'total',
     visibilidadeTexto:
-      'Gestão de Dados → "Perfil de Competências por Cargo". Alimenta só os botões "Gerar para o Cargo Atual"/"...Próximo Cargo" no PDI — não entra no cálculo de prontidão/gap já existente (Cargo.lobsExigidos continua a ser a única fonte disso).',
+      'Gestão de Dados → "Perfil de Competências por Cargo". Alimenta os botões "Gerar para o Cargo Atual"/"...Próximo Cargo" no PDI, e a secção de visualização "Perfil de Competências Comportamentais por Cargo" na ficha do colaborador (qualquer Cargo à escolha, não só o atual/próximo) — nenhum dos dois entra no cálculo de prontidão/gap já existente (Cargo.lobsExigidos continua a ser a única fonte disso).',
   },
   {
     grupo: 'LOBs',
@@ -388,7 +416,6 @@ const TABELAS: TabelaModelo[] = [
       { nome: 'carreiraId / categoriaId / cargoId', tipo: 'String?', nota: '→ Carreira / Categoria / Cargo, onDelete Restrict' },
       { nome: 'direcaoId / nucleoId / areaId', tipo: 'Int?', nota: '→ Direcao / Nucleo / Area, onDelete Restrict' },
       { nome: 'managerId', tipo: 'Int?', nota: '→ Colaborador (auto-relação), onDelete SetNull — eliminar o gestor não bloqueia, os subordinados ficam sem gestor' },
-      { nome: 'proximaLobId', tipo: 'Int?', nota: '→ Lob, onDelete Restrict — "Próxima LOB" visada pelo colaborador' },
       { nome: 'nivelGestaoId', tipo: 'Int?', nota: '→ NivelGestao, onDelete Restrict' },
       { nome: 'localTrabalhoId', tipo: 'Int?', nota: '→ LocalTrabalho, onDelete Restrict' },
       { nome: 'ativo', tipo: 'Boolean', nota: 'default true — inativos excluídos de toda a análise agregada (Dashboard, Skill Matrix, Candidatos)' },
@@ -399,13 +426,13 @@ const TABELAS: TabelaModelo[] = [
       { nome: 'createdAt / updatedAt', tipo: 'DateTime' },
     ],
     relacoes: [
-      'Entidade central — aponta para toda a Organização (Carreira/Categoria/Cargo/Direção/Núcleo/Área), para a Lob (proximaLobId), NivelGestao e LocalTrabalho',
+      'Entidade central — aponta para toda a Organização (Carreira/Categoria/Cargo/Direção/Núcleo/Área), NivelGestao e LocalTrabalho',
       '1—1 User (opcional, onDelete SetNull — eliminar o colaborador não elimina a conta, só desliga a ligação), 1—N subordinados (auto-relação managerId)',
-      '1—N ColaboradorCompetencia, ColaboradorCertificacao, ColaboradorLobRecomendacao, PdiItem — todas com onDelete Cascade (pertencem ao colaborador, desaparecem com ele)',
+      '1—N ColaboradorCompetencia, ColaboradorCertificacao, ColaboradorFormacao, ColaboradorLobRecomendacao, ColaboradorProjeto, PdiItem — todas com onDelete Cascade (pertencem ao colaborador, desaparecem com ele)',
     ],
     visibilidade: 'total',
     visibilidadeTexto:
-      'Ecrã Colaboradores: criar, editar (todos os campos, com locking otimista por version) e eliminar num modal a partir da lista, upload/download Excel — eliminar é sempre possível, independentemente de dados associados (ver onDelete acima). A ficha do colaborador também permite editar dataAdmissao/proximaLobId/nivelGestaoId/localTrabalhoId/ativo diretamente (ADMIN_RH) — "Anos de experiência" é calculado dinamicamente a partir de dataAdmissao, nunca guardado. createdBy/updatedBy nunca aparecem na UI.',
+      'Ecrã Colaboradores: criar, editar (todos os campos, com locking otimista por version) e eliminar num modal a partir da lista, upload/download Excel — eliminar é sempre possível, independentemente de dados associados (ver onDelete acima). A ficha do colaborador também permite editar dataAdmissao/nivelGestaoId/localTrabalhoId/ativo diretamente (ADMIN_RH) — "Anos de experiência" é calculado dinamicamente a partir de dataAdmissao, nunca guardado. "Próxima LOB" é só de leitura, sempre derivada ao vivo dos Objetivos de LOB (não é mais um campo editável, nem uma coluna guardada). createdBy/updatedBy nunca aparecem na UI.',
   },
 
   // --- Avaliações ------------------------------------------------------------
@@ -420,12 +447,19 @@ const TABELAS: TabelaModelo[] = [
       { nome: 'nivelId', tipo: 'Int', nota: '→ Nivel' },
       { nome: 'dataAvaliacao', tipo: 'Date' },
       { nome: 'avaliadoPor', tipo: 'Int?', nota: '→ User' },
-      { nome: 'origem', tipo: 'enum OrigemAvaliacao', nota: 'SELF · MANAGER · FORMAL · 360 · IMPORTADO_EXCEL' },
+      {
+        nome: 'origem',
+        tipo: 'enum OrigemAvaliacao',
+        nota: 'SELF · MANAGER · FORMAL · 360 · IMPORTADO_EXCEL · PROJETO · CERTIFICACAO · FORMACAO',
+      },
       { nome: 'createdAt', tipo: 'DateTime' },
     ],
-    relacoes: ['Append-only — nunca UPDATE. O "nível atual" é sempre a avaliação mais recente por (colaborador, competência).'],
+    relacoes: [
+      'Append-only — nunca UPDATE (exceção deliberada: eliminar uma competência Comportamental apaga o histórico todo, ver secção "Competências Comportamentais" na ficha). O "nível atual" é sempre a avaliação mais recente por (colaborador, competência), resolvido pela view colaborador_competencia_atual.',
+    ],
     visibilidade: 'total',
-    visibilidadeTexto: 'Modal "Avaliar" no detalhe da LOB, na ficha do colaborador. O histórico completo não tem ecrã próprio — só o nível atual é mostrado.',
+    visibilidadeTexto:
+      'Modal "Avaliar" no detalhe da LOB e secção "Competências Comportamentais" na ficha do colaborador (adicionar/editar/remover). Também sobe automaticamente (nunca desce) ao concluir uma Certificação ou uma Formação com avaliação Aprovado, se o nível transmitido for superior ao atual (origem CERTIFICACAO/FORMACAO) — ver PdiItem e ColaboradorFormacao. O histórico completo não tem ecrã próprio — só o nível atual é mostrado; também exportável/importável em massa em Gestão de Dados → "Dados de colaboradores".',
   },
   {
     grupo: 'Avaliações',
@@ -442,7 +476,57 @@ const TABELAS: TabelaModelo[] = [
     ],
     relacoes: ['único(colaboradorId, certificacaoId) — uma linha por certificação por colaborador (com UPDATE, ao contrário de ColaboradorCompetencia).'],
     visibilidade: 'parcial',
-    visibilidadeTexto: 'Modal "Editar certificação" no detalhe da LOB. anexoUrl existe no modelo mas a app não tem upload de ficheiro — teria de ser preenchido por outra via.',
+    visibilidadeTexto:
+      'Modal "Editar certificação" no detalhe da LOB — dataObtencao/dataValidade podem ser apagadas (voltam a "em falta" na análise de gap: cumprido exige sempre dataObtencao preenchida, não basta o registo existir). anexoUrl existe no modelo mas a app não tem upload de ficheiro — teria de ser preenchido por outra via. Também exportável/importável em massa em Gestão de Dados → "Dados de colaboradores" (mesmo locking otimista respeitado linha a linha).',
+  },
+  {
+    grupo: 'Avaliações',
+    model: 'ColaboradorFormacao',
+    tabela: 'colaborador_formacao',
+    campos: [
+      { nome: 'id', tipo: 'Int (PK)', nota: 'autoincrement' },
+      { nome: 'colaboradorId', tipo: 'Int', nota: '→ Colaborador' },
+      { nome: 'formacaoId', tipo: 'Int', nota: '→ Formacao' },
+      { nome: 'dataConclusao', tipo: 'Date' },
+      { nome: 'horasFormacao', tipo: 'Int', nota: 'por omissão o duracaoHoras da Formação no momento do registo, editável por linha' },
+      { nome: 'avaliacao', tipo: 'enum AvaliacaoFormacao', nota: 'APROVADO · REPROVADO · FALTOU' },
+      { nome: 'createdBy / updatedBy', tipo: 'Int?' },
+      { nome: 'createdAt / updatedAt', tipo: 'DateTime' },
+    ],
+    relacoes: [
+      'Sem único(colaboradorId, formacaoId) — ao contrário de ColaboradorCertificacao, é uma lista, não um upsert: o mesmo colaborador pode repetir a mesma Formação (ex. Reprovado e depois repete).',
+    ],
+    visibilidade: 'total',
+    visibilidadeTexto:
+      'Secção "Histórico de Formação" na ficha do colaborador (criar/editar/eliminar linhas). Quando a avaliação fica Aprovado, aplica os níveis de FormacaoRequisitoCompetencia ao colaborador — só sobe (nunca desce ao mudar para Reprovado/Faltou depois de Aprovado), mesmo mecanismo de ColaboradorCompetencia origem FORMACAO. Também exportável/importável em massa em Gestão de Dados → "Dados de colaboradores" (com "id" preenchido atualiza a linha, em branco cria uma nova).',
+  },
+  {
+    grupo: 'Avaliações',
+    model: 'ColaboradorProjeto',
+    tabela: 'colaborador_projeto',
+    campos: [
+      { nome: 'id', tipo: 'Int (PK)', nota: 'autoincrement' },
+      { nome: 'colaboradorId', tipo: 'Int', nota: '→ Colaborador' },
+      { nome: 'projetoId', tipo: 'Int', nota: '→ Projeto' },
+      { nome: 'dataParticipacao', tipo: 'Date', nota: 'default now()' },
+      { nome: 'createdBy', tipo: 'Int?' },
+      { nome: 'createdAt', tipo: 'DateTime' },
+    ],
+    relacoes: ['único(colaboradorId, projetoId) — cada colaborador só participa num dado Projeto uma vez.', '1—N ColaboradorProjetoVertente'],
+    visibilidade: 'total',
+    visibilidadeTexto: 'Modal "Registar participação" no detalhe da LOB, na ficha do colaborador. Não editável/eliminável linha a linha depois de criada.',
+  },
+  {
+    grupo: 'Avaliações',
+    model: 'ColaboradorProjetoVertente',
+    tabela: 'colaborador_projeto_vertente',
+    campos: [
+      { nome: 'colaboradorProjetoId', tipo: 'Int (PK composta)', nota: '→ ColaboradorProjeto, onDelete Cascade' },
+      { nome: 'vertenteId', tipo: 'Int (PK composta)', nota: '→ ProjetoVertente' },
+    ],
+    relacoes: ['Quais Vertentes o colaborador fez, dentro de uma participação (mínimo 1) — cada uma sobe +1 nível na sua competência.'],
+    visibilidade: 'parcial',
+    visibilidadeTexto: 'Escolhida no modal "Registar participação" — sem ecrã de consulta própria (visível indiretamente via ColaboradorCompetencia, origem PROJETO).',
   },
   {
     grupo: 'Avaliações',
@@ -458,7 +542,7 @@ const TABELAS: TabelaModelo[] = [
     relacoes: ['único(colaboradorId, lobId).'],
     visibilidade: 'parcial',
     visibilidadeTexto:
-      'Gestão de Dados → "Recomendações de LOB por colaborador" — mas o campo colaboradorId aqui é só o ID numérico, sem nome (Colaborador está fora do registo genérico de catálogo).',
+      'Gestão de Dados → "Recomendações de LOB por colaborador" — mas o campo colaboradorId aqui é só o ID numérico, sem nome (Colaborador está fora do registo genérico de catálogo). Secção "Objetivos de LOB" na ficha do colaborador (bud=true, adicionar/remover). As linhas com bud=true são também a fonte da "Próxima LOB" mostrada (só leitura) na ficha — a primeira recomendação ainda não atingida; sem nenhuma, cai para a sugestão do sistema de maior prontidão (ver Colaborador acima).',
   },
 
   // --- PDI ---------------------------------------------------------------
@@ -707,8 +791,8 @@ function DiagramaRelacoes() {
       <figcaption className="mt-3 text-xs text-fiori-text-secondary">
         Mostra as ~15 tabelas e ligações mais estruturantes, não as ~40 chaves estrangeiras todas (essas estão listadas por tabela nos cartões
         abaixo). Simplificações: "Área" liga-se do mesmo modo a Formação e a LOB (só a ligação a Competência está desenhada); "PDI" pode
-        referenciar diretamente Competência, Certificação ou Formação além de LOB (campos opcionais na mesma tabela); Projeto e Recomendação de
-        LOB seguem o mesmo padrão do bloco "Histórico" mas foram omitidos para caber no diagrama.
+        referenciar diretamente Competência, Certificação ou Formação além de LOB (campos opcionais na mesma tabela); Projeto, Recomendação de
+        LOB e Histórico de Formação (ColaboradorFormacao) seguem o mesmo padrão do bloco "Histórico" mas foram omitidos para caber no diagrama.
       </figcaption>
     </figure>
   );
@@ -728,6 +812,7 @@ const MAPA_ECRA_DADOS: { ecra: string; novo?: boolean; dados: string[]; nota?: s
       'Colaborador',
       'Avaliação',
       'Certificação do colab.',
+      'ColaboradorFormacao',
       'PDI',
       'LOB',
       'Competência',
@@ -736,9 +821,14 @@ const MAPA_ECRA_DADOS: { ecra: string; novo?: boolean; dados: string[]; nota?: s
       'Projeto',
       'CargoRequisitoCompetencia',
       'CargoProgressao',
+      'ColaboradorLobRecomendacao',
     ],
   },
-  { ecra: 'Gestão de Dados', dados: ['todas as tabelas de catálogo'], nota: '(Direção…Formação, LOB, Projeto)' },
+  {
+    ecra: 'Gestão de Dados',
+    dados: ['todas as tabelas de catálogo'],
+    nota: '(Direção…Formação, LOB, Projeto) + secção "Dados de colaboradores": Avaliação, Certificação do colab., ColaboradorFormacao',
+  },
   { ecra: 'Como Funciona', dados: ['ConfiguracaoProntidao'], nota: '(leitura)' },
   { ecra: 'Modelo de Dados', dados: ['todas as tabelas'], nota: '(este ecrã)' },
 ];
