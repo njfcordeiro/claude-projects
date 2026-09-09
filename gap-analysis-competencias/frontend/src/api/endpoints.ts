@@ -7,10 +7,12 @@ import {
   CatalogoRegisto,
   CatalogoTabelaMeta,
   CertificacaoAtual,
+  ColaboradorFormacao,
   ColaboradorResumo,
   CompetenciaComportamentalColaborador,
   CreateAvaliacaoInput,
   CreateColaboradorInput,
+  CreateFormacaoConcluidaInput,
   CreatePdiItemInput,
   DashboardResponse,
   DimensaoSkillMatrix,
@@ -41,6 +43,7 @@ import {
   SkillMatrixResponse,
   UltimaAvaliacao,
   UpdateColaboradorInput,
+  UpdateFormacaoConcluidaInput,
   UpdatePdiItemInput,
   UpsertCertificacaoInput,
   UsuarioResumo,
@@ -149,6 +152,16 @@ export const endpoints = {
   projetosEliminarParticipacao: (colaboradorId: number, projetoId: number) =>
     api.delete<void>(`/colaboradores/${colaboradorId}/projetos/${projetoId}`),
   projetoVertentes: (projetoId: number) => api.get<ProjetoVertenteDetalhe[]>(`/projetos/${projetoId}/vertentes`),
+
+  // --- Histórico de Formação -----------------------------------------------
+  formacoesConcluidasListar: (colaboradorId: number) =>
+    api.get<ColaboradorFormacao[]>(`/colaboradores/${colaboradorId}/formacoes-concluidas`),
+  formacoesConcluidasCriar: (colaboradorId: number, dto: CreateFormacaoConcluidaInput) =>
+    api.post<ColaboradorFormacao>(`/colaboradores/${colaboradorId}/formacoes-concluidas`, dto),
+  formacoesConcluidasAtualizar: (colaboradorId: number, id: number, dto: UpdateFormacaoConcluidaInput) =>
+    api.patch<ColaboradorFormacao>(`/colaboradores/${colaboradorId}/formacoes-concluidas/${id}`, dto),
+  formacoesConcluidasEliminar: (colaboradorId: number, id: number) =>
+    api.delete<void>(`/colaboradores/${colaboradorId}/formacoes-concluidas/${id}`),
 
   // --- Skill Matrix -----------------------------------------------------------
   skillMatrix: (dimensao: DimensaoSkillMatrix, filtros: FiltrosOrganizacionais = {}) => {

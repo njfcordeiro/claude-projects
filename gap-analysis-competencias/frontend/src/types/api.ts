@@ -133,6 +133,34 @@ export interface RegistarParticipacaoProjetoInput {
   vertenteIds: number[];
 }
 
+// --- Histórico de Formação (backend/src/formacoes-concluidas) --------------
+
+export type AvaliacaoFormacao = 'APROVADO' | 'REPROVADO' | 'FALTOU';
+
+/** Uma participação numa Formação — lista, não upsert: o mesmo colaborador pode repetir a mesma Formação. */
+export interface ColaboradorFormacao {
+  id: number;
+  colaboradorId: number;
+  formacaoId: number;
+  dataConclusao: string;
+  horasFormacao: number;
+  avaliacao: AvaliacaoFormacao;
+  formacao: { nome: string; duracaoHoras: number | null };
+}
+
+export interface CreateFormacaoConcluidaInput {
+  formacaoId: number;
+  dataConclusao: string;
+  horasFormacao?: number;
+  avaliacao: AvaliacaoFormacao;
+}
+
+export interface UpdateFormacaoConcluidaInput {
+  dataConclusao?: string;
+  horasFormacao?: number;
+  avaliacao?: AvaliacaoFormacao;
+}
+
 /** Todas as vertentes de um Projeto (catálogo) — usado pelo modal "Registar participação" para escolher mais do que a vertente que originou o clique. */
 export interface ProjetoVertenteDetalhe {
   id: number;

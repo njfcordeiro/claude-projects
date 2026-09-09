@@ -112,6 +112,14 @@ enum TipoDesenvolvimento {
   @@map("tipo_desenvolvimento")
 }
 
+enum AvaliacaoFormacao {
+  APROVADO
+  REPROVADO
+  FALTOU
+
+  @@map("avaliacao_formacao")
+}
+
 // ---------------------------------------------------------------------
 // Organização
 // ---------------------------------------------------------------------
@@ -380,6 +388,7 @@ model Formacao {
 
   requisitosCompetencia FormacaoRequisitoCompetencia[]
   pdiItems              PdiItem[]
+  colaboradoresFormacao ColaboradorFormacao[]
 
   @@map("formacoes")
 }
@@ -650,6 +659,7 @@ model Colaborador {
   // eliminação.
   competencias         ColaboradorCompetencia[]
   certificacoes        ColaboradorCertificacao[]
+  formacoesConcluidas  ColaboradorFormacao[]
   lobRecomendacoes     ColaboradorLobRecomendacao[]
   pdiItems             PdiItem[]
   projetosParticipados ColaboradorProjeto[]
@@ -705,6 +715,38 @@ model ColaboradorCertificacao {
 
   @@unique([colaboradorId, certificacaoId])
   @@map("colaborador_certificacao")
+}
+
+// Histórico de formação do colaborador (pedido do utilizador) — ao
+// contrário de ColaboradorCertificacao (um estado "atual" por
+// certificação, upsert), aqui cada linha é uma participação distinta numa
+// Formação: o mesmo colaborador pode repetir a mesma Formação mais que uma
+// vez (ex. Reprovado/Faltou e depois repete), por isso não há
+// `@@unique([colaboradorId, formacaoId])` — é uma lista, não um upsert.
+// `horasFormacao` vem por omissão de `Formacao.duracaoHoras` no momento do
+// registo, mas é editável por linha (pedido do utilizador: "pode ser
+// alterado manualmente"). A subida de nível de competência
+// (FormacaoRequisitoCompetencia, só quando `avaliacao = APROVADO`) é
+// aplicada em FormacoesConcluidasService, reutilizando
+// ColaboradoresService.subirNivelSeSuperior — idempotente, por isso corre
+// em toda a gravação com avaliacao=APROVADO sem duplicar avaliações.
+model ColaboradorFormacao {
+  id             Int              @id @default(autoincrement())
+  colaboradorId  Int              @map("colaborador_id")
+  formacaoId     Int              @map("formacao_id")
+  dataConclusao  DateTime         @map("data_conclusao") @db.Date
+  horasFormacao  Int              @map("horas_formacao")
+  avaliacao      AvaliacaoFormacao
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  createdBy      Int?             @map("created_by")
+  updatedBy      Int?             @map("updated_by")
+
+  colaborador Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
+  formacao    Formacao    @relation(fields: [formacaoId], references: [id])
+
+  @@index([colaboradorId, formacaoId])
+  @@map("colaborador_formacao")
 }
 
 model ColaboradorLobRecomendacao {

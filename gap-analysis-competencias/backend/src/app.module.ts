@@ -12,6 +12,7 @@ import { CatalogoModule } from './catalogo/catalogo.module';
 import { AtribuicoesModule } from './atribuicoes/atribuicoes.module';
 import { PdiModule } from './pdi/pdi.module';
 import { ProjetosModule } from './projetos/projetos.module';
+import { FormacoesConcluidasModule } from './formacoes-concluidas/formacoes-concluidas.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { ProjetosModule } from './projetos/projetos.module';
     AtribuicoesModule,
     PdiModule,
     ProjetosModule,
+    FormacoesConcluidasModule,
     HealthModule,
   ],
 })
