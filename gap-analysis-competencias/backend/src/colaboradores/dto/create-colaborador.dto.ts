@@ -49,11 +49,6 @@ export class CreateColaboradorDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsInt()
-  proximaLobId?: number;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsInt()
   nivelGestaoId?: number;
 
   @ApiPropertyOptional()

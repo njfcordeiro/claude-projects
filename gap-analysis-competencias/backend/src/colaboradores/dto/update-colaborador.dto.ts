@@ -43,11 +43,6 @@ export class UpdateColaboradorDto {
   @IsInt()
   managerId?: number;
 
-  @ApiPropertyOptional({ description: 'LOB que o colaborador visa a seguir — null para limpar.' })
-  @IsOptional()
-  @IsInt()
-  proximaLobId?: number | null;
-
   @ApiPropertyOptional({ description: 'Nível de gestão (BUD/BUM/Team Leader/...) — null para limpar.' })
   @IsOptional()
   @IsInt()

@@ -64,13 +64,6 @@ function construirColunas(
       sortValue: (c) => c.dataAdmissao ?? '',
     },
     {
-      key: 'proximaLob',
-      header: 'Próxima LOB',
-      render: (c) => c.proximaLobNome ?? '—',
-      sortValue: (c) => c.proximaLobNome ?? '',
-      searchValue: (c) => c.proximaLobNome ?? '',
-    },
-    {
       key: 'nivelGestao',
       header: 'Nível de Gestão',
       render: (c) => c.nivelGestaoNome ?? '—',
@@ -386,7 +379,6 @@ interface ValoresColaborador {
   carreiraId: string;
   categoriaId: string;
   managerId: string;
-  proximaLobId: string;
   nivelGestaoId: string;
   localTrabalhoId: string;
   dataAdmissao: string;
@@ -403,7 +395,6 @@ const VALORES_VAZIOS: ValoresColaborador = {
   carreiraId: '',
   categoriaId: '',
   managerId: '',
-  proximaLobId: '',
   nivelGestaoId: '',
   localTrabalhoId: '',
   dataAdmissao: '',
@@ -424,7 +415,6 @@ function ColaboradorCamposEditor({
   const { data: nucleos } = useQuery({ queryKey: ['catalogo', 'nucleos'], queryFn: () => endpoints.catalogoListar('nucleos') });
   const { data: carreiras } = useQuery({ queryKey: ['catalogo', 'carreiras'], queryFn: () => endpoints.catalogoListar('carreiras') });
   const { data: categorias } = useQuery({ queryKey: ['catalogo', 'categorias'], queryFn: () => endpoints.catalogoListar('categorias') });
-  const { data: lobs } = useQuery({ queryKey: ['lobs'], queryFn: () => endpoints.lobs() });
   const { data: niveisGestao } = useQuery({ queryKey: ['catalogo', 'niveis-gestao'], queryFn: () => endpoints.catalogoListar('niveis-gestao') });
   const { data: locaisTrabalho } = useQuery({
     queryKey: ['catalogo', 'locais-trabalho'],
@@ -499,16 +489,6 @@ function ColaboradorCamposEditor({
       <Field label="ID do gestor">
         <Input type="number" value={valores.managerId} onChange={(e) => onChange('managerId', e.target.value)} />
       </Field>
-      <Field label="Próxima LOB">
-        <Select value={valores.proximaLobId} onChange={(e) => onChange('proximaLobId', e.target.value)}>
-          <option value="">— nenhuma —</option>
-          {(lobs ?? []).map((l) => (
-            <option key={l.id} value={String(l.id)}>
-              {l.nome}
-            </option>
-          ))}
-        </Select>
-      </Field>
       <Field label="Nível de gestão">
         <Select value={valores.nivelGestaoId} onChange={(e) => onChange('nivelGestaoId', e.target.value)}>
           <option value="">— nenhum —</option>
@@ -564,7 +544,6 @@ function CriarColaboradorModal({ onClose }: { onClose: () => void }) {
         carreiraId: valores.carreiraId || undefined,
         categoriaId: valores.categoriaId || undefined,
         managerId: valores.managerId ? Number(valores.managerId) : undefined,
-        proximaLobId: valores.proximaLobId ? Number(valores.proximaLobId) : undefined,
         nivelGestaoId: valores.nivelGestaoId ? Number(valores.nivelGestaoId) : undefined,
         localTrabalhoId: valores.localTrabalhoId ? Number(valores.localTrabalhoId) : undefined,
         dataAdmissao: valores.dataAdmissao || undefined,
@@ -606,7 +585,7 @@ function CriarColaboradorModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** Edita um colaborador existente — mesmo padrão de locking otimista por `version` das restantes escritas (ver EditarProximaLobModal na ficha do colaborador). */
+/** Edita um colaborador existente — mesmo padrão de locking otimista por `version` das restantes escritas. */
 function EditarColaboradorModal({ colaborador, onClose }: { colaborador: ColaboradorResumo; onClose: () => void }) {
   const queryClient = useQueryClient();
   const [valores, setValores] = useState<ValoresColaborador>({
@@ -618,7 +597,6 @@ function EditarColaboradorModal({ colaborador, onClose }: { colaborador: Colabor
     carreiraId: colaborador.carreiraId ?? '',
     categoriaId: colaborador.categoriaId ?? '',
     managerId: colaborador.managerId != null ? String(colaborador.managerId) : '',
-    proximaLobId: colaborador.proximaLobId != null ? String(colaborador.proximaLobId) : '',
     nivelGestaoId: colaborador.nivelGestaoId != null ? String(colaborador.nivelGestaoId) : '',
     localTrabalhoId: colaborador.localTrabalhoId != null ? String(colaborador.localTrabalhoId) : '',
     dataAdmissao: colaborador.dataAdmissao ?? '',
@@ -641,7 +619,6 @@ function EditarColaboradorModal({ colaborador, onClose }: { colaborador: Colabor
         carreiraId: valores.carreiraId || undefined,
         categoriaId: valores.categoriaId || undefined,
         managerId: valores.managerId ? Number(valores.managerId) : undefined,
-        proximaLobId: valores.proximaLobId ? Number(valores.proximaLobId) : null,
         nivelGestaoId: valores.nivelGestaoId ? Number(valores.nivelGestaoId) : null,
         localTrabalhoId: valores.localTrabalhoId ? Number(valores.localTrabalhoId) : null,
         dataAdmissao: valores.dataAdmissao || undefined,

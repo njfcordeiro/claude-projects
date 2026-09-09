@@ -34,8 +34,6 @@ export interface ColaboradorResumo {
   categoriaId: string | null;
   managerId: number | null;
   managerNome: string | null;
-  proximaLobId: number | null;
-  proximaLobNome: string | null;
   nivelGestaoId: number | null;
   nivelGestaoNome: string | null;
   localTrabalhoId: number | null;
@@ -60,7 +58,6 @@ export interface CreateColaboradorInput {
   carreiraId?: string;
   categoriaId?: string;
   managerId?: number;
-  proximaLobId?: number;
   nivelGestaoId?: number;
   localTrabalhoId?: number;
   dataAdmissao?: string;
@@ -77,7 +74,6 @@ export interface UpdateColaboradorInput {
   categoriaId?: string;
   managerId?: number;
   dataAdmissao?: string;
-  proximaLobId?: number | null;
   nivelGestaoId?: number | null;
   localTrabalhoId?: number | null;
   ativo?: boolean;

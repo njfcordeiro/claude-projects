@@ -861,7 +861,6 @@ export class GapAnalysisService {
         cargoId: true,
         carreiraId: true,
         dataAdmissao: true,
-        proximaLobId: true,
         direcaoId: true,
         areaId: true,
         nucleoId: true,
@@ -877,7 +876,7 @@ export class GapAnalysisService {
     if (colaboradores.length === 0) return { resumos: [], competenciasCriticas: [] };
 
     const ids = colaboradores.map((c) => c.id);
-    const [niveisPorColaborador, certsPorColaborador, cargosPorId, todasAsLobs, pesos] = await Promise.all([
+    const [niveisPorColaborador, certsPorColaborador, cargosPorId, todasAsLobs, pesos, budRows] = await Promise.all([
       this.buscarNiveisAtuaisEmLote(ids),
       this.buscarCertificacoesEmLote(ids),
       this.buscarCargosPorId(),
@@ -888,7 +887,24 @@ export class GapAnalysisService {
         },
       }),
       this.buscarPesosProntidao(),
+      // "Próxima LOB" (pedido do utilizador) já não é um campo editável — é
+      // sempre derivada ao vivo, mesma regra de LobObjetivosService.listar:
+      // a primeira recomendação do BUD (por ordem de criação) ainda não
+      // atingida, senão a sugestão do sistema de maior prontidão (também
+      // ainda não atingida). Aqui em lote, reaproveitando lobsResultados já
+      // calculado a seguir — nunca guardado em Colaborador.
+      this.prisma.colaboradorLobRecomendacao.findMany({
+        where: { colaboradorId: { in: ids }, bud: true },
+        orderBy: { createdAt: 'asc' },
+        select: { colaboradorId: true, lobId: true },
+      }),
     ]);
+    const budLobIdsPorColaborador = new Map<number, number[]>();
+    for (const b of budRows) {
+      if (!budLobIdsPorColaborador.has(b.colaboradorId)) budLobIdsPorColaborador.set(b.colaboradorId, []);
+      budLobIdsPorColaborador.get(b.colaboradorId)!.push(b.lobId);
+    }
+    const areaIdPorLob = new Map(todasAsLobs.map((l) => [l.id, l.areaId]));
 
     /**
      * Tally de competências obrigatórias em falta em toda a população —
@@ -928,10 +944,21 @@ export class GapAnalysisService {
         ? Math.round(lobsResultados.reduce((soma, r) => soma + r.prontidaoPercentual, 0) / lobsResultados.length)
         : 0;
       // Prontidão da "Próxima LOB" do colaborador (pedido do utilizador) —
-      // só essa LOB conta, nunca a média geral. null se não tiver Próxima
-      // LOB definida.
-      const prontidaoProximaLob =
-        c.proximaLobId !== null ? (lobsResultados.find((r) => r.lobId === c.proximaLobId)?.prontidaoPercentual ?? null) : null;
+      // só essa LOB conta, nunca a média geral. Derivada ao vivo (ver
+      // comentário acima): primeira recomendação do BUD ainda não atingida,
+      // senão a sugestão do sistema (da própria Área) de maior prontidão
+      // ainda não atingida. null se não houver nenhuma candidata.
+      const budLobIds = budLobIdsPorColaborador.get(c.id) ?? [];
+      const budNaoAtingida = budLobIds
+        .map((lobId) => lobsResultados.find((r) => r.lobId === lobId))
+        .find((r) => r !== undefined && !r.atingido);
+      const autoNaoAtingida = lobsResultados
+        .filter((r) => areaIdPorLob.get(r.lobId) === c.areaId && !r.atingido)
+        .reduce<(typeof lobsResultados)[number] | null>(
+          (melhor, atual) => (melhor === null || atual.prontidaoPercentual > melhor.prontidaoPercentual ? atual : melhor),
+          null,
+        );
+      const prontidaoProximaLob = (budNaoAtingida ?? autoNaoAtingida)?.prontidaoPercentual ?? null;
 
       return {
         colaboradorId: c.id,

@@ -81,71 +81,6 @@ function EditarDataAdmissaoModal({ colaborador, onClose }: { colaborador: Colabo
   );
 }
 
-/** Editar a "Próxima LOB" — opções restritas às LOBs da Área do colaborador, mesmo padrão de locking otimista. */
-function EditarProximaLobModal({ colaborador, onClose }: { colaborador: ColaboradorResumo; onClose: () => void }) {
-  const queryClient = useQueryClient();
-  const { data: lobs } = useQuery({ queryKey: ['lobs'], queryFn: endpoints.lobs });
-  const [proximaLobId, setProximaLobId] = useState(colaborador.proximaLobId != null ? String(colaborador.proximaLobId) : '');
-  const [erro, setErro] = useState<string | null>(null);
-
-  const lobsDaArea = (lobs ?? []).filter((l) => l.areaNome === colaborador.areaNome);
-
-  const guardar = useMutation({
-    mutationFn: () =>
-      endpoints.atualizarColaborador(colaborador.id, {
-        proximaLobId: proximaLobId ? Number(proximaLobId) : null,
-        version: colaborador.version,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['colaborador', colaborador.id] });
-      onClose();
-    },
-    onError: (err) =>
-      setErro(
-        err instanceof ApiError && err.status === 409
-          ? 'Este colaborador foi alterado por outra pessoa entretanto — fecha e reabre para ver os dados atuais.'
-          : err instanceof ApiError
-            ? err.message
-            : 'Não foi possível gravar.',
-      ),
-  });
-
-  function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    setErro(null);
-    guardar.mutate();
-  }
-
-  return (
-    <Modal title="Próxima LOB" onClose={onClose}>
-      <form onSubmit={handleSubmit}>
-        <Field label="Próxima LOB">
-          <Select value={proximaLobId} onChange={(e) => setProximaLobId(e.target.value)} autoFocus>
-            <option value="">— nenhuma —</option>
-            {lobsDaArea.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.nome}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        {colaborador.areaNome == null && (
-          <p className="mb-3 text-xs text-fiori-text-secondary">Colaborador sem Área atribuída — sem LOBs para escolher.</p>
-        )}
-        {erro && <p className="mb-3 text-sm text-fiori-error">{erro}</p>}
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button type="submit" disabled={guardar.isPending}>
-            {guardar.isPending ? 'A gravar…' : 'Gravar'}
-          </Button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
 /** Editar um campo de seleção simples (Nível de Gestão / Local de Trabalho) — opções vêm de uma tabela de catálogo, sem filtragem adicional. */
 function EditarCampoSimplesModal({
   colaborador,
@@ -290,7 +225,6 @@ export function ColaboradorProfilePage() {
   const [lobSelecionada, setLobSelecionada] = useState<number | null>(null);
   const [mostrarTodasLobs, setMostrarTodasLobs] = useState(false);
   const [editarDataAdmissao, setEditarDataAdmissao] = useState(false);
-  const [editarProximaLob, setEditarProximaLob] = useState(false);
   const [editarNivelGestao, setEditarNivelGestao] = useState(false);
   const [editarLocalTrabalho, setEditarLocalTrabalho] = useState(false);
   const [editarAtivo, setEditarAtivo] = useState(false);
@@ -303,6 +237,19 @@ export function ColaboradorProfilePage() {
     queryKey: ['gap-cargo', colaboradorId],
     queryFn: () => endpoints.gapCargo(colaboradorId),
   });
+  // "Próxima LOB" (pedido do utilizador) é só de leitura — sempre derivada
+  // ao vivo dos Objetivos de LOB: a primeira recomendação do BUD ainda não
+  // atingida, senão a primeira sugestão do sistema (já vem ordenada por
+  // prontidão e sem as atingidas) — mesma queryKey de ObjetivosLobSection,
+  // por isso não duplica o pedido.
+  const objetivosLobQuery = useQuery({
+    queryKey: ['objetivos-lob', colaboradorId],
+    queryFn: () => endpoints.objetivosLob(colaboradorId),
+  });
+  const proximaLobNome =
+    objetivosLobQuery.data?.bud.find((o) => o.prontidaoPercentual < 100)?.lobNome ??
+    objetivosLobQuery.data?.auto.find((o) => o.prontidaoPercentual < 100)?.lobNome ??
+    null;
 
   if (colaboradorQuery.isLoading || gapQuery.isLoading) {
     return <p className="text-sm text-fiori-text-secondary">A carregar…</p>;
@@ -369,18 +316,8 @@ export function ColaboradorProfilePage() {
                 {calcularAnosExperiencia(colaborador.dataAdmissao) !== null && (
                   <span>Anos de experiência: {calcularAnosExperiencia(colaborador.dataAdmissao)}</span>
                 )}
-                <span className="flex items-center gap-1.5">
-                  Próxima LOB: {colaborador.proximaLobNome ?? '—'}
-                  {user?.role === 'ADMIN_RH' && (
-                    <button
-                      type="button"
-                      onClick={() => setEditarProximaLob(true)}
-                      className="no-print text-fiori-text-secondary hover:text-fiori-primary"
-                      title="Editar próxima LOB"
-                    >
-                      <Pencil size={13} />
-                    </button>
-                  )}
+                <span className="flex items-center gap-1.5" title="Derivada ao vivo dos Objetivos de LOB — não editável diretamente.">
+                  Próxima LOB: {proximaLobNome ?? '—'}
                 </span>
                 <span className="flex items-center gap-1.5">
                   Nível de gestão: {colaborador.nivelGestaoNome ?? '—'}
@@ -441,9 +378,6 @@ export function ColaboradorProfilePage() {
 
       {editarDataAdmissao && colaborador && (
         <EditarDataAdmissaoModal colaborador={colaborador} onClose={() => setEditarDataAdmissao(false)} />
-      )}
-      {editarProximaLob && colaborador && (
-        <EditarProximaLobModal colaborador={colaborador} onClose={() => setEditarProximaLob(false)} />
       )}
       {editarNivelGestao && colaborador && (
         <EditarCampoSimplesModal
