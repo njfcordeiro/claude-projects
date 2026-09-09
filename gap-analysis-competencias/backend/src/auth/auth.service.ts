@@ -13,20 +13,11 @@ export class AuthService {
 
   async login(email: string, password: string): Promise<{ accessToken: string }> {
     const user = await this.prisma.user.findUnique({ where: { email } });
-    // DIAGNOSTICO TEMPORARIO — remover depois de confirmado o login em Preview.
-    console.log('[login-diag]', {
-      db: process.env.DATABASE_URL?.split('@')[1]?.split('/')[0],
-      email,
-      userFound: !!user,
-      isActive: user?.isActive,
-      hashLen: user?.passwordHash?.length,
-    });
     if (!user || !user.isActive) {
       throw new UnauthorizedException('Credenciais inválidas.');
     }
 
     const passwordOk = await bcrypt.compare(password, user.passwordHash);
-    console.log('[login-diag] passwordOk =', passwordOk);
     if (!passwordOk) {
       throw new UnauthorizedException('Credenciais inválidas.');
     }
