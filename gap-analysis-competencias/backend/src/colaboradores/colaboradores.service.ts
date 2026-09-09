@@ -586,6 +586,41 @@ export class ColaboradoresService {
     await this.prisma.runAsUser(user.sub, (tx) => tx.colaboradorCompetencia.deleteMany({ where: { colaboradorId, competenciaId } }));
   }
 
+  /**
+   * Sobe o nível de uma competência do colaborador para `nivelId` SE for
+   * superior ao nível atual — nunca desce. Usado quando a conclusão de uma
+   * Certificação (PdiService) ou de uma Formação com avaliação "Aprovado"
+   * (ColaboradorFormacaoService) transmite um nível de competência: só
+   * regista uma nova avaliação (append-only) se representar progresso
+   * real, e reabrir o item (voltar a Pendente/Em Curso) nunca apaga o que
+   * já foi transmitido. Tem de ser chamado dentro de uma transação já
+   * aberta por `runAsUser` — mesmo lock consultivo de `criarAvaliacao`/
+   * `ProjetosService.registarParticipacao`, para não perder subidas
+   * concorrentes na mesma competência.
+   */
+  async subirNivelSeSuperior(
+    tx: Prisma.TransactionClient,
+    colaboradorId: number,
+    competenciaId: number,
+    nivelId: number,
+    origem: OrigemAvaliacao,
+    avaliadoPor: number,
+  ): Promise<void> {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`avaliacao:${colaboradorId}:${competenciaId}`}))`;
+
+    const atual = await tx.$queryRaw<Pick<UltimaAvaliacaoRow, 'nivel_id'>[]>`
+      SELECT nivel_id
+      FROM colaborador_competencia_atual
+      WHERE colaborador_id = ${colaboradorId} AND competencia_id = ${competenciaId}
+    `;
+    const nivelAtual = atual[0]?.nivel_id ?? 0;
+    if (nivelId <= nivelAtual) return;
+
+    await tx.colaboradorCompetencia.create({
+      data: { colaboradorId, competenciaId, nivelId, dataAvaliacao: new Date(), avaliadoPor, origem },
+    });
+  }
+
   /** Cria ou atualiza (com locking otimista) a certificação de um colaborador. */
   async upsertCertificacao(colaboradorId: number, certificacaoId: string, dto: UpsertCertificacaoDto, user: AuthenticatedUser) {
     await this.podeEditar(colaboradorId, user);

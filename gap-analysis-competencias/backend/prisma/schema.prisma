@@ -52,6 +52,15 @@ enum OrigemAvaliacao {
   // +1 nível (capado ao nível máximo da escala) em cada competência das
   // vertentes em que o colaborador participou.
   PROJETO
+  // Subida automática de nível ao concluir uma Certificação (PdiItem
+  // certificacaoId, estado CONCLUIDO) — pedido do utilizador: o nível
+  // transmitido em CertificacaoRequisitoCompetencia só é aplicado se for
+  // superior ao nível que o colaborador já tem; nunca desce ao reabrir o
+  // item para Pendente/Em Curso.
+  CERTIFICACAO
+  // Idem, mas por conclusão de uma Formação com Avaliação "Aprovado" — ver
+  // ColaboradorFormacao e FormacaoRequisitoCompetencia.
+  FORMACAO
 
   @@map("origem_avaliacao")
 }

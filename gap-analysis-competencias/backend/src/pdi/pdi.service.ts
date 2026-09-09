@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { EstadoPdi, OrigemPdi, Prisma } from '@prisma/client';
+import { EstadoPdi, OrigemAvaliacao, OrigemPdi, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ColaboradoresService } from '../colaboradores/colaboradores.service';
 import { GapAnalysisService } from '../gap-analysis/gap-analysis.service';
@@ -352,6 +352,12 @@ export class PdiService {
    * mostrariam a duração de hoje, não a que valia quando a formação foi
    * feita). Reabrir o item (voltar a PENDENTE/EM_CURSO) não apaga este
    * registo — fica como prova de que já foi concluído uma vez.
+   *
+   * Nessa mesma transição (item de Certificação, primeira conclusão), o
+   * nível de competência transmitido por essa Certificação
+   * (CertificacaoRequisitoCompetencia) é aplicado ao colaborador — mas só
+   * sobe (ColaboradoresService.subirNivelSeSuperior); reabrir o item nunca
+   * desce o nível já atribuído (pedido do utilizador).
    */
   async atualizar(colaboradorId: number, itemId: number, dto: UpdatePdiItemDto, user: AuthenticatedUser) {
     await this.colaboradores.podeEditar(colaboradorId, user);
@@ -362,7 +368,10 @@ export class PdiService {
     }
 
     const dados: Prisma.PdiItemUpdateInput = { ...dto, updatedBy: user.sub };
-    if (dto.estado === EstadoPdi.CONCLUIDO && existente.dataConclusao === null) {
+    const primeiraConclusao = dto.estado === EstadoPdi.CONCLUIDO && existente.dataConclusao === null;
+
+    let requisitosCompetencia: { competenciaId: number; nivelId: number }[] = [];
+    if (primeiraConclusao) {
       dados.dataConclusao = new Date();
       if (existente.formacaoId !== null) {
         const formacao = await this.prisma.formacao.findUnique({
@@ -371,9 +380,20 @@ export class PdiService {
         });
         dados.duracaoHorasSnapshot = formacao?.duracaoHoras ?? null;
       }
+      if (existente.certificacaoId !== null) {
+        requisitosCompetencia = await this.prisma.certificacaoRequisitoCompetencia.findMany({
+          where: { certificacaoId: existente.certificacaoId },
+          select: { competenciaId: true, nivelId: true },
+        });
+      }
     }
 
-    await this.prisma.runAsUser(user.sub, (tx) => tx.pdiItem.update({ where: { id: itemId }, data: dados }));
+    await this.prisma.runAsUser(user.sub, async (tx) => {
+      await tx.pdiItem.update({ where: { id: itemId }, data: dados });
+      for (const r of requisitosCompetencia) {
+        await this.colaboradores.subirNivelSeSuperior(tx, colaboradorId, r.competenciaId, r.nivelId, OrigemAvaliacao.CERTIFICACAO, user.sub);
+      }
+    });
     return this.prisma.pdiItem.findUniqueOrThrow({ where: { id: itemId }, include: INCLUDE_ITEM });
   }
 
