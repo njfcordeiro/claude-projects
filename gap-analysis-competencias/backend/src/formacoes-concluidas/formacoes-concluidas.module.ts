@@ -7,5 +7,6 @@ import { FormacoesConcluidasService } from './formacoes-concluidas.service';
   imports: [ColaboradoresModule],
   controllers: [FormacoesConcluidasController],
   providers: [FormacoesConcluidasService],
+  exports: [FormacoesConcluidasService],
 })
 export class FormacoesConcluidasModule {}

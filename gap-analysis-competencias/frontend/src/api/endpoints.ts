@@ -166,6 +166,14 @@ export const endpoints = {
   formacoesConcluidasEliminar: (colaboradorId: number, id: number) =>
     api.delete<void>(`/colaboradores/${colaboradorId}/formacoes-concluidas/${id}`),
 
+  // --- Gestão de Dados: export/import em massa (dados de colaboradores) ------
+  dadosColaboradoresExportar: (chave: string) => downloadFile(`/dados-colaboradores/${chave}/export`, `${chave}.xlsx`),
+  dadosColaboradoresImportar: (chave: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api.postForm<ResumoImportacao>(`/dados-colaboradores/${chave}/import`, form);
+  },
+
   // --- Skill Matrix -----------------------------------------------------------
   skillMatrix: (dimensao: DimensaoSkillMatrix, filtros: FiltrosOrganizacionais = {}) => {
     const params = new URLSearchParams({ dimensao });
