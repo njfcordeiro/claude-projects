@@ -562,6 +562,30 @@ export class ColaboradoresService {
     });
   }
 
+  /**
+   * Remove por completo o histórico de avaliação de uma competência do
+   * colaborador (pedido do utilizador: a secção "Competências
+   * Comportamentais" da ficha é gerida manualmente — precisa de poder
+   * desatribuir, não só reavaliar). Ao contrário de criarAvaliacao, isto é
+   * uma exceção deliberada ao "nunca UPDATE/DELETE" do histórico de
+   * avaliação (docs/01-modelo-dados.md secção 5.1) — por isso fica
+   * restrito a Competências Comportamentais: as Técnicas continuam
+   * append-only, nunca perdem histórico por aqui.
+   */
+  async eliminarCompetencia(colaboradorId: number, competenciaId: number, user: AuthenticatedUser): Promise<void> {
+    await this.podeEditar(colaboradorId, user);
+
+    const competencia = await this.prisma.competencia.findUnique({ where: { id: competenciaId } });
+    if (!competencia) throw new NotFoundException(`Competência ${competenciaId} não encontrada.`);
+    if (competencia.tipo !== 'COMPORTAMENTAL') {
+      throw new BadRequestException(
+        'Só é possível remover competências Comportamentais — as Técnicas mantêm sempre o histórico de avaliação.',
+      );
+    }
+
+    await this.prisma.runAsUser(user.sub, (tx) => tx.colaboradorCompetencia.deleteMany({ where: { colaboradorId, competenciaId } }));
+  }
+
   /** Cria ou atualiza (com locking otimista) a certificação de um colaborador. */
   async upsertCertificacao(colaboradorId: number, certificacaoId: string, dto: UpsertCertificacaoDto, user: AuthenticatedUser) {
     await this.podeEditar(colaboradorId, user);

@@ -231,7 +231,7 @@ const TABELAS: TabelaModelo[] = [
     ],
     visibilidade: 'total',
     visibilidadeTexto:
-      'Gestão de Dados → "Competências". As de tipo Comportamental aparecem também na ficha do colaborador, secção "Competências Comportamentais".',
+      'Gestão de Dados → "Competências". As de tipo Comportamental podem também ser atribuídas manualmente a um colaborador, na sua ficha, secção "Competências Comportamentais" (adicionar/remover/mudar nível).',
   },
   {
     grupo: 'Catálogo',

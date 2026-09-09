@@ -565,14 +565,12 @@ export interface FiltrosEvolucaoCarreiras extends FiltrosOrganizacionais {
 
 // --- Catálogo (backend/src/lobs, backend/src/formacoes) -------------------
 
+/** Só as Comportamentais que o colaborador tem de facto atribuídas — gerido manualmente, nunca o catálogo inteiro. */
 export interface CompetenciaComportamentalColaborador {
   competenciaId: number;
   competenciaNome: string;
-  areaId: number;
-  areaNome: string;
-  /** null quando o colaborador nunca foi avaliado nesta competência. */
-  nivelId: number | null;
-  nivelNome: string | null;
+  nivelId: number;
+  nivelNome: string;
 }
 
 export interface LobResumo {

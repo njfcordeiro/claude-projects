@@ -329,7 +329,7 @@ const REGRAS = [
     icone: Layers,
     titulo: 'Competências e LOBs — Técnicas vs. Comportamentais',
     texto:
-      'Competência e LOB têm um campo "Tipo" (Técnica ou Comportamental), editável em Gestão de Dados — tudo o que já existia fica "Técnica" por omissão, sem quebrar nada. As competências Comportamentais aparecem também na ficha do colaborador, secção "Competências Comportamentais" (todo o catálogo, com o nível atual ou "Não avaliada").',
+      'Competência e LOB têm um campo "Tipo" (Técnica ou Comportamental), editável em Gestão de Dados — tudo o que já existia fica "Técnica" por omissão, sem quebrar nada. Cada colaborador tem também, na sua ficha, a secção "Competências Comportamentais" — não é o catálogo inteiro, é uma lista editável (adicionar, remover, mudar o nível) das que lhe foram mesmo atribuídas, sempre manualmente por ADMIN_RH/gestor direto; sem nenhuma atribuída, a secção está simplesmente vazia.',
     formula: 'Competencia.tipo, Lob.tipo ∈ {TECNICA, COMPORTAMENTAL}',
   },
   {

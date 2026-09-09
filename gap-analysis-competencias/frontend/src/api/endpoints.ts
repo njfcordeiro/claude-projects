@@ -66,6 +66,8 @@ export const endpoints = {
     api.get<UltimaAvaliacao | null>(`/colaboradores/${colaboradorId}/competencias/${competenciaId}/ultima-avaliacao`),
   criarAvaliacao: (colaboradorId: number, dto: CreateAvaliacaoInput) =>
     api.post(`/colaboradores/${colaboradorId}/competencias`, dto),
+  eliminarCompetenciaColaborador: (colaboradorId: number, competenciaId: number) =>
+    api.delete<void>(`/colaboradores/${colaboradorId}/competencias/${competenciaId}`),
   certificacaoAtual: (colaboradorId: number, certificacaoId: string) =>
     api.get<CertificacaoAtual | null>(`/colaboradores/${colaboradorId}/certificacoes/${certificacaoId}`),
   upsertCertificacao: (colaboradorId: number, certificacaoId: string, dto: UpsertCertificacaoInput) =>

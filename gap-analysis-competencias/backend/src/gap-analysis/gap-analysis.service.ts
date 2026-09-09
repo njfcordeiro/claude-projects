@@ -131,34 +131,35 @@ export class GapAnalysisService {
 
   /**
    * Competências Comportamentais do colaborador (pedido do utilizador: "um
-   * ecrã com as competências comportamentais que o colaborador tem") — uma
-   * linha por Competência de tipo COMPORTAMENTAL, com o nível atual do
-   * colaborador (null se nunca avaliado), na mesma lógica de "mostrar o
-   * catálogo inteiro com o que falta" já usada no Quadro de LOBs da ficha.
+   * ecrã com as competências comportamentais que o colaborador tem") — só
+   * as que lhe foram mesmo atribuídas (ColaboradoresService.criarAvaliacao/
+   * eliminarCompetencia), nunca o catálogo inteiro: ao contrário do Quadro
+   * de LOBs, aqui não há "por avaliar" — a atribuição em si é manual, feita
+   * nesta secção (ver CompetenciasComportamentaisSection no frontend), por
+   * isso não faz sentido assumir por omissão que o colaborador tem alguma.
    */
   async obterCompetenciasComportamentais(colaboradorId: number, user: AuthenticatedUser): Promise<CompetenciaComportamentalColaborador[]> {
     await this.colaboradores.obterComVerificacaoDeAcesso(colaboradorId, user);
 
-    const [competencias, niveisAtuais, niveis] = await Promise.all([
+    const niveisAtuais = await this.buscarNiveisAtuais(colaboradorId);
+    if (niveisAtuais.size === 0) return [];
+
+    const [competencias, niveis] = await Promise.all([
       this.prisma.competencia.findMany({
-        where: { tipo: 'COMPORTAMENTAL' },
-        include: { area: { select: { nome: true } } },
+        where: { tipo: 'COMPORTAMENTAL', id: { in: [...niveisAtuais.keys()] } },
         orderBy: { nome: 'asc' },
       }),
-      this.buscarNiveisAtuais(colaboradorId),
       this.prisma.nivel.findMany(),
     ]);
     const nomePorNivel = new Map(niveis.map((n) => [n.id, n.nome]));
 
     return competencias.map((c) => {
-      const nivelId = niveisAtuais.get(c.id) ?? null;
+      const nivelId = niveisAtuais.get(c.id)!;
       return {
         competenciaId: c.id,
         competenciaNome: c.nome,
-        areaId: c.areaId,
-        areaNome: c.area.nome,
         nivelId,
-        nivelNome: nivelId !== null ? (nomePorNivel.get(nivelId) ?? null) : null,
+        nivelNome: nomePorNivel.get(nivelId) ?? `Nível ${nivelId}`,
       };
     });
   }

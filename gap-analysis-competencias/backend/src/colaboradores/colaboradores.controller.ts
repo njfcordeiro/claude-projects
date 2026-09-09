@@ -113,6 +113,16 @@ export class ColaboradoresController {
     return this.service.criarAvaliacao(id, dto, user);
   }
 
+  // Sem @Roles aqui de propósito, igual a criarAvaliacao acima — RBAC fino (ADMIN_RH/MANAGER da equipa) vive em podeEditar.
+  @Delete(':id/competencias/:competenciaId')
+  eliminarCompetencia(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('competenciaId', ParseIntPipe) competenciaId: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.eliminarCompetencia(id, competenciaId, user);
+  }
+
   @Put(':id/certificacoes/:certificacaoId')
   upsertCertificacao(
     @Param('id', ParseIntPipe) id: number,
