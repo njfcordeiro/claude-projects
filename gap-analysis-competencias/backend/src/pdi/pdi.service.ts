@@ -15,13 +15,16 @@ const INCLUDE_ITEM = {
   certificacao: { select: { nome: true } },
   formacao: { select: { nome: true, duracaoHoras: true } },
   lob: { select: { nome: true } },
+  cargo: { select: { nome: true } },
 } as const;
 
 interface CandidatoPdi {
   competenciaId: number | null;
   certificacaoId: string | null;
   formacaoId: number | null;
-  lobId: number;
+  /** Mutuamente exclusivo com cargoId — um candidato vem de uma LOB OU de um Cargo, nunca das duas. */
+  lobId: number | null;
+  cargoId: string | null;
   descricao: string;
 }
 
@@ -109,9 +112,9 @@ export class PdiService {
   }
 
   /**
-   * "Gerar para o Cargo Atual" (pedido do utilizador) — visa todas as LOBs
-   * (técnicas e comportamentais) associadas ao Cargo atual do colaborador em
-   * "LOBs por Cargo" (Gestão de Dados), obrigatórias ou não.
+   * "Gerar para o Cargo Atual" (pedido do utilizador) — visa o Perfil de
+   * Competências do Cargo atual do colaborador (CargoRequisitoCompetencia,
+   * Gestão de Dados → "Perfil de Competências por Cargo").
    */
   async gerarParaCargoAtual(colaboradorId: number, user: AuthenticatedUser) {
     await this.colaboradores.podeEditar(colaboradorId, user);
@@ -121,15 +124,15 @@ export class PdiService {
       throw new BadRequestException('Este colaborador não tem Cargo atribuído.');
     }
 
-    return this.gerarParaLobsDoCargo(colaboradorId, colaborador.cargoId, user);
+    return this.gerarParaPerfilCargo(colaboradorId, colaborador.cargoId, user);
   }
 
   /**
    * "Gerar para o Próximo Cargo" (pedido do utilizador) — resolve o Próximo
    * Cargo via Progressão de Cargos (mesmo grafo já usado em Evolução de
    * Carreiras/Candidatos): escolhe-o automaticamente se só houver um
-   * possível, exige `proximoCargoId` se houver mais que um. Depois visa as
-   * LOBs (técnicas e comportamentais) desse Cargo em "LOBs por Cargo".
+   * possível, exige `proximoCargoId` se houver mais que um. Depois visa o
+   * Perfil de Competências desse Cargo.
    */
   async gerarParaProximoCargo(colaboradorId: number, dto: GerarParaProximoCargoDto, user: AuthenticatedUser) {
     await this.colaboradores.podeEditar(colaboradorId, user);
@@ -157,22 +160,36 @@ export class PdiService {
       proximoCargoId = dto.proximoCargoId;
     }
 
-    return this.gerarParaLobsDoCargo(colaboradorId, proximoCargoId, user);
+    return this.gerarParaPerfilCargo(colaboradorId, proximoCargoId, user);
   }
 
-  /** Núcleo partilhado por `gerarParaCargoAtual`/`gerarParaProximoCargo`: gera para todas as LOBs associadas a um Cargo em "LOBs por Cargo". */
-  private async gerarParaLobsDoCargo(colaboradorId: number, cargoId: string, user: AuthenticatedUser) {
-    const lobsDoCargo = await this.prisma.cargoLob.findMany({ where: { cargoId } });
-    if (lobsDoCargo.length === 0) {
+  /**
+   * Núcleo partilhado por `gerarParaCargoAtual`/`gerarParaProximoCargo`:
+   * avalia o Perfil de Competências de UM Cargo (GapAnalysisService.
+   * avaliarColaboradorPerfilCargo) e persiste um item por competência em
+   * falta ainda não coberta — mesma lógica de dedup de `gerarParaLob`,
+   * partilhando o mesmo Set de competências já com item.
+   */
+  private async gerarParaPerfilCargo(colaboradorId: number, cargoId: string, user: AuthenticatedUser) {
+    const detalhe = await this.gapAnalysis.avaliarColaboradorPerfilCargo(colaboradorId, cargoId, user);
+    if (detalhe.competencias.length === 0) {
       return { criados: 0, itens: await this.listar(colaboradorId, user) };
     }
 
-    let criados = 0;
-    for (const { lobId } of lobsDoCargo) {
-      const resultado = await this.gerarParaLob(colaboradorId, lobId, user);
-      criados += resultado.criados;
+    const candidatos = new Map<string, CandidatoPdi>();
+    for (const c of detalhe.competencias) {
+      if (c.cumprido) continue;
+      candidatos.set(`competencia:${c.competenciaId}`, {
+        competenciaId: c.competenciaId,
+        certificacaoId: null,
+        formacaoId: c.sugestoes.formacoes[0]?.formacaoId ?? null,
+        lobId: null,
+        cargoId,
+        descricao: `Reforçar competência "${c.competenciaNome}" (nível atual ${c.nivelAtual} → exigido ${c.nivelExigido}) para o perfil do cargo "${detalhe.cargoNome}".`,
+      });
     }
-    return { criados, itens: await this.listar(colaboradorId, user) };
+
+    return this.persistirCandidatos(colaboradorId, candidatos, user);
   }
 
   /** Núcleo partilhado por `gerar`/`gerarParaLobEscolhida`: avalia o gap de UMA LOB e persiste um item por gap ainda não coberto. */
@@ -187,6 +204,7 @@ export class PdiService {
         certificacaoId: null,
         formacaoId: c.sugestoes.formacoes[0]?.formacaoId ?? null,
         lobId,
+        cargoId: null,
         descricao: `Reforçar competência "${c.competenciaNome}" (nível atual ${c.nivelAtual} → exigido ${c.nivelExigido}) para a LOB "${detalhe.lobNome}".`,
       });
     }
@@ -199,10 +217,21 @@ export class PdiService {
         certificacaoId: cert.certificacaoId,
         formacaoId: formacaoSugerida?.formacaoId ?? null,
         lobId,
+        cargoId: null,
         descricao: `Obter a certificação "${cert.certificacaoNome}" — exigida pela LOB "${detalhe.lobNome}".`,
       });
     }
 
+    return this.persistirCandidatos(colaboradorId, candidatos, user);
+  }
+
+  /**
+   * Persiste um item por candidato ainda não coberto por um item existente
+   * (mesma competência ou certificação, seja qual for a origem) — partilhado
+   * por `gerarParaLob`/`gerarParaPerfilCargo`, garante que gerar por LOB e
+   * por Cargo nunca duplicam entre si o mesmo gap.
+   */
+  private async persistirCandidatos(colaboradorId: number, candidatos: Map<string, CandidatoPdi>, user: AuthenticatedUser) {
     const existentes = await this.prisma.pdiItem.findMany({ where: { colaboradorId } });
     const competenciasComItem = new Set(existentes.map((i) => i.competenciaId).filter((v): v is number => v !== null));
     const certificacoesComItem = new Set(existentes.map((i) => i.certificacaoId).filter((v): v is string => v !== null));
@@ -220,6 +249,7 @@ export class PdiService {
             certificacaoId: candidato.certificacaoId,
             formacaoId: candidato.formacaoId,
             lobId: candidato.lobId,
+            cargoId: candidato.cargoId,
             descricao: candidato.descricao,
             origem: OrigemPdi.AUTOMATICO,
             createdBy: user.sub,

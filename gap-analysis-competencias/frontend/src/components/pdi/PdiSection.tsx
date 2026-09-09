@@ -184,7 +184,7 @@ function GerarParaProximoCargoModal({
       queryClient.invalidateQueries({ queryKey: ['pdi', colaboradorId] });
       onClose();
       if (resultado.criados === 0) {
-        window.alert('Sem gaps novos para sugerir — ou este Cargo ainda não tem LOBs associadas em "LOBs por Cargo" (Gestão de Dados).');
+        window.alert('Sem gaps novos para sugerir — ou este Cargo ainda não tem Perfil de Competências definido em Gestão de Dados.');
       }
     },
     onError: (err) => setErro(err instanceof ApiError ? err.message : 'Não foi possível gerar sugestões para este cargo.'),
@@ -281,19 +281,20 @@ function ItemPdi({
  * recomendada pelo BUD, senão a sugestão do sistema mais próxima de ser
  * atingida; "Gerar sugestões para LOB" (PdiService.gerarParaLobEscolhida)
  * deixa escolher manualmente, só entre as LOBs da própria Área do
- * colaborador. Aqui mostra-se a checklist, separada em 3 grupos por origem
- * (pedido do utilizador: "quero ver em primeiro as competências das lobs
- * recomendadas pelo BUD e depois recomendadas pelo sistema; as
- * restantes... ficam à parte") — a classificação cruza item.lobId com os
- * objetivos de LOB atuais, nunca com texto guardado, por isso segue sempre
- * o estado mais recente dos objetivos.
+ * colaborador; "Gerar para o Cargo Atual"/"...Próximo Cargo" visam o Perfil
+ * de Competências de um Cargo (ver PdiService.gerarParaPerfilCargo). Aqui
+ * mostra-se a checklist, separada em grupos por origem (pedido do
+ * utilizador: "quero ver em primeiro as competências das lobs recomendadas
+ * pelo BUD e depois recomendadas pelo sistema; as restantes... ficam à
+ * parte") — a classificação cruza item.lobId/cargoId com os objetivos de
+ * LOB atuais e o cargo atual/próximo do colaborador, nunca com texto
+ * guardado, por isso segue sempre o estado mais recente.
  */
 export function PdiSection({ colaboradorId }: { colaboradorId: number }) {
   const queryClient = useQueryClient();
   const { data: itens, isLoading } = useQuery({ queryKey: ['pdi', colaboradorId], queryFn: () => endpoints.pdiListar(colaboradorId) });
   const { data: objetivos } = useQuery({ queryKey: ['objetivos-lob', colaboradorId], queryFn: () => endpoints.objetivosLob(colaboradorId) });
   const { data: colaborador } = useQuery({ queryKey: ['colaborador', colaboradorId], queryFn: () => endpoints.colaborador(colaboradorId) });
-  const { data: cargoLob } = useQuery({ queryKey: ['catalogo', 'cargo-lob'], queryFn: () => endpoints.catalogoListar('cargo-lob') });
   const { data: cargoProgressao } = useQuery({
     queryKey: ['catalogo', 'cargo-progressao'],
     queryFn: () => endpoints.catalogoListar('cargo-progressao'),
@@ -317,7 +318,7 @@ export function PdiSection({ colaboradorId }: { colaboradorId: number }) {
     onSuccess: (resultado) => {
       queryClient.invalidateQueries({ queryKey: ['pdi', colaboradorId] });
       if (resultado.criados === 0) {
-        window.alert('Sem gaps novos para sugerir — ou o cargo atual ainda não tem LOBs associadas em "LOBs por Cargo" (Gestão de Dados).');
+        window.alert('Sem gaps novos para sugerir — ou o cargo atual ainda não tem Perfil de Competências definido em Gestão de Dados.');
       }
     },
     onError: (err) => window.alert(err instanceof ApiError ? err.message : 'Não foi possível gerar sugestões para o cargo atual.'),
@@ -328,7 +329,7 @@ export function PdiSection({ colaboradorId }: { colaboradorId: number }) {
     onSuccess: (resultado) => {
       queryClient.invalidateQueries({ queryKey: ['pdi', colaboradorId] });
       if (resultado.criados === 0) {
-        window.alert('Sem gaps novos para sugerir — ou o próximo cargo ainda não tem LOBs associadas em "LOBs por Cargo" (Gestão de Dados).');
+        window.alert('Sem gaps novos para sugerir — ou o próximo cargo ainda não tem Perfil de Competências definido em Gestão de Dados.');
       }
     },
     onError: (err) => window.alert(err instanceof ApiError ? err.message : 'Não foi possível gerar sugestões para o próximo cargo.'),
@@ -426,25 +427,18 @@ export function PdiSection({ colaboradorId }: { colaboradorId: number }) {
         (() => {
           const budLobIds = new Set((objetivos?.bud ?? []).map((o) => o.lobId));
           const autoLobIds = new Set((objetivos?.auto ?? []).map((o) => o.lobId));
-          // Cargo Atual/Próximo Cargo (pedido do utilizador) — cruza item.lobId com "LOBs por
-          // Cargo" (Gestão de Dados) para o cargo atual do colaborador e para o(s) seu(s)
-          // próximo(s) cargo(s) possível(eis) em Progressão de Cargos, sempre ao vivo, nunca
-          // guardado — mesmo princípio já usado para BUD/Sistema acima.
-          const cargoAtualLobIds = new Set(
-            (cargoLob ?? []).filter((r) => String(r.cargoId) === String(colaborador?.cargoId ?? '')).map((r) => Number(r.lobId)),
-          );
-          const proximoCargoLobIds = new Set(
-            (cargoLob ?? []).filter((r) => proximosCargosIds.includes(String(r.cargoId))).map((r) => Number(r.lobId)),
-          );
           const grupoBud = itens.filter((i) => i.lobId !== null && budLobIds.has(i.lobId));
           const grupoSistema = itens.filter((i) => i.lobId !== null && !budLobIds.has(i.lobId) && autoLobIds.has(i.lobId));
-          const naoBudNemSistema = (i: PdiItem) => i.lobId !== null && !budLobIds.has(i.lobId) && !autoLobIds.has(i.lobId);
-          const grupoCargoAtual = itens.filter((i) => naoBudNemSistema(i) && cargoAtualLobIds.has(i.lobId!));
-          const grupoProximoCargo = itens.filter((i) => naoBudNemSistema(i) && !cargoAtualLobIds.has(i.lobId!) && proximoCargoLobIds.has(i.lobId!));
+          // Cargo Atual/Próximo Cargo (pedido do utilizador) — item.cargoId já identifica
+          // diretamente de que Cargo veio (ver PdiService.gerarParaPerfilCargo); só falta
+          // comparar contra o cargo atual do colaborador e o(s) seu(s) próximo(s) cargo(s)
+          // possível(eis) em Progressão de Cargos, sempre ao vivo, nunca guardado.
+          const grupoCargoAtual = itens.filter((i) => i.cargoId !== null && i.cargoId === colaborador?.cargoId);
+          const grupoProximoCargo = itens.filter(
+            (i) => i.cargoId !== null && i.cargoId !== colaborador?.cargoId && proximosCargosIds.includes(i.cargoId),
+          );
           const grupoOutras = itens.filter(
-            (i) =>
-              i.lobId === null ||
-              (naoBudNemSistema(i) && !cargoAtualLobIds.has(i.lobId!) && !proximoCargoLobIds.has(i.lobId!)),
+            (i) => !grupoBud.includes(i) && !grupoSistema.includes(i) && !grupoCargoAtual.includes(i) && !grupoProximoCargo.includes(i),
           );
 
           // Pedido do utilizador: dentro de BUD/Sistema, sub-agrupar por LOB
@@ -461,12 +455,13 @@ export function PdiSection({ colaboradorId }: { colaboradorId: number }) {
               .map(([lobNome, subItens]) => ({ lobNome, itens: subItens }));
           }
 
+          const flat = (lista: PdiItem[]) => (lista.length > 0 ? [{ lobNome: null, itens: lista }] : []);
           const grupos: { titulo: string; subgrupos: { lobNome: string | null; itens: PdiItem[] }[] }[] = [
             { titulo: 'Recomendadas pelo BUD', subgrupos: porLob(grupoBud) },
             { titulo: 'Sugeridas pelo sistema', subgrupos: porLob(grupoSistema) },
-            { titulo: 'Necessidades do Cargo Atual', subgrupos: porLob(grupoCargoAtual) },
-            { titulo: 'Necessidades do Próximo Cargo', subgrupos: porLob(grupoProximoCargo) },
-            { titulo: 'Outras competências', subgrupos: grupoOutras.length > 0 ? [{ lobNome: null, itens: grupoOutras }] : [] },
+            { titulo: 'Necessidades do Cargo Atual', subgrupos: flat(grupoCargoAtual) },
+            { titulo: 'Necessidades do Próximo Cargo', subgrupos: flat(grupoProximoCargo) },
+            { titulo: 'Outras competências', subgrupos: flat(grupoOutras) },
           ].filter((g) => g.subgrupos.length > 0);
 
           return (

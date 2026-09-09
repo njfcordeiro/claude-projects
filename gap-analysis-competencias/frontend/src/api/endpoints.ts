@@ -8,6 +8,7 @@ import {
   CatalogoTabelaMeta,
   CertificacaoAtual,
   ColaboradorResumo,
+  CompetenciaComportamentalColaborador,
   CreateAvaliacaoInput,
   CreateColaboradorInput,
   CreatePdiItemInput,
@@ -74,6 +75,8 @@ export const endpoints = {
   gapCargo: (colaboradorId: number) => api.get<RelatorioGapCargo>(`/gap-analysis/colaboradores/${colaboradorId}/cargo`),
   gapLob: (colaboradorId: number, lobId: number) =>
     api.get<RelatorioGapLob>(`/gap-analysis/colaboradores/${colaboradorId}/lobs/${lobId}`),
+  competenciasComportamentais: (colaboradorId: number) =>
+    api.get<CompetenciaComportamentalColaborador[]>(`/gap-analysis/colaboradores/${colaboradorId}/competencias-comportamentais`),
 
   lobs: () => api.get<LobResumo[]>('/lobs'),
   lob: (id: number) => api.get<LobDetalhe>(`/lobs/${id}`),

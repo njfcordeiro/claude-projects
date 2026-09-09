@@ -175,7 +175,7 @@ const TABELAS: TabelaModelo[] = [
     relacoes: [
       '1—N Colaborador.cargoId',
       'N—N consigo mesmo via CargoProgressao (progressão de carreira)',
-      'N—N Lob via CargoLob (LOBs exigidas por este Cargo, para o PDI)',
+      'N—N Competencia via CargoRequisitoCompetencia (Perfil de Competências deste Cargo, para o PDI)',
       '1—N GapAnalysisRun/GapAnalysisCargoResult (tabelas não usadas)',
     ],
     visibilidade: 'total',
@@ -227,9 +227,11 @@ const TABELAS: TabelaModelo[] = [
     relacoes: [
       '1—N CertificacaoRequisitoCompetencia, FormacaoRequisitoCompetencia, LobRequisitoCompetencia',
       '1—N ColaboradorCompetencia (histórico de avaliações), PdiItem',
+      '1—N CargoRequisitoCompetencia (Perfil de Competências de um Cargo)',
     ],
     visibilidade: 'total',
-    visibilidadeTexto: 'Gestão de Dados → "Competências".',
+    visibilidadeTexto:
+      'Gestão de Dados → "Competências". As de tipo Comportamental aparecem também na ficha do colaborador, secção "Competências Comportamentais".',
   },
   {
     grupo: 'Catálogo',
@@ -305,24 +307,25 @@ const TABELAS: TabelaModelo[] = [
     relacoes: [
       '1—N LobRequisitoCompetencia, LobRequisitoCertificacao, ColaboradorLobRecomendacao, GapAnalysisLobResult',
       '1—N Colaborador.proximaLobId ("Próxima LOB" escolhida pelo colaborador)',
-      '1—N CargoLob (LOBs associadas a um Cargo)',
     ],
     visibilidade: 'total',
     visibilidadeTexto: 'Gestão de Dados → "LOBs"; ecrã dedicado "LOBs". É o motor de gap real da aplicação.',
   },
   {
     grupo: 'Organização',
-    model: 'CargoLob',
-    tabela: 'cargo_lob',
+    model: 'CargoRequisitoCompetencia',
+    tabela: 'cargo_requisito_competencia',
     campos: [
       { nome: 'cargoId', tipo: 'String (PK composta)', nota: '→ Cargo' },
-      { nome: 'lobId', tipo: 'Int (PK composta)', nota: '→ Lob' },
-      { nome: 'obrigatorio', tipo: 'Boolean', nota: 'default true' },
+      { nome: 'competenciaId', tipo: 'Int (PK composta)', nota: '→ Competencia' },
+      { nome: 'nivelExigidoId', tipo: 'Int', nota: '→ Nivel' },
     ],
-    relacoes: ['Bridge — LOBs (técnicas ou comportamentais) exigidas por um Cargo, obrigatórias ou não.'],
+    relacoes: [
+      'Bridge — as linhas desta tabela SÃO o Perfil de Competências do Cargo (competência + nível exigido, como uma LOB). Sem entidade "Perfil" à parte, um Cargo só pode ter um perfil possível.',
+    ],
     visibilidade: 'total',
     visibilidadeTexto:
-      'Gestão de Dados → "LOBs por Cargo". Alimenta só os botões "Gerar para o Cargo Atual"/"...Próximo Cargo" no PDI — não entra no cálculo de prontidão/gap já existente (Cargo.lobsExigidos continua a ser a única fonte disso).',
+      'Gestão de Dados → "Perfil de Competências por Cargo". Alimenta só os botões "Gerar para o Cargo Atual"/"...Próximo Cargo" no PDI — não entra no cálculo de prontidão/gap já existente (Cargo.lobsExigidos continua a ser a única fonte disso).',
   },
   {
     grupo: 'LOBs',
@@ -467,6 +470,7 @@ const TABELAS: TabelaModelo[] = [
       { nome: 'id', tipo: 'Int (PK)', nota: 'autoincrement' },
       { nome: 'colaboradorId', tipo: 'Int', nota: '→ Colaborador' },
       { nome: 'competenciaId / certificacaoId / formacaoId', tipo: 'Int?/String?/Int?', nota: 'um destes, conforme a origem do gap, onDelete Restrict' },
+      { nome: 'lobId / cargoId', tipo: 'Int? / String?', nota: 'mutuamente exclusivos — de que LOB ou Cargo veio este item (classificação BUD/Sistema/Cargo Atual/Próximo Cargo no PDI, sempre ao vivo)' },
       { nome: 'descricao', tipo: 'String' },
       { nome: 'estado', tipo: 'enum EstadoPdi', nota: 'PENDENTE · EM_CURSO · CONCLUIDO' },
       { nome: 'origem', tipo: 'enum OrigemPdi', nota: 'AUTOMATICO · MANUAL' },
@@ -729,7 +733,7 @@ const MAPA_ECRA_DADOS: { ecra: string; novo?: boolean; dados: string[]; nota?: s
       'Certificação',
       'Formação',
       'Projeto',
-      'CargoLob',
+      'CargoRequisitoCompetencia',
       'CargoProgressao',
     ],
   },

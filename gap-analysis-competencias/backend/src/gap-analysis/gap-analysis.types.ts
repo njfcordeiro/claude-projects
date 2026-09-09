@@ -146,6 +146,38 @@ export interface RelatorioGapLob {
   certificacoes: RelatorioGapCertificacao[];
 }
 
+/**
+ * Uma linha do Perfil de Competências de um Cargo (pedido do utilizador:
+ * "semelhante ao que é uma LOB, com competência e nível exigido") — mais
+ * simples que GapCompetencia porque o perfil não tem noção de
+ * "obrigatório"/pontos, só competência + nível exigido.
+ */
+export interface GapCompetenciaPerfilCargo {
+  competenciaId: number;
+  competenciaNome: string;
+  nivelExigido: number;
+  nivelAtual: number;
+  cumprido: boolean;
+  /** Só populado quando `cumprido === false`. */
+  sugestoes: SugestoesCompetencia;
+}
+
+export interface RelatorioGapPerfilCargo {
+  cargoId: string;
+  cargoNome: string;
+  competencias: GapCompetenciaPerfilCargo[];
+}
+
+export interface CompetenciaComportamentalColaborador {
+  competenciaId: number;
+  competenciaNome: string;
+  areaId: number;
+  areaNome: string;
+  /** null quando o colaborador nunca foi avaliado nesta competência. */
+  nivelId: number | null;
+  nivelNome: string | null;
+}
+
 export interface ResumoGapLob {
   lobId: number;
   lobNome: string;

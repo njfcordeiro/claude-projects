@@ -329,15 +329,22 @@ const REGRAS = [
     icone: Layers,
     titulo: 'Competências e LOBs — Técnicas vs. Comportamentais',
     texto:
-      'Competência e LOB têm um campo "Tipo" (Técnica ou Comportamental), editável em Gestão de Dados — tudo o que já existia fica "Técnica" por omissão, sem quebrar nada. Cada Cargo pode ainda ter uma ou mais LOBs associadas na nova tabela "LOBs por Cargo" (Gestão de Dados), cada uma marcada Obrigatória ou não — técnicas e comportamentais indistintamente. Esta associação não entra no cálculo de prontidão/gap já existente em nenhum ecrã (Dashboard, Candidatos, Skill Matrix, Evolução de Carreiras) — serve só de fonte para os 2 botões novos do PDI, abaixo.',
-    formula: 'Competencia.tipo, Lob.tipo ∈ {TECNICA, COMPORTAMENTAL} · CargoLob(cargoId, lobId, obrigatorio) — só alimenta o PDI',
+      'Competência e LOB têm um campo "Tipo" (Técnica ou Comportamental), editável em Gestão de Dados — tudo o que já existia fica "Técnica" por omissão, sem quebrar nada. As competências Comportamentais aparecem também na ficha do colaborador, secção "Competências Comportamentais" (todo o catálogo, com o nível atual ou "Não avaliada").',
+    formula: 'Competencia.tipo, Lob.tipo ∈ {TECNICA, COMPORTAMENTAL}',
+  },
+  {
+    icone: Target,
+    titulo: 'Perfil de Competências de um Cargo',
+    texto:
+      'Cada Cargo pode ter um Perfil de Competências — uma lista de competências com o nível exigido, gerida em Gestão de Dados ("Perfil de Competências por Cargo"), tal como uma LOB tem os seus requisitos de competência. Como as linhas dessa tabela SÃO o perfil (não há uma entidade "Perfil" à parte), um Cargo só pode ter um perfil possível — não faz sentido ter dois. Avaliado pelo mesmo motor de sugestões já usado para LOBs (formações candidatas incluídas). Sem nenhuma linha para um Cargo, o perfil está simplesmente vazio — nada bloqueado, os botões do PDI abaixo só não geram nada para esse Cargo até ser preenchido.',
+    formula: 'CargoRequisitoCompetencia(cargoId, competenciaId, nivelExigidoId) — um único perfil por cargo, imposto pela chave composta',
   },
   {
     icone: Briefcase,
     titulo: 'PDI — necessidades do Cargo Atual e do Próximo Cargo',
     texto:
-      '"Gerar para o Cargo Atual" percorre todas as LOBs (técnicas e comportamentais) associadas ao cargo atual do colaborador em "LOBs por Cargo" e sugere o que estiver em falta em cada uma — mesmo motor de "Gerar sugestões", só muda a origem das LOBs-alvo. "Gerar para o Próximo Cargo" faz o mesmo para o cargo seguinte, resolvido via Progressão de Cargos: com um único cargo seguinte possível, escolhe-o sozinho; havendo mais que um, pede para escolher qual antes de gerar. Os itens resultantes aparecem no PDI em dois grupos próprios, "Necessidades do Cargo Atual" e "Necessidades do Próximo Cargo" — a seguir a BUD/Sistema e antes de Outras, pela mesma prioridade (um item já classificado em BUD ou Sistema não é reclassificado aqui). Sem nenhuma LOB associada ao Cargo em "LOBs por Cargo", o botão não gera nada — avisa em vez de falhar.',
-    formula: 'LOBs-alvo = CargoLob.where(cargoId = atual OU próximo) · próximo cargo = único predecessor→sucessor em CargoProgressao, ou escolhido manualmente se houver mais que um',
+      '"Gerar para o Cargo Atual" avalia o colaborador contra o Perfil de Competências do seu cargo atual e sugere o que estiver em falta — mesmo motor de "Gerar sugestões", só muda a fonte das competências-alvo. "Gerar para o Próximo Cargo" faz o mesmo para o cargo seguinte, resolvido via Progressão de Cargos: com um único cargo seguinte possível, escolhe-o sozinho; havendo mais que um, pede para escolher qual antes de gerar. Os itens resultantes aparecem no PDI em dois grupos próprios, "Necessidades do Cargo Atual" e "Necessidades do Próximo Cargo" — a seguir a BUD/Sistema e antes de Outras, pela mesma prioridade (uma competência já com item por BUD/Sistema não gera um segundo item aqui). Sem perfil definido para o Cargo, o botão não gera nada — avisa em vez de falhar.',
+    formula: 'competências-alvo = CargoRequisitoCompetencia.where(cargoId = atual OU próximo) · próximo cargo = único predecessor→sucessor em CargoProgressao, ou escolhido manualmente se houver mais que um',
   },
   {
     icone: Puzzle,

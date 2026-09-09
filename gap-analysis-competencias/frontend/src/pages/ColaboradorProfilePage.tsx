@@ -17,6 +17,7 @@ import { LobGapDetail } from '../components/gap/LobGapDetail';
 import { PerfilRadarChart } from '../components/gap/PerfilRadarChart';
 import { PdiSection } from '../components/pdi/PdiSection';
 import { ObjetivosLobSection } from '../components/pdi/ObjetivosLobSection';
+import { CompetenciasComportamentaisSection } from '../components/pdi/CompetenciasComportamentaisSection';
 
 function formatarData(iso: string | null): string {
   return iso ? new Date(iso).toLocaleDateString('pt-PT') : '—';
@@ -597,6 +598,8 @@ export function ColaboradorProfilePage() {
           );
         })()
       )}
+
+      <CompetenciasComportamentaisSection colaboradorId={colaboradorId} />
 
       <ObjetivosLobSection colaboradorId={colaboradorId} />
 

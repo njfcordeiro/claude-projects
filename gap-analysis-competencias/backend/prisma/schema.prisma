@@ -259,7 +259,11 @@ model Cargo {
   progressoesOrigem  CargoProgressao[] @relation("CargoOrigem")
   progressoesDestino CargoProgressao[] @relation("CargoDestino")
 
-  lobs CargoLob[]
+  // Perfil de Competências do Cargo (pedido do utilizador): as linhas desta
+  // relação SÃO o perfil — um único cargo, sem entidade "Perfil" à parte,
+  // por isso um Cargo só pode ter um perfil de competências possível.
+  perfilCompetencias CargoRequisitoCompetencia[]
+  pdiItems           PdiItem[]
 
   @@map("cargos")
 }
@@ -287,6 +291,7 @@ model Nivel {
   formacaoRequisitos      FormacaoRequisitoCompetencia[]
   lobRequisitos           LobRequisitoCompetencia[]
   colaboradorCompetencias ColaboradorCompetencia[]
+  cargoRequisitos         CargoRequisitoCompetencia[]
 
   @@map("niveis")
 }
@@ -313,6 +318,7 @@ model Competencia {
   projetoVertentes        ProjetoVertente[]
   colaboradorCompetencias ColaboradorCompetencia[]
   pdiItems                PdiItem[]
+  cargoRequisitos         CargoRequisitoCompetencia[]
 
   @@unique([nome])
   @@map("competencias")
@@ -479,27 +485,32 @@ model Lob {
   gapAnalysisLobResults          GapAnalysisLobResult[]
   colaboradoresComEstaProximaLob Colaborador[]                @relation("ProximaLob")
   pdiItems                       PdiItem[]
-  cargos                         CargoLob[]
 
   @@map("lobs")
 }
 
-// LOBs (técnicas ou comportamentais) exigidas por um Cargo — pedido do
-// utilizador: "para cada cargo, pode ser associado um ou vários LOBs
-// Comportamentais... obrigatórios ou não". Alimenta só os 2 botões novos do
-// PDI ("Gerar para o Cargo Atual"/"...Próximo Cargo") — não entra no
-// cálculo de prontidão/gap já existente (Cargo.lobsExigidos continua a ser
-// a única fonte disso, ver docs/gap-analysis.logic.ts).
-model CargoLob {
-  cargoId     String  @map("cargo_id")
-  lobId       Int     @map("lob_id")
-  obrigatorio Boolean @default(true)
+// Perfil de Competências de um Cargo — pedido do utilizador: "para cada
+// cargo, tem de haver um perfil de competências, semelhante ao que é uma
+// LOB, com competência e nível exigido... cada cargo só pode ter um perfil
+// de competências possível". Como as linhas desta tabela SÃO o perfil (não
+// há uma entidade "Perfil" à parte), o "único perfil por cargo" fica
+// garantido pela própria chave composta — não é preciso mais nada para
+// impor essa regra. Avaliado pelo mesmo motor de sugestões que já existe
+// para LOBs (GapAnalysisService.avaliarColaboradorPerfilCargo), e usado
+// pelos botões "Gerar para o Cargo Atual"/"...Próximo Cargo" no PDI — não
+// entra no cálculo de prontidão/gap já existente (Cargo.lobsExigidos
+// continua a ser a única fonte disso).
+model CargoRequisitoCompetencia {
+  cargoId        String @map("cargo_id")
+  competenciaId  Int    @map("competencia_id")
+  nivelExigidoId Int    @map("nivel_exigido_id")
 
-  cargo Cargo @relation(fields: [cargoId], references: [id])
-  lob   Lob   @relation(fields: [lobId], references: [id])
+  cargo        Cargo       @relation(fields: [cargoId], references: [id])
+  competencia  Competencia @relation(fields: [competenciaId], references: [id])
+  nivelExigido Nivel       @relation(fields: [nivelExigidoId], references: [id])
 
-  @@id([cargoId, lobId])
-  @@map("cargo_lob")
+  @@id([cargoId, competenciaId])
+  @@map("cargo_requisito_competencia")
 }
 
 model LobRequisitoCompetencia {
@@ -718,6 +729,11 @@ model PdiItem {
   // usado para agrupar o PDI por origem — a classificação BUD/Sistema/Outras é sempre feita ao
   // vivo contra os objetivos de LOB atuais (ver LobObjetivosService), nunca guardada aqui.
   lobId                Int?      @map("lob_id")
+  // Cargo cujo Perfil de Competências originou este item (PdiService.gerarParaCargoAtual/
+  // gerarParaProximoCargo) — mutuamente exclusivo com lobId (um item vem de uma LOB OU de um
+  // Cargo, nunca das duas). A classificação "Cargo Atual"/"Próximo Cargo" no PDI compara este
+  // valor ao vivo contra o cargo atual do colaborador, nunca guardada como tal.
+  cargoId              String?   @map("cargo_id")
   descricao            String
   estado               EstadoPdi @default(PENDENTE)
   origem               OrigemPdi @default(AUTOMATICO)
@@ -741,6 +757,7 @@ model PdiItem {
   certificacao Certificacao? @relation(fields: [certificacaoId], references: [id], onDelete: Restrict)
   formacao     Formacao?     @relation(fields: [formacaoId], references: [id], onDelete: Restrict)
   lob          Lob?          @relation(fields: [lobId], references: [id], onDelete: Restrict)
+  cargo        Cargo?        @relation(fields: [cargoId], references: [id], onDelete: Restrict)
 
   @@index([colaboradorId])
   @@map("pdi_items")

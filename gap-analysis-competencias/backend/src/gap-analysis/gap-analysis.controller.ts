@@ -33,4 +33,9 @@ export class GapAnalysisController {
   avaliarCargo(@Param('colaboradorId', ParseIntPipe) colaboradorId: number, @CurrentUser() user: AuthenticatedUser) {
     return this.service.avaliarColaboradorCargo(colaboradorId, user);
   }
+
+  @Get('competencias-comportamentais')
+  obterCompetenciasComportamentais(@Param('colaboradorId', ParseIntPipe) colaboradorId: number, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.obterCompetenciasComportamentais(colaboradorId, user);
+  }
 }

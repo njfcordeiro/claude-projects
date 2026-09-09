@@ -14,6 +14,7 @@ import {
   CertificacaoColaboradorInput,
   ColaboradorEmRisco,
   CoberturaArquitetos,
+  CompetenciaComportamentalColaborador,
   CompetenciaCritica,
   DashboardResponse,
   DimensaoSkillMatrix,
@@ -26,6 +27,7 @@ import {
   ProjetoVertenteCandidata,
   RelatorioGapCargo,
   RelatorioGapLob,
+  RelatorioGapPerfilCargo,
   RequisitoCertificacaoInput,
   RequisitoCompetenciaInput,
   ResumoColaboradorDashboard,
@@ -84,6 +86,81 @@ export class GapAnalysisService {
     ]);
 
     return this.avaliarLobParaColaborador(lob, niveisAtuais, certsColaborador, pesos, colaboradorId);
+  }
+
+  /**
+   * Perfil de Competências de um Cargo (pedido do utilizador: "para cada
+   * cargo, tem de haver um perfil de competências, semelhante ao que é uma
+   * LOB, com competência e nível exigido") — avalia o colaborador contra as
+   * linhas de CargoRequisitoCompetencia desse cargo, com sugestões de
+   * formação por competência em falta, mesmo mecanismo já usado para LOBs
+   * (sugerirParaCompetencia). Usado por PdiService para "Gerar para o Cargo
+   * Atual"/"...Próximo Cargo".
+   */
+  async avaliarColaboradorPerfilCargo(colaboradorId: number, cargoId: string, user: AuthenticatedUser): Promise<RelatorioGapPerfilCargo> {
+    await this.colaboradores.obterComVerificacaoDeAcesso(colaboradorId, user);
+
+    const cargo = await this.prisma.cargo.findUnique({ where: { id: cargoId } });
+    if (!cargo) throw new NotFoundException(`Cargo "${cargoId}" não encontrado.`);
+
+    const [perfil, niveisAtuais, certsColaborador] = await Promise.all([
+      this.prisma.cargoRequisitoCompetencia.findMany({ where: { cargoId }, include: { competencia: true } }),
+      this.buscarNiveisAtuais(colaboradorId),
+      this.buscarCertificacoesColaborador(colaboradorId),
+    ]);
+
+    const competencias = await Promise.all(
+      perfil.map(async (req) => {
+        const nivelAtual = niveisAtuais.get(req.competenciaId) ?? 0;
+        const cumprido = nivelAtual >= req.nivelExigidoId;
+        return {
+          competenciaId: req.competenciaId,
+          competenciaNome: req.competencia.nome,
+          nivelExigido: req.nivelExigidoId,
+          nivelAtual,
+          cumprido,
+          sugestoes: cumprido
+            ? { formacoes: [], certificacoes: [], projetos: [] }
+            : await this.sugerirParaCompetencia(req.competenciaId, nivelAtual, req.nivelExigidoId, certsColaborador, colaboradorId),
+        };
+      }),
+    );
+
+    return { cargoId: cargo.id, cargoNome: cargo.nome, competencias };
+  }
+
+  /**
+   * Competências Comportamentais do colaborador (pedido do utilizador: "um
+   * ecrã com as competências comportamentais que o colaborador tem") — uma
+   * linha por Competência de tipo COMPORTAMENTAL, com o nível atual do
+   * colaborador (null se nunca avaliado), na mesma lógica de "mostrar o
+   * catálogo inteiro com o que falta" já usada no Quadro de LOBs da ficha.
+   */
+  async obterCompetenciasComportamentais(colaboradorId: number, user: AuthenticatedUser): Promise<CompetenciaComportamentalColaborador[]> {
+    await this.colaboradores.obterComVerificacaoDeAcesso(colaboradorId, user);
+
+    const [competencias, niveisAtuais, niveis] = await Promise.all([
+      this.prisma.competencia.findMany({
+        where: { tipo: 'COMPORTAMENTAL' },
+        include: { area: { select: { nome: true } } },
+        orderBy: { nome: 'asc' },
+      }),
+      this.buscarNiveisAtuais(colaboradorId),
+      this.prisma.nivel.findMany(),
+    ]);
+    const nomePorNivel = new Map(niveis.map((n) => [n.id, n.nome]));
+
+    return competencias.map((c) => {
+      const nivelId = niveisAtuais.get(c.id) ?? null;
+      return {
+        competenciaId: c.id,
+        competenciaNome: c.nome,
+        areaId: c.areaId,
+        areaNome: c.area.nome,
+        nivelId,
+        nivelNome: nivelId !== null ? (nomePorNivel.get(nivelId) ?? null) : null,
+      };
+    });
   }
 
   async avaliarColaboradorCargo(colaboradorId: number, user: AuthenticatedUser): Promise<RelatorioGapCargo> {

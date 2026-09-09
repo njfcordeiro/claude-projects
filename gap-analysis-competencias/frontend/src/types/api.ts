@@ -435,6 +435,8 @@ export interface PdiItem {
   certificacaoId: string | null;
   formacaoId: number | null;
   lobId: number | null;
+  /** Cargo cujo Perfil de Competências originou este item — mutuamente exclusivo com lobId. */
+  cargoId: string | null;
   descricao: string;
   estado: EstadoPdi;
   origem: OrigemPdi;
@@ -449,6 +451,7 @@ export interface PdiItem {
   certificacao: { nome: string } | null;
   formacao: { nome: string; duracaoHoras: number | null } | null;
   lob: { nome: string } | null;
+  cargo: { nome: string } | null;
 }
 
 export interface GerarPdiResponse {
@@ -559,6 +562,16 @@ export interface FiltrosEvolucaoCarreiras extends FiltrosOrganizacionais {
 }
 
 // --- Catálogo (backend/src/lobs, backend/src/formacoes) -------------------
+
+export interface CompetenciaComportamentalColaborador {
+  competenciaId: number;
+  competenciaNome: string;
+  areaId: number;
+  areaNome: string;
+  /** null quando o colaborador nunca foi avaliado nesta competência. */
+  nivelId: number | null;
+  nivelNome: string | null;
+}
 
 export interface LobResumo {
   id: number;

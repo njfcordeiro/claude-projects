@@ -272,14 +272,14 @@ export const CATALOGO_REGISTRY: CatalogoTabelaDef[] = [
     ],
   },
   {
-    tabela: 'cargo-lob',
-    label: 'LOBs por Cargo',
-    delegate: 'cargoLob',
-    identityFields: ['cargoId', 'lobId'],
+    tabela: 'cargo-requisito-competencia',
+    label: 'Perfil de Competências por Cargo',
+    delegate: 'cargoRequisitoCompetencia',
+    identityFields: ['cargoId', 'competenciaId'],
     campos: [
       campo('cargoId', 'Cargo', 'relation', true, { relatedTable: 'cargos', relationAccessor: 'cargo' }),
-      campo('lobId', 'LOB', 'relation', true, { relatedTable: 'lobs', relationAccessor: 'lob' }),
-      campo('obrigatorio', 'Obrigatória', 'boolean', false),
+      campo('competenciaId', 'Competência', 'relation', true, { relatedTable: 'competencias', relationAccessor: 'competencia' }),
+      campo('nivelExigidoId', 'Nível exigido', 'relation', true, { relatedTable: 'niveis', relationAccessor: 'nivelExigido' }),
     ],
   },
   {
