@@ -8,7 +8,7 @@ import { DimensaoSkillMatrix, ResumoImportacaoNiveis, SkillMatrixColuna, SkillMa
 import { Card } from '../components/ui/Card';
 import { DataTable, DataTableColumn } from '../components/ui/DataTable';
 import { PrintButton } from '../components/ui/PrintButton';
-import { Button, Checkbox, Field, Select } from '../components/ui/form';
+import { Button, Checkbox, Field, Input, normalizar, Select } from '../components/ui/form';
 import { Modal } from '../components/ui/Modal';
 import { AvaliarCompetenciaModal } from '../components/gap/AvaliarCompetenciaModal';
 import { useAuth } from '../auth/useAuth';
@@ -36,6 +36,7 @@ function MultiSelectPopover({
   onChange: (ids: number[]) => void;
 }) {
   const [aberto, setAberto] = useState(false);
+  const [query, setQuery] = useState('');
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -46,9 +47,15 @@ function MultiSelectPopover({
     return () => document.removeEventListener('mousedown', aoClicarFora);
   }, []);
 
+  useEffect(() => {
+    if (!aberto) setQuery('');
+  }, [aberto]);
+
   function alternar(id: number) {
     onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
   }
+
+  const opcoesFiltradas = query.trim() ? options.filter((o) => normalizar(o.nome).includes(normalizar(query))) : options;
 
   return (
     <div className="relative" ref={ref}>
@@ -60,14 +67,25 @@ function MultiSelectPopover({
         {selected.length === 0 ? label : `${label}: ${selected.length}`}
       </button>
       {aberto && (
-        <div className="absolute z-10 mt-1 max-h-64 w-56 overflow-y-auto rounded border border-fiori-border bg-fiori-surface p-2 shadow-fiori">
-          {options.length === 0 && <p className="px-2 py-1 text-xs text-fiori-text-secondary">Sem opções.</p>}
-          {options.map((o) => (
-            <label key={o.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-fiori-canvas">
-              <Checkbox checked={selected.includes(o.id)} onChange={() => alternar(o.id)} />
-              {o.nome}
-            </label>
-          ))}
+        <div className="absolute z-10 mt-1 w-56 rounded border border-fiori-border bg-fiori-surface p-2 shadow-fiori">
+          {options.length > 5 && (
+            <Input
+              autoFocus
+              placeholder="Pesquisar..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="mb-2"
+            />
+          )}
+          <div className="max-h-56 overflow-y-auto">
+            {opcoesFiltradas.length === 0 && <p className="px-2 py-1 text-xs text-fiori-text-secondary">Sem opções.</p>}
+            {opcoesFiltradas.map((o) => (
+              <label key={o.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-fiori-canvas">
+                <Checkbox checked={selected.includes(o.id)} onChange={() => alternar(o.id)} />
+                {o.nome}
+              </label>
+            ))}
+          </div>
         </div>
       )}
     </div>
