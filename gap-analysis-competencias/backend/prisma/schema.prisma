@@ -691,11 +691,16 @@ model ColaboradorCompetencia {
   @@map("colaborador_competencia")
 }
 
+// dataObtencao é obrigatória (NOT NULL) de propósito — pedido do utilizador:
+// sem data de obtenção não há certificação a registar, é simplesmente "em
+// falta"; uma linha "vazia" continuaria a aparecer no download em Gestão de
+// Dados. ColaboradoresService.upsertCertificacao elimina a linha em vez de a
+// atualizar para null quando a data é apagada — nunca escreve null aqui.
 model ColaboradorCertificacao {
   id             Int       @id @default(autoincrement())
   colaboradorId  Int       @map("colaborador_id")
   certificacaoId String    @map("certificacao_id")
-  dataObtencao   DateTime? @map("data_obtencao") @db.Date
+  dataObtencao   DateTime  @map("data_obtencao") @db.Date
   dataValidade   DateTime? @map("data_validade") @db.Date
   anexoUrl       String?   @map("anexo_url")
   createdAt      DateTime  @default(now()) @map("created_at")

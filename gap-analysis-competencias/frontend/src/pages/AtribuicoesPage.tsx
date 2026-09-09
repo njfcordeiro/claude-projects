@@ -5,7 +5,7 @@ import { endpoints } from '../api/endpoints';
 import { ApiError } from '../api/client';
 import { ColaboradorResumo, ResumoAtribuicao } from '../types/api';
 import { Card } from '../components/ui/Card';
-import { Button, Field, Select } from '../components/ui/form';
+import { Button, Field, Input, Select } from '../components/ui/form';
 
 type TipoAtribuicao = 'competencia' | 'certificacao';
 
@@ -37,6 +37,7 @@ export function AtribuicoesPage() {
   const [competenciaId, setCompetenciaId] = useState('');
   const [nivelId, setNivelId] = useState('');
   const [certificacaoId, setCertificacaoId] = useState('');
+  const [dataObtencao, setDataObtencao] = useState('');
   const [resultado, setResultado] = useState<ResumoAtribuicao | null>(null);
 
   const disponiveis = useMemo(() => {
@@ -72,7 +73,7 @@ export function AtribuicoesPage() {
       const colaboradorIds = Array.from(selecionados.keys());
       return tipo === 'competencia'
         ? endpoints.atribuirCompetencia({ colaboradorIds, competenciaId: Number(competenciaId), nivelId: Number(nivelId) })
-        : endpoints.atribuirCertificacao({ colaboradorIds, certificacaoId });
+        : endpoints.atribuirCertificacao({ colaboradorIds, certificacaoId, dataObtencao });
     },
     onSuccess: (resumo) => {
       setResultado(resumo);
@@ -82,7 +83,7 @@ export function AtribuicoesPage() {
     onError: (err) => window.alert(err instanceof ApiError ? err.message : 'Não foi possível atribuir.'),
   });
 
-  const podeAtribuir = selecionados.size > 0 && (tipo === 'competencia' ? competenciaId && nivelId : !!certificacaoId);
+  const podeAtribuir = selecionados.size > 0 && (tipo === 'competencia' ? competenciaId && nivelId : certificacaoId && dataObtencao);
 
   return (
     <div className="space-y-4">
@@ -225,16 +226,21 @@ export function AtribuicoesPage() {
                 </Field>
               </div>
             ) : (
-              <Field label="Certificação">
-                <Select value={certificacaoId} onChange={(e) => setCertificacaoId(e.target.value)}>
-                  <option value="">— selecionar —</option>
-                  {(certificacoes ?? []).map((c) => (
-                    <option key={String(c.id)} value={String(c.id)}>
-                      {String(c.nome)}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field label="Certificação">
+                  <Select value={certificacaoId} onChange={(e) => setCertificacaoId(e.target.value)}>
+                    <option value="">— selecionar —</option>
+                    {(certificacoes ?? []).map((c) => (
+                      <option key={String(c.id)} value={String(c.id)}>
+                        {String(c.nome)}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Data de obtenção">
+                  <Input type="date" value={dataObtencao} onChange={(e) => setDataObtencao(e.target.value)} />
+                </Field>
+              </div>
             )}
 
             <Button onClick={() => atribuir.mutate()} disabled={!podeAtribuir || atribuir.isPending}>

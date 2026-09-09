@@ -453,7 +453,7 @@ export interface AtribuirCompetenciaInput {
 export interface AtribuirCertificacaoInput {
   colaboradorIds: number[];
   certificacaoId: string;
-  dataObtencao?: string;
+  dataObtencao: string;
   dataValidade?: string;
 }
 

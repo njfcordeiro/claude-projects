@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { OrigemAvaliacao, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { ColaboradoresService } from '../colaboradores/colaboradores.service';
 import { AuthenticatedUser } from '../auth/jwt-payload.interface';
 import { AtribuirCompetenciaDto } from './dto/atribuir-competencia.dto';
 import { AtribuirCertificacaoDto } from './dto/atribuir-certificacao.dto';
@@ -20,7 +21,10 @@ export interface ResumoAtribuicao {
  */
 @Injectable()
 export class AtribuicoesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly colaboradores: ColaboradoresService,
+  ) {}
 
   async atribuirCompetencia(dto: AtribuirCompetenciaDto, user: AuthenticatedUser): Promise<ResumoAtribuicao> {
     const resumo: ResumoAtribuicao = { processados: dto.colaboradorIds.length, criados: 0, atualizados: 0, erros: [] };
@@ -49,12 +53,23 @@ export class AtribuicoesService {
     return resumo;
   }
 
+  /**
+   * dataObtencao é sempre gravada (obrigatória no DTO — nunca fica uma
+   * linha "vazia"). Ao registar a certificação, aplica os níveis de
+   * CertificacaoRequisitoCompetencia a cada colaborador — só sobe
+   * (ColaboradoresService.subirNivelSeSuperior), mesmo mecanismo do
+   * upsert individual (ficha do colaborador) e do PDI.
+   */
   async atribuirCertificacao(dto: AtribuirCertificacaoDto, user: AuthenticatedUser): Promise<ResumoAtribuicao> {
     const resumo: ResumoAtribuicao = { processados: dto.colaboradorIds.length, criados: 0, atualizados: 0, erros: [] };
     const dados = {
-      dataObtencao: dto.dataObtencao ? new Date(dto.dataObtencao) : undefined,
+      dataObtencao: new Date(dto.dataObtencao),
       dataValidade: dto.dataValidade ? new Date(dto.dataValidade) : undefined,
     };
+    const requisitos = await this.prisma.certificacaoRequisitoCompetencia.findMany({
+      where: { certificacaoId: dto.certificacaoId },
+      select: { competenciaId: true, nivelId: true },
+    });
 
     for (const colaboradorId of dto.colaboradorIds) {
       try {
@@ -62,22 +77,23 @@ export class AtribuicoesService {
           where: { colaboradorId_certificacaoId: { colaboradorId, certificacaoId: dto.certificacaoId } },
         });
 
-        if (existente) {
-          await this.prisma.runAsUser(user.sub, (tx) =>
-            tx.colaboradorCertificacao.update({
+        await this.prisma.runAsUser(user.sub, async (tx) => {
+          if (existente) {
+            await tx.colaboradorCertificacao.update({
               where: { colaboradorId_certificacaoId: { colaboradorId, certificacaoId: dto.certificacaoId } },
               data: { ...dados, version: { increment: 1 } },
-            }),
-          );
-          resumo.atualizados++;
-        } else {
-          await this.prisma.runAsUser(user.sub, (tx) =>
-            tx.colaboradorCertificacao.create({
+            });
+          } else {
+            await tx.colaboradorCertificacao.create({
               data: { colaboradorId, certificacaoId: dto.certificacaoId, ...dados },
-            }),
-          );
-          resumo.criados++;
-        }
+            });
+          }
+          for (const r of requisitos) {
+            await this.colaboradores.subirNivelSeSuperior(tx, colaboradorId, r.competenciaId, r.nivelId, OrigemAvaliacao.CERTIFICACAO, user.sub);
+          }
+        });
+        if (existente) resumo.atualizados++;
+        else resumo.criados++;
       } catch (err) {
         resumo.erros.push(`Colaborador ${colaboradorId}: ${this.traduzirErro(err)}`);
       }

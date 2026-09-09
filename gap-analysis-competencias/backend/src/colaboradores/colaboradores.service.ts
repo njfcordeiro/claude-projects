@@ -617,47 +617,76 @@ export class ColaboradoresService {
     });
   }
 
-  /** Cria ou atualiza (com locking otimista) a certificação de um colaborador. */
+  /**
+   * Cria ou atualiza (com locking otimista) a certificação de um
+   * colaborador — mas só faz sentido guardar uma linha quando há data de
+   * obtenção: sem ela, a certificação está simplesmente em falta, e uma
+   * linha "vazia" continuaria a aparecer no download em Gestão de Dados
+   * (pedido do utilizador). Por isso, se o dataObtencao final ficar vazio
+   * (limpo ou nunca preenchido), a linha é eliminada em vez de atualizada;
+   * `null` devolvido significa "sem certificação guardada".
+   *
+   * Ao ficar com dataObtencao preenchida (certificação cumprida), aplica
+   * os níveis de CertificacaoRequisitoCompetencia ao colaborador — só
+   * sobe (subirNivelSeSuperior, idempotente), nunca desce ao limpar a
+   * data depois — mesmo mecanismo já usado em PdiService.atualizar
+   * quando um item de PDI de Certificação é concluído.
+   */
   async upsertCertificacao(colaboradorId: number, certificacaoId: string, dto: UpsertCertificacaoDto, user: AuthenticatedUser) {
     await this.podeEditar(colaboradorId, user);
-    const dados = {
-      dataObtencao: dto.dataObtencao === undefined ? undefined : dto.dataObtencao === null ? null : new Date(dto.dataObtencao),
-      dataValidade: dto.dataValidade === undefined ? undefined : dto.dataValidade === null ? null : new Date(dto.dataValidade),
-      anexoUrl: dto.anexoUrl,
-    };
 
     return this.prisma.runAsUser(user.sub, async (tx) => {
       const existente = await tx.colaboradorCertificacao.findUnique({
         where: { colaboradorId_certificacaoId: { colaboradorId, certificacaoId } },
       });
 
-      if (!existente) {
-        return tx.colaboradorCertificacao.create({
-          data: { colaboradorId, certificacaoId, ...dados },
-          include: { certificacao: { select: { nome: true } } },
-        });
-      }
-
-      if (dto.version === undefined || dto.version !== existente.version) {
+      if (existente && (dto.version === undefined || dto.version !== existente.version)) {
         throw new ConflictException({
           message: 'Esta certificação foi alterada por outra pessoa entretanto. Revê os dados atuais e tenta novamente.',
           current: existente,
         });
       }
 
-      const resultado = await tx.colaboradorCertificacao.updateMany({
-        where: { colaboradorId, certificacaoId, version: dto.version },
-        data: { ...dados, version: { increment: 1 } },
-      });
+      const dataObtencaoFinal =
+        dto.dataObtencao === undefined ? (existente?.dataObtencao ?? null) : dto.dataObtencao === null ? null : new Date(dto.dataObtencao);
 
-      if (resultado.count === 0) {
-        const atual = await tx.colaboradorCertificacao.findUniqueOrThrow({
-          where: { colaboradorId_certificacaoId: { colaboradorId, certificacaoId } },
+      if (dataObtencaoFinal === null) {
+        if (existente) {
+          await tx.colaboradorCertificacao.delete({ where: { colaboradorId_certificacaoId: { colaboradorId, certificacaoId } } });
+        }
+        return null;
+      }
+
+      const dados = {
+        dataObtencao: dataObtencaoFinal,
+        dataValidade: dto.dataValidade === undefined ? undefined : dto.dataValidade === null ? null : new Date(dto.dataValidade),
+        anexoUrl: dto.anexoUrl,
+      };
+
+      if (!existente) {
+        await tx.colaboradorCertificacao.create({ data: { colaboradorId, certificacaoId, ...dados } });
+      } else {
+        const resultado = await tx.colaboradorCertificacao.updateMany({
+          where: { colaboradorId, certificacaoId, version: dto.version },
+          data: { ...dados, version: { increment: 1 } },
         });
-        throw new ConflictException({
-          message: 'Esta certificação foi alterada por outra pessoa entretanto. Revê os dados atuais e tenta novamente.',
-          current: atual,
-        });
+        if (resultado.count === 0) {
+          const atual = await tx.colaboradorCertificacao.findUniqueOrThrow({
+            where: { colaboradorId_certificacaoId: { colaboradorId, certificacaoId } },
+          });
+          throw new ConflictException({
+            message: 'Esta certificação foi alterada por outra pessoa entretanto. Revê os dados atuais e tenta novamente.',
+            current: atual,
+          });
+        }
+      }
+
+      const requisitos = await tx.certificacaoRequisitoCompetencia.findMany({
+        where: { certificacaoId },
+        select: { competenciaId: true, nivelId: true },
+      });
+      for (const r of requisitos) {
+        await this.subirNivelSeSuperior(tx, colaboradorId, r.competenciaId, r.nivelId, OrigemAvaliacao.CERTIFICACAO, user.sub);
       }
 
       return tx.colaboradorCertificacao.findUniqueOrThrow({

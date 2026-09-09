@@ -492,27 +492,37 @@ async function importColaboradorCompetencias(wb: ExcelJS.Workbook) {
 async function importColaboradorCertificacoes(wb: ExcelJS.Workbook) {
   const ws = wb.getWorksheet('Colaboradores&Certificações')!;
   let count = 0;
+  let semData = 0;
   for (let r = 2; r <= ws.rowCount; r++) {
     const colaboradorId = num(ws, r, 1);
     const certificacaoId = str(ws, r, 3);
     if (colaboradorId === null || certificacaoId === null) continue;
+
+    // dataObtencao é obrigatória (NOT NULL) — sem ela não há certificação a
+    // registar, é simplesmente "em falta"; linhas sem data são ignoradas
+    // em vez de criar um registo inválido.
+    const dataObtencao = dotDate(ws, r, 5);
+    if (dataObtencao === null) {
+      semData++;
+      continue;
+    }
 
     await prisma.colaboradorCertificacao.upsert({
       where: { colaboradorId_certificacaoId: { colaboradorId, certificacaoId } },
       create: {
         colaboradorId,
         certificacaoId,
-        dataObtencao: dotDate(ws, r, 5),
+        dataObtencao,
         dataValidade: dotDate(ws, r, 6),
       },
       update: {
-        dataObtencao: dotDate(ws, r, 5),
+        dataObtencao,
         dataValidade: dotDate(ws, r, 6),
       },
     });
     count++;
   }
-  console.log(`Colaborador x Certificação: ${count}.`);
+  console.log(`Colaborador x Certificação: ${count} (${semData} ignoradas por não terem data de obtenção).`);
 }
 
 // ---------------------------------------------------------------------
