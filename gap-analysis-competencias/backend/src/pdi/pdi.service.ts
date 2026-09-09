@@ -16,6 +16,7 @@ const INCLUDE_ITEM = {
   formacao: { select: { nome: true, duracaoHoras: true } },
   lob: { select: { nome: true } },
   cargo: { select: { nome: true } },
+  nivelAlvo: { select: { nome: true } },
 } as const;
 
 interface CandidatoPdi {
@@ -25,7 +26,25 @@ interface CandidatoPdi {
   /** Mutuamente exclusivo com cargoId — um candidato vem de uma LOB OU de um Cargo, nunca das duas. */
   lobId: number | null;
   cargoId: string | null;
+  /** Nível a atingir na competência — null para candidatos de certificação (sem escala de nível). */
+  nivelAlvoId: number | null;
   descricao: string;
+}
+
+/**
+ * Chave de "origem" de um item/candidato — usada para saber se dois itens
+ * visam o mesmo alvo (mesma competência/certificação, no mesmo contexto) ou
+ * se são alvos genuinamente distintos. Pedido do utilizador: gerar para o
+ * Cargo Atual e depois para o Próximo Cargo tem de produzir DUAS linhas para
+ * a mesma competência quando os níveis exigidos são diferentes (ex.
+ * "Liderança": Proficiente para o cargo atual, Especialista para o
+ * seguinte) — dedupe só faz sentido dentro do mesmo Cargo/LOB, nunca entre
+ * origens diferentes.
+ */
+function origemChave(item: { lobId: number | null; cargoId: string | null }): string {
+  if (item.cargoId !== null) return `cargo:${item.cargoId}`;
+  if (item.lobId !== null) return `lob:${item.lobId}`;
+  return 'manual';
 }
 
 /**
@@ -185,6 +204,7 @@ export class PdiService {
         formacaoId: c.sugestoes.formacoes[0]?.formacaoId ?? null,
         lobId: null,
         cargoId,
+        nivelAlvoId: c.nivelExigido,
         descricao: `Reforçar competência "${c.competenciaNome}" (nível atual ${c.nivelAtual} → exigido ${c.nivelExigido}) para o perfil do cargo "${detalhe.cargoNome}".`,
       });
     }
@@ -205,6 +225,7 @@ export class PdiService {
         formacaoId: c.sugestoes.formacoes[0]?.formacaoId ?? null,
         lobId,
         cargoId: null,
+        nivelAlvoId: c.nivelExigido,
         descricao: `Reforçar competência "${c.competenciaNome}" (nível atual ${c.nivelAtual} → exigido ${c.nivelExigido}) para a LOB "${detalhe.lobNome}".`,
       });
     }
@@ -218,6 +239,7 @@ export class PdiService {
         formacaoId: formacaoSugerida?.formacaoId ?? null,
         lobId,
         cargoId: null,
+        nivelAlvoId: null,
         descricao: `Obter a certificação "${cert.certificacaoNome}" — exigida pela LOB "${detalhe.lobNome}".`,
       });
     }
@@ -227,19 +249,25 @@ export class PdiService {
 
   /**
    * Persiste um item por candidato ainda não coberto por um item existente
-   * (mesma competência ou certificação, seja qual for a origem) — partilhado
-   * por `gerarParaLob`/`gerarParaPerfilCargo`, garante que gerar por LOB e
-   * por Cargo nunca duplicam entre si o mesmo gap.
+   * — partilhado por `gerarParaLob`/`gerarParaPerfilCargo`. "Coberto" é
+   * sempre relativo à MESMA origem (mesmo Cargo ou mesma LOB, via
+   * `origemChave`): gerar duas vezes para a mesma LOB/Cargo não duplica,
+   * mas gerar para o Cargo Atual e depois para o Próximo Cargo produz duas
+   * linhas para a mesma competência quando os níveis exigidos diferem
+   * (pedido do utilizador) — são alvos diferentes, não o mesmo gap.
    */
   private async persistirCandidatos(colaboradorId: number, candidatos: Map<string, CandidatoPdi>, user: AuthenticatedUser) {
     const existentes = await this.prisma.pdiItem.findMany({ where: { colaboradorId } });
-    const competenciasComItem = new Set(existentes.map((i) => i.competenciaId).filter((v): v is number => v !== null));
-    const certificacoesComItem = new Set(existentes.map((i) => i.certificacaoId).filter((v): v is string => v !== null));
+    const alvosComItem = new Set(
+      existentes.map((i) => {
+        const alvo = i.competenciaId !== null ? `competencia:${i.competenciaId}` : `certificacao:${i.certificacaoId}`;
+        return `${alvo}@${origemChave(i)}`;
+      }),
+    );
 
     let criados = 0;
-    for (const candidato of candidatos.values()) {
-      if (candidato.competenciaId !== null && competenciasComItem.has(candidato.competenciaId)) continue;
-      if (candidato.certificacaoId !== null && certificacoesComItem.has(candidato.certificacaoId)) continue;
+    for (const [chaveCandidato, candidato] of candidatos) {
+      if (alvosComItem.has(`${chaveCandidato}@${origemChave(candidato)}`)) continue;
 
       await this.prisma.runAsUser(user.sub, (tx) =>
         tx.pdiItem.create({
@@ -250,6 +278,7 @@ export class PdiService {
             formacaoId: candidato.formacaoId,
             lobId: candidato.lobId,
             cargoId: candidato.cargoId,
+            nivelAlvoId: candidato.nivelAlvoId,
             descricao: candidato.descricao,
             origem: OrigemPdi.AUTOMATICO,
             createdBy: user.sub,
@@ -262,7 +291,13 @@ export class PdiService {
     return { criados, itens: await this.listar(colaboradorId, user) };
   }
 
-  /** Adição manual de uma Competência ou Certificação ao PDI — pedido do utilizador: "deve ser possível adicionar... manualmente". */
+  /**
+   * Adição manual de uma Competência ou Certificação ao PDI — pedido do
+   * utilizador: "deve ser possível adicionar... manualmente". Competência
+   * exige sempre um nível-alvo (pedido do utilizador: "senão não temos um
+   * target de atingimento para perceber se cumpriu ou não") — Certificação
+   * não tem escala de nível, por isso não aceita nivelAlvoId.
+   */
   async criar(colaboradorId: number, dto: CreatePdiItemDto, user: AuthenticatedUser) {
     await this.colaboradores.podeEditar(colaboradorId, user);
 
@@ -271,11 +306,23 @@ export class PdiService {
     }
 
     let descricao: string;
+    let nivelAlvoId: number | null = null;
     if (dto.competenciaId !== undefined) {
-      const competencia = await this.prisma.competencia.findUnique({ where: { id: dto.competenciaId } });
+      if (dto.nivelAlvoId === undefined) {
+        throw new BadRequestException('Indica o nível que o colaborador tem de atingir nesta competência.');
+      }
+      const [competencia, nivel] = await Promise.all([
+        this.prisma.competencia.findUnique({ where: { id: dto.competenciaId } }),
+        this.prisma.nivel.findUnique({ where: { id: dto.nivelAlvoId } }),
+      ]);
       if (!competencia) throw new NotFoundException(`Competência ${dto.competenciaId} não encontrada.`);
-      descricao = `Reforçar competência "${competencia.nome}".`;
+      if (!nivel) throw new NotFoundException(`Nível ${dto.nivelAlvoId} não encontrado.`);
+      nivelAlvoId = dto.nivelAlvoId;
+      descricao = `Reforçar competência "${competencia.nome}" até ao nível "${nivel.nome}".`;
     } else {
+      if (dto.nivelAlvoId !== undefined) {
+        throw new BadRequestException('Certificações não têm nível — não indiques nivelAlvoId.');
+      }
       const certificacao = await this.prisma.certificacao.findUnique({ where: { id: dto.certificacaoId } });
       if (!certificacao) throw new NotFoundException(`Certificação "${dto.certificacaoId}" não encontrada.`);
       descricao = `Obter a certificação "${certificacao.nome}".`;
@@ -287,6 +334,7 @@ export class PdiService {
           colaboradorId,
           competenciaId: dto.competenciaId ?? null,
           certificacaoId: dto.certificacaoId ?? null,
+          nivelAlvoId,
           descricao,
           origem: OrigemPdi.MANUAL,
           createdBy: user.sub,

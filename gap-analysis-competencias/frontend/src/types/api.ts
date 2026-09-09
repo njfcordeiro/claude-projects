@@ -439,6 +439,8 @@ export interface PdiItem {
   lobId: number | null;
   /** Cargo cujo Perfil de Competências originou este item — mutuamente exclusivo com lobId. */
   cargoId: string | null;
+  /** Nível a atingir na competência — null para itens de Certificação (sem escala de nível). */
+  nivelAlvoId: number | null;
   descricao: string;
   estado: EstadoPdi;
   origem: OrigemPdi;
@@ -454,6 +456,7 @@ export interface PdiItem {
   formacao: { nome: string; duracaoHoras: number | null } | null;
   lob: { nome: string } | null;
   cargo: { nome: string } | null;
+  nivelAlvo: { nome: string } | null;
 }
 
 export interface GerarPdiResponse {
@@ -469,6 +472,7 @@ export interface UpdatePdiItemInput {
 export interface CreatePdiItemInput {
   competenciaId?: number;
   certificacaoId?: string;
+  nivelAlvoId?: number;
 }
 
 export interface GerarPdiParaLobInput {

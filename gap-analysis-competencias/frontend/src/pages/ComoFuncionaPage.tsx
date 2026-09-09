@@ -57,7 +57,7 @@ const NOS: NoModelo[] = [
   { id: 'colaborador', cluster: 'pessoas', nome: 'Colaborador', icone: UserCircle, campos: ['id', 'nome', 'cargoId', 'managerId', 'version'], relacao: 'Entidade central — liga-se a toda a Organização e ao seu próprio histórico.' },
   { id: 'avaliacao', cluster: 'pessoas', nome: 'Avaliação (histórico)', icone: Sparkles, campos: ['colaboradorId', 'competenciaId', 'nivelId', 'origem'], relacao: 'Append-only — o "nível atual" é sempre a mais recente, nunca um UPDATE.' },
   { id: 'certificacao-colab', cluster: 'pessoas', nome: 'Certificação do colaborador', icone: Award, campos: ['certificacaoId', 'dataValidade', 'version'], relacao: 'Tem locking otimista próprio, tal como o Colaborador.' },
-  { id: 'pdi', cluster: 'pessoas', nome: 'PDI', icone: BookOpen, campos: ['descricao', 'estado', 'origem'], relacao: 'Gerado a partir das lacunas do motor de gap; acompanhado manualmente depois.' },
+  { id: 'pdi', cluster: 'pessoas', nome: 'PDI', icone: BookOpen, campos: ['descricao', 'nivelAlvoId', 'estado', 'origem'], relacao: 'Gerado a partir das lacunas do motor de gap; acompanhado manualmente depois.' },
 ];
 
 const CLUSTERS: { id: ClusterId; label: string; nota: string; corBorda: string; corTexto: string }[] = [
@@ -344,8 +344,8 @@ const REGRAS = [
     icone: Briefcase,
     titulo: 'PDI — necessidades do Cargo Atual e do Próximo Cargo',
     texto:
-      '"Gerar para o Cargo Atual" avalia o colaborador contra o Perfil de Competências do seu cargo atual e sugere o que estiver em falta — mesmo motor de "Gerar sugestões", só muda a fonte das competências-alvo. "Gerar para o Próximo Cargo" faz o mesmo para o cargo seguinte, resolvido via Progressão de Cargos: com um único cargo seguinte possível, escolhe-o sozinho; havendo mais que um, pede para escolher qual antes de gerar. Os itens resultantes aparecem no PDI em dois grupos próprios, "Necessidades do Cargo Atual" e "Necessidades do Próximo Cargo" — a seguir a BUD/Sistema e antes de Outras, pela mesma prioridade (uma competência já com item por BUD/Sistema não gera um segundo item aqui). Sem perfil definido para o Cargo, o botão não gera nada — avisa em vez de falhar.',
-    formula: 'competências-alvo = CargoRequisitoCompetencia.where(cargoId = atual OU próximo) · próximo cargo = único predecessor→sucessor em CargoProgressao, ou escolhido manualmente se houver mais que um',
+      '"Gerar para o Cargo Atual" avalia o colaborador contra o Perfil de Competências do seu cargo atual e sugere o que estiver em falta — mesmo motor de "Gerar sugestões", só muda a fonte das competências-alvo. "Gerar para o Próximo Cargo" faz o mesmo para o cargo seguinte, resolvido via Progressão de Cargos: com um único cargo seguinte possível, escolhe-o sozinho; havendo mais que um, pede para escolher qual antes de gerar. Os itens resultantes aparecem no PDI em dois grupos próprios, "Necessidades do Cargo Atual" e "Necessidades do Próximo Cargo" — a seguir a BUD/Sistema e antes de Outras. A deduplicação ao gerar é sempre relativa à MESMA origem (a mesma LOB ou o mesmo Cargo): gerar duas vezes para o Cargo Atual não duplica, mas a mesma competência exigida pelo Cargo Atual E pelo Próximo Cargo (com níveis diferentes, ex. "Proficiente" depois "Especialista") produz sempre duas linhas — são dois alvos distintos, o colaborador tem de trabalhar um de cada vez. Sem perfil definido para o Cargo, o botão não gera nada — avisa em vez de falhar.',
+    formula: 'competências-alvo = CargoRequisitoCompetencia.where(cargoId = atual OU próximo) · próximo cargo = único predecessor→sucessor em CargoProgressao, ou escolhido manualmente se houver mais que um · dedup = mesma competência/certificação NA MESMA origem (lobId ou cargoId)',
   },
   {
     icone: Puzzle,

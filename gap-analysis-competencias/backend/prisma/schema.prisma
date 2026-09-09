@@ -292,6 +292,7 @@ model Nivel {
   lobRequisitos           LobRequisitoCompetencia[]
   colaboradorCompetencias ColaboradorCompetencia[]
   cargoRequisitos         CargoRequisitoCompetencia[]
+  pdiItensAlvo            PdiItem[]
 
   @@map("niveis")
 }
@@ -734,6 +735,12 @@ model PdiItem {
   // Cargo, nunca das duas). A classificação "Cargo Atual"/"Próximo Cargo" no PDI compara este
   // valor ao vivo contra o cargo atual do colaborador, nunca guardada como tal.
   cargoId              String?   @map("cargo_id")
+  // Nível que o colaborador tem de atingir nesta Competência (pedido do
+  // utilizador: sem isto não há como perceber se um item foi "cumprido" —
+  // preenchido tanto nas sugestões automáticas (nivelExigido/nivelMinimo do
+  // gap que originou o item) como na adição manual (obrigatório escolher).
+  // Sempre null para itens de Certificação — essas não têm escala de nível.
+  nivelAlvoId          Int?      @map("nivel_alvo_id")
   descricao            String
   estado               EstadoPdi @default(PENDENTE)
   origem               OrigemPdi @default(AUTOMATICO)
@@ -758,6 +765,7 @@ model PdiItem {
   formacao     Formacao?     @relation(fields: [formacaoId], references: [id], onDelete: Restrict)
   lob          Lob?          @relation(fields: [lobId], references: [id], onDelete: Restrict)
   cargo        Cargo?        @relation(fields: [cargoId], references: [id], onDelete: Restrict)
+  nivelAlvo    Nivel?        @relation(fields: [nivelAlvoId], references: [id], onDelete: Restrict)
 
   @@index([colaboradorId])
   @@map("pdi_items")
