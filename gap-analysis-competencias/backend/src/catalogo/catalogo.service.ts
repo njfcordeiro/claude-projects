@@ -10,7 +10,13 @@ import { adicionarFolhasDeOpcoes, formulaNomeAtual, nomeFolhaDeOpcoes, numParaCo
 export interface ResumoImportacao {
   criados: number;
   atualizados: number;
+  eliminados: number;
   erros: string[];
+}
+
+/** Coluna "DELETE" opcional (pedido do utilizador): escrever "DELETE" nessa célula elimina a linha em vez de a criar/atualizar. */
+export function ehMarcaDelete(valor: unknown): boolean {
+  return typeof valor === 'string' && valor.trim().toUpperCase() === 'DELETE';
 }
 
 /**
@@ -102,7 +108,9 @@ export class CatalogoService {
    * a seguir, com uma fórmula VLOOKUP (não um valor estático) contra a sheet
    * "Opções — X" dessa tabela relacionada — pedido do utilizador: mudar o id
    * na coluna ao lado atualiza este texto sozinho, sem reexportar; e (2) a
-   * própria sheet "Opções — X" com todos os id/nome válidos.
+   * própria sheet "Opções — X" com todos os id/nome válidos. Tem ainda uma
+   * coluna "DELETE" final, vazia — escrever "DELETE" nessa célula e
+   * reimportar elimina essa linha (pedido do utilizador).
    */
   async exportar(tabela: string): Promise<Buffer> {
     const def = encontrarTabela(tabela);
@@ -124,6 +132,9 @@ export class CatalogoService {
         cabecalhos.push(`${c.label} — nome atual`);
       }
     }
+    // Coluna extra (pedido do utilizador): escrever "DELETE" nesta célula e
+    // reimportar o ficheiro elimina essa linha em vez de a atualizar.
+    cabecalhos.push('DELETE');
     sheet.addRow(cabecalhos);
 
     let linhaExcel = 2;
@@ -136,6 +147,7 @@ export class CatalogoService {
           valores.push(formulaNomeAtual(`${colunaPorCampo.get(c.key)}${linhaExcel}`, folha));
         }
       }
+      valores.push(null);
       sheet.addRow(valores);
       linhaExcel++;
     }
@@ -162,13 +174,19 @@ export class CatalogoService {
       const idx = cabecalho.findIndex((h) => h === c.key);
       if (idx !== -1) indicePorCampo.set(c.key, idx);
     }
+    const idxDelete = cabecalho.findIndex((h) => h === 'DELETE');
+    const camposIdentidade = def.campos.filter((c) => def.identityFields.includes(c.key));
 
-    const resumo: ResumoImportacao = { criados: 0, atualizados: 0, erros: [] };
+    const resumo: ResumoImportacao = { criados: 0, atualizados: 0, eliminados: 0, erros: [] };
 
     // Fase 1 — validação (só leitura): resolve todas as linhas contra a BD
     // sem escrever nada. Uma referência em falta em qualquer linha rejeita o
-    // ficheiro inteiro — não há importação parcial.
+    // ficheiro inteiro — não há importação parcial. Linhas com "DELETE" na
+    // coluna própria (pedido do utilizador) só precisam de resolver os
+    // campos de identidade — os restantes não são validados, a linha não
+    // vai ser criada/atualizada, só eliminada por essa identidade.
     const linhasValidas: { data: Record<string, unknown>; where: Record<string, unknown> }[] = [];
+    const linhasParaEliminar: { where: Record<string, unknown> }[] = [];
     for (let r = 2; r <= sheet.rowCount; r++) {
       const linha = sheet.getRow(r);
       if (linha.values == null || (Array.isArray(linha.values) && linha.values.length === 0)) continue;
@@ -182,6 +200,12 @@ export class CatalogoService {
           bruto[c.key] = celula && typeof celula === 'object' && 'result' in celula ? (celula as any).result : celula;
         }
         if (Object.values(bruto).every((v) => v === null || v === undefined || v === '')) continue;
+
+        if (idxDelete !== -1 && ehMarcaDelete(linha.getCell(idxDelete).value)) {
+          const chave = await this.validarEcoagir({ ...def, campos: camposIdentidade }, bruto, true, false);
+          linhasParaEliminar.push({ where: this.construirWhereIdentidade(def, chave) });
+          continue;
+        }
 
         const data = await this.validarEcoagirImport(def, bruto);
         const where = this.construirWhereIdentidade(def, data);
@@ -198,6 +222,10 @@ export class CatalogoService {
 
     // Fase 2 — escrita: tudo numa única transação, atómica ao ficheiro inteiro.
     await this.prisma.runAsUser(user.sub, async (tx) => {
+      for (const { where } of linhasParaEliminar) {
+        const resultado = await (tx as any)[def.delegate].deleteMany({ where });
+        resumo.eliminados += resultado.count;
+      }
       for (const { data, where } of linhasValidas) {
         const existe = await (tx as any)[def.delegate].findFirst({ where });
         if (existe) {

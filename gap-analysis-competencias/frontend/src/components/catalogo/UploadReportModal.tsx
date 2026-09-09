@@ -26,7 +26,8 @@ export function UploadReportModal({ resumo, onClose }: Props) {
             {semErros ? (
               <>
                 <span className="font-medium">Sucesso!</span> {resumo.criados} registo{resumo.criados === 1 ? '' : 's'} criado
-                {resumo.criados === 1 ? '' : 's'}, {resumo.atualizados} atualizado{resumo.atualizados === 1 ? '' : 's'}.
+                {resumo.criados === 1 ? '' : 's'}, {resumo.atualizados} atualizado{resumo.atualizados === 1 ? '' : 's'}
+                {resumo.eliminados > 0 && <>, {resumo.eliminados} eliminado{resumo.eliminados === 1 ? '' : 's'}</>}.
               </>
             ) : (
               <>

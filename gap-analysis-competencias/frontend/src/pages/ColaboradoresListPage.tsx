@@ -143,7 +143,7 @@ export function ColaboradoresListPage() {
       setRelatorioImportacao(resumo);
     },
     onError: (err) =>
-      setRelatorioImportacao({ criados: 0, atualizados: 0, erros: [err instanceof ApiError ? err.message : 'Não foi possível importar o ficheiro.'] }),
+      setRelatorioImportacao({ criados: 0, atualizados: 0, eliminados: 0, erros: [err instanceof ApiError ? err.message : 'Não foi possível importar o ficheiro.'] }),
   });
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {

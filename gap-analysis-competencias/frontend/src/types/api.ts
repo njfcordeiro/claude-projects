@@ -431,6 +431,7 @@ export type CatalogoRegisto = Record<string, string | number | boolean | null>;
 export interface ResumoImportacao {
   criados: number;
   atualizados: number;
+  eliminados: number;
   erros: string[];
 }
 
@@ -438,6 +439,7 @@ export interface ResumoImportacaoNiveis {
   processadas: number;
   criadas: number;
   semAlteracao: number;
+  eliminadas: number;
   erros: string[];
 }
 

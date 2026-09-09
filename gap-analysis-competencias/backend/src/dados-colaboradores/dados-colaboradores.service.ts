@@ -5,10 +5,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ColaboradoresService } from '../colaboradores/colaboradores.service';
 import { FormacoesConcluidasService } from '../formacoes-concluidas/formacoes-concluidas.service';
 import { AuthenticatedUser } from '../auth/jwt-payload.interface';
+import { ehMarcaDelete } from '../catalogo/catalogo.service';
 
 export interface ResumoImportacaoDados {
   criados: number;
   atualizados: number;
+  eliminados: number;
   erros: string[];
 }
 
@@ -77,9 +79,9 @@ export class DadosColaboradoresService {
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('competencias');
-    sheet.addRow(['colaboradorId', 'Colaborador', 'competenciaId', 'Competência', 'nivelId', 'Nível — nome atual']);
+    sheet.addRow(['colaboradorId', 'Colaborador', 'competenciaId', 'Competência', 'nivelId', 'Nível — nome atual', 'DELETE']);
     for (const l of linhas) {
-      sheet.addRow([l.colaborador_id, l.colaborador_nome, l.competencia_id, l.competencia_nome, l.nivel_id, l.nivel_nome]);
+      sheet.addRow([l.colaborador_id, l.colaborador_nome, l.competencia_id, l.competencia_nome, l.nivel_id, l.nivel_nome, null]);
     }
     return Buffer.from(await workbook.xlsx.writeBuffer());
   }
@@ -90,6 +92,11 @@ export class DadosColaboradoresService {
    * ColaboradoresService.criarAvaliacao (mesmo motor de conflito otimista
    * do ecrã de avaliação individual, por isso não há caminho para
    * corromper o histórico mesmo em importações concorrentes).
+   *
+   * "DELETE" (pedido do utilizador) só é honrado para Comportamentais —
+   * reaproveita ColaboradoresService.eliminarCompetencia, a mesma exceção
+   * deliberada ao histórico append-only já usada na ficha do colaborador.
+   * Técnicas nunca perdem histórico, mesmo por aqui — a linha fica em erro.
    */
   async importarCompetencias(tipo: TipoDesenvolvimento, buffer: Buffer, user: AuthenticatedUser): Promise<ResumoImportacaoDados> {
     const sheet = await carregarPrimeiraFolha(buffer);
@@ -97,19 +104,20 @@ export class DadosColaboradoresService {
     const idxColaborador = indiceColuna(cabecalho, 'colaboradorId');
     const idxCompetencia = indiceColuna(cabecalho, 'competenciaId');
     const idxNivel = indiceColuna(cabecalho, 'nivelId');
+    const idxDelete = cabecalho.findIndex((h) => h === 'DELETE');
 
-    const resumo: ResumoImportacaoDados = { criados: 0, atualizados: 0, erros: [] };
+    const resumo: ResumoImportacaoDados = { criados: 0, atualizados: 0, eliminados: 0, erros: [] };
     for (let r = 2; r <= sheet.rowCount; r++) {
       const linha = sheet.getRow(r);
       if (linha.values == null || (Array.isArray(linha.values) && linha.values.length === 0)) continue;
       const colaboradorIdRaw = ler(linha, idxColaborador);
       const competenciaIdRaw = ler(linha, idxCompetencia);
       const nivelIdRaw = ler(linha, idxNivel);
-      if (colaboradorIdRaw == null || competenciaIdRaw == null || nivelIdRaw == null) continue;
+      if (colaboradorIdRaw == null || competenciaIdRaw == null) continue;
 
       const colaboradorId = Number(colaboradorIdRaw);
       const competenciaId = Number(competenciaIdRaw);
-      const nivelId = Number(nivelIdRaw);
+      const marcaDelete = idxDelete !== -1 && ehMarcaDelete(linha.getCell(idxDelete).value);
       try {
         const competencia = await this.prisma.competencia.findUnique({ where: { id: competenciaId } });
         if (!competencia) throw new Error(`competência ${competenciaId} não encontrada.`);
@@ -117,6 +125,17 @@ export class DadosColaboradoresService {
           throw new Error(`competência ${competenciaId} ("${competencia.nome}") não é do tipo ${tipo === 'TECNICA' ? 'Técnica' : 'Comportamental'}.`);
         }
 
+        if (marcaDelete) {
+          if (tipo === 'TECNICA') {
+            throw new Error('não é possível eliminar avaliações de competências técnicas — o histórico é sempre append-only.');
+          }
+          await this.colaboradores.eliminarCompetencia(colaboradorId, competenciaId, user);
+          resumo.eliminados++;
+          continue;
+        }
+
+        if (nivelIdRaw == null) continue;
+        const nivelId = Number(nivelIdRaw);
         const atual = await this.colaboradores.obterUltimaAvaliacao(colaboradorId, competenciaId, user);
         if (atual?.nivel_id === nivelId) continue;
 
@@ -139,16 +158,17 @@ export class DadosColaboradoresService {
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('certificacoes');
-    sheet.addRow(['colaboradorId', 'Colaborador', 'certificacaoId', 'Certificação', 'dataObtencao', 'dataValidade', 'anexoUrl']);
+    sheet.addRow(['colaboradorId', 'Colaborador', 'certificacaoId', 'Certificação', 'dataObtencao', 'dataValidade', 'anexoUrl', 'DELETE']);
     for (const l of linhas) {
       sheet.addRow([
         l.colaboradorId,
         l.colaborador.nome,
         l.certificacaoId,
         l.certificacao.nome,
-        l.dataObtencao ? l.dataObtencao.toISOString().slice(0, 10) : null,
+        l.dataObtencao.toISOString().slice(0, 10),
         l.dataValidade ? l.dataValidade.toISOString().slice(0, 10) : null,
         l.anexoUrl ?? null,
+        null,
       ]);
     }
     return Buffer.from(await workbook.xlsx.writeBuffer());
@@ -160,8 +180,10 @@ export class DadosColaboradoresService {
    * atual (se já existir), para continuar a respeitar o locking otimista
    * mesmo em bloco: uma edição concorrente de outra pessoa durante a
    * importação faz essa linha falhar com 409 em vez de a sobrescrever.
-   * Célula vazia em dataObtencao/dataValidade limpa o campo (mesma
-   * semântica do EditarCertificacaoModal — ver Task #1).
+   * Célula vazia em dataObtencao — ou "DELETE" marcado (pedido do
+   * utilizador) — elimina a linha (mesma semântica de
+   * upsertCertificacao: sem data de obtenção não há certificação a
+   * registar, ver Task #11).
    */
   async importarCertificacoes(buffer: Buffer, user: AuthenticatedUser): Promise<ResumoImportacaoDados> {
     const sheet = await carregarPrimeiraFolha(buffer);
@@ -171,8 +193,9 @@ export class DadosColaboradoresService {
     const idxDataObtencao = indiceColuna(cabecalho, 'dataObtencao');
     const idxDataValidade = indiceColuna(cabecalho, 'dataValidade');
     const idxAnexoUrl = cabecalho.findIndex((h) => h === 'anexoUrl');
+    const idxDelete = cabecalho.findIndex((h) => h === 'DELETE');
 
-    const resumo: ResumoImportacaoDados = { criados: 0, atualizados: 0, erros: [] };
+    const resumo: ResumoImportacaoDados = { criados: 0, atualizados: 0, eliminados: 0, erros: [] };
     for (let r = 2; r <= sheet.rowCount; r++) {
       const linha = sheet.getRow(r);
       if (linha.values == null || (Array.isArray(linha.values) && linha.values.length === 0)) continue;
@@ -182,7 +205,8 @@ export class DadosColaboradoresService {
 
       const colaboradorId = Number(colaboradorIdRaw);
       const certificacaoId = String(certificacaoIdRaw);
-      const dataObtencaoRaw = ler(linha, idxDataObtencao);
+      const marcaDelete = idxDelete !== -1 && ehMarcaDelete(linha.getCell(idxDelete).value);
+      const dataObtencaoRaw = marcaDelete ? null : ler(linha, idxDataObtencao);
       const dataValidadeRaw = ler(linha, idxDataValidade);
       const anexoUrlRaw = idxAnexoUrl === -1 ? null : ler(linha, idxAnexoUrl);
       try {
@@ -198,8 +222,13 @@ export class DadosColaboradoresService {
           },
           user,
         );
-        if (atual) resumo.atualizados++;
-        else resumo.criados++;
+        if (!atual) {
+          if (dataObtencaoRaw) resumo.criados++;
+        } else if (!dataObtencaoRaw) {
+          resumo.eliminados++;
+        } else {
+          resumo.atualizados++;
+        }
       } catch (err) {
         resumo.erros.push(`Linha ${r}: ${err instanceof Error ? err.message : 'erro desconhecido.'}`);
       }
@@ -217,9 +246,19 @@ export class DadosColaboradoresService {
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('formacoes-concluidas');
-    sheet.addRow(['id', 'colaboradorId', 'Colaborador', 'formacaoId', 'Formação', 'dataConclusao', 'horasFormacao', 'avaliacao']);
+    sheet.addRow(['id', 'colaboradorId', 'Colaborador', 'formacaoId', 'Formação', 'dataConclusao', 'horasFormacao', 'avaliacao', 'DELETE']);
     for (const l of linhas) {
-      sheet.addRow([l.id, l.colaboradorId, l.colaborador.nome, l.formacaoId, l.formacao.nome, l.dataConclusao.toISOString().slice(0, 10), l.horasFormacao, l.avaliacao]);
+      sheet.addRow([
+        l.id,
+        l.colaboradorId,
+        l.colaborador.nome,
+        l.formacaoId,
+        l.formacao.nome,
+        l.dataConclusao.toISOString().slice(0, 10),
+        l.horasFormacao,
+        l.avaliacao,
+        null,
+      ]);
     }
 
     const opcoes = workbook.addWorksheet('Opções — Avaliação');
@@ -235,7 +274,9 @@ export class DadosColaboradoresService {
    * cria um novo registo (FormacoesConcluidasService.criar) — mesma regra
    * "cria se não existir" de ColaboradoresService.importar. A subida de
    * nível de competência quando `avaliacao = APROVADO` acontece dentro
-   * desses métodos (idempotente), nunca duplicada aqui.
+   * desses métodos (idempotente), nunca duplicada aqui. "DELETE" (pedido
+   * do utilizador) exige `id` — elimina esse registo em vez de o criar/
+   * atualizar.
    */
   async importarFormacoesConcluidas(buffer: Buffer, user: AuthenticatedUser): Promise<ResumoImportacaoDados> {
     const sheet = await carregarPrimeiraFolha(buffer);
@@ -246,20 +287,34 @@ export class DadosColaboradoresService {
     const idxData = indiceColuna(cabecalho, 'dataConclusao');
     const idxHoras = indiceColuna(cabecalho, 'horasFormacao');
     const idxAvaliacao = indiceColuna(cabecalho, 'avaliacao');
+    const idxDelete = cabecalho.findIndex((h) => h === 'DELETE');
 
-    const resumo: ResumoImportacaoDados = { criados: 0, atualizados: 0, erros: [] };
+    const resumo: ResumoImportacaoDados = { criados: 0, atualizados: 0, eliminados: 0, erros: [] };
     for (let r = 2; r <= sheet.rowCount; r++) {
       const linha = sheet.getRow(r);
       if (linha.values == null || (Array.isArray(linha.values) && linha.values.length === 0)) continue;
       const colaboradorIdRaw = ler(linha, idxColaborador);
+      const idRaw = idxId === -1 ? null : ler(linha, idxId);
+      if (colaboradorIdRaw == null) continue;
+      const colaboradorId = Number(colaboradorIdRaw);
+
+      if (idxDelete !== -1 && ehMarcaDelete(linha.getCell(idxDelete).value)) {
+        try {
+          if (idRaw == null) throw new Error('"id" obrigatório para eliminar (DELETE).');
+          await this.formacoesConcluidas.eliminar(colaboradorId, Number(idRaw), user);
+          resumo.eliminados++;
+        } catch (err) {
+          resumo.erros.push(`Linha ${r}: ${err instanceof Error ? err.message : 'erro desconhecido.'}`);
+        }
+        continue;
+      }
+
       const formacaoIdRaw = ler(linha, idxFormacao);
       const dataRaw = ler(linha, idxData);
       const horasRaw = ler(linha, idxHoras);
       const avaliacaoRaw = ler(linha, idxAvaliacao);
-      if (colaboradorIdRaw == null || formacaoIdRaw == null || dataRaw == null || avaliacaoRaw == null) continue;
+      if (formacaoIdRaw == null || dataRaw == null || avaliacaoRaw == null) continue;
 
-      const colaboradorId = Number(colaboradorIdRaw);
-      const idRaw = idxId === -1 ? null : ler(linha, idxId);
       const avaliacao = String(avaliacaoRaw).trim().toUpperCase() as AvaliacaoFormacao;
       try {
         if (!Object.values(AvaliacaoFormacao).includes(avaliacao)) {

@@ -6,6 +6,7 @@ import { AuthenticatedUser } from '../auth/jwt-payload.interface';
 import { AutoCriacaoService } from '../catalogo/auto-criacao.service';
 import { adicionarFolhasDeOpcoes, formulaNomeAtual, nomeFolhaDeOpcoes, numParaColunaExcel } from '../catalogo/excel-referencias.util';
 import { encontrarTabela } from '../catalogo/catalogo.registry';
+import { ehMarcaDelete } from '../catalogo/catalogo.service';
 import { CreateColaboradorDto } from './dto/create-colaborador.dto';
 import { UpdateColaboradorDto } from './dto/update-colaborador.dto';
 import { CreateAvaliacaoDto } from './dto/create-avaliacao.dto';
@@ -93,6 +94,7 @@ const COLUNAS_IMPORT_EXPORT = [
 export interface ResumoImportacaoColaboradores {
   criados: number;
   atualizados: number;
+  eliminados: number;
   erros: string[];
 }
 
@@ -236,6 +238,9 @@ export class ColaboradoresService {
         cabecalhos.push(`${LABEL_CAMPO[chave]} — nome atual`);
       }
     }
+    // Coluna extra (pedido do utilizador): escrever "DELETE" nesta célula e
+    // reimportar o ficheiro elimina esse colaborador.
+    cabecalhos.push('DELETE');
     sheet.addRow(cabecalhos);
 
     let linhaExcel = 2;
@@ -253,6 +258,7 @@ export class ColaboradoresService {
           valores.push(formulaNomeAtual(celula, FOLHA_COLABORADORES));
         }
       }
+      valores.push(null);
       sheet.addRow(valores);
       linhaExcel++;
     }
@@ -299,12 +305,16 @@ export class ColaboradoresService {
       const idx = cabecalho.findIndex((h) => h === chave);
       if (idx !== -1) indicePorCampo.set(chave, idx);
     }
+    const idxDelete = cabecalho.findIndex((h) => h === 'DELETE');
 
-    const resumo: ResumoImportacaoColaboradores = { criados: 0, atualizados: 0, erros: [] };
+    const resumo: ResumoImportacaoColaboradores = { criados: 0, atualizados: 0, eliminados: 0, erros: [] };
 
     // Fase 1 — validação (só leitura): resolve todas as linhas contra a BD
-    // sem escrever nada.
+    // sem escrever nada. Linhas com "DELETE" na coluna própria (pedido do
+    // utilizador) só precisam do id — eliminar um colaborador é sempre
+    // possível (ver eliminar acima), independentemente de dados associados.
     const linhasValidas: { data: Record<string, unknown> }[] = [];
+    const idsParaEliminar: number[] = [];
     for (let r = 2; r <= sheet.rowCount; r++) {
       const linha = sheet.getRow(r);
       if (linha.values == null || (Array.isArray(linha.values) && linha.values.length === 0)) continue;
@@ -318,6 +328,14 @@ export class ColaboradoresService {
           bruto[chave] = celula && typeof celula === 'object' && 'result' in celula ? (celula as any).result : celula;
         }
         if (Object.values(bruto).every((v) => v === null || v === undefined || v === '')) continue;
+
+        if (idxDelete !== -1 && ehMarcaDelete(linha.getCell(idxDelete).value)) {
+          if (bruto.id === undefined || bruto.id === null || bruto.id === '') {
+            throw new Error('Campo obrigatório em falta: "id".');
+          }
+          idsParaEliminar.push(Number(bruto.id));
+          continue;
+        }
 
         const data = await this.mapearLinhaImport(bruto);
         linhasValidas.push({ data });
@@ -333,6 +351,10 @@ export class ColaboradoresService {
 
     // Fase 2 — escrita: tudo numa única transação, atómica ao ficheiro inteiro.
     await this.prisma.runAsUser(user.sub, async (tx) => {
+      for (const id of idsParaEliminar) {
+        const resultado = await tx.colaborador.deleteMany({ where: { id } });
+        resumo.eliminados += resultado.count;
+      }
       for (const { data } of linhasValidas) {
         const existe = await tx.colaborador.findUnique({ where: { id: data.id as number } });
         if (existe) {

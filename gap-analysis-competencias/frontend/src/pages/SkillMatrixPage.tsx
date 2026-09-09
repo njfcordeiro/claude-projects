@@ -91,7 +91,8 @@ function RelatorioNiveisModal({ resumo, onClose }: { resumo: ResumoImportacaoNiv
           <p className="text-fiori-text">
             <span className="font-medium">{semErros ? 'Sucesso!' : 'Importação concluída com avisos.'}</span> {resumo.processadas} linha
             {resumo.processadas === 1 ? '' : 's'} processada{resumo.processadas === 1 ? '' : 's'}: {resumo.criadas} avaliaç
-            {resumo.criadas === 1 ? 'ão criada' : 'ões criadas'}, {resumo.semAlteracao} sem alteração face ao nível atual.
+            {resumo.criadas === 1 ? 'ão criada' : 'ões criadas'}, {resumo.semAlteracao} sem alteração face ao nível atual
+            {resumo.eliminadas > 0 && <>, {resumo.eliminadas} eliminada{resumo.eliminadas === 1 ? '' : 's'}</>}.
           </p>
         </div>
 
@@ -204,6 +205,7 @@ export function SkillMatrixPage() {
         processadas: 0,
         criadas: 0,
         semAlteracao: 0,
+        eliminadas: 0,
         erros: [err instanceof ApiError ? err.message : 'Não foi possível importar o ficheiro.'],
       }),
   });

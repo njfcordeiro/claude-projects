@@ -3,6 +3,7 @@ import { Cargo, OrigemAvaliacao, PapelUtilizador, Prisma } from '@prisma/client'
 import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
 import { ColaboradoresService } from '../colaboradores/colaboradores.service';
+import { ehMarcaDelete } from '../catalogo/catalogo.service';
 import { AuthenticatedUser } from '../auth/jwt-payload.interface';
 import { calcularGapLob, ordenarCertificacoes, ordenarFormacoes } from './gap-analysis.logic';
 import {
@@ -500,11 +501,11 @@ export class GapAnalysisService {
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('niveis-competencia');
-    sheet.addRow(['colaboradorId', 'Colaborador', 'competenciaId', 'Competência', 'nivelId', 'Nível — nome atual']);
+    sheet.addRow(['colaboradorId', 'Colaborador', 'competenciaId', 'Competência', 'nivelId', 'Nível — nome atual', 'DELETE']);
     for (const linha of matriz.linhas) {
       for (const col of colunas) {
         const nivelId = linha.valores[String(col.id)] ?? 0;
-        sheet.addRow([linha.colaboradorId, linha.nome, col.id, col.nome, nivelId, nomeNivel.get(nivelId) ?? String(nivelId)]);
+        sheet.addRow([linha.colaboradorId, linha.nome, col.id, col.nome, nivelId, nomeNivel.get(nivelId) ?? String(nivelId), null]);
       }
     }
 
@@ -523,11 +524,16 @@ export class GapAnalysisService {
    * histórico com reavaliações idênticas quando o utilizador reenvia o
    * mesmo ficheiro sem alterações. As colunas "— nome atual"/"Competência"
    * são só contexto e são ignoradas aqui (só lemos por cabeçalho exato).
+   *
+   * "DELETE" (pedido do utilizador) só é honrado para competências
+   * Comportamentais — reaproveita ColaboradoresService.eliminarCompetencia,
+   * a mesma exceção deliberada ao histórico append-only já usada na ficha
+   * do colaborador. Técnicas nunca perdem histórico, mesmo por aqui.
    */
   async importarNiveisCompetencia(
     buffer: Buffer,
     user: AuthenticatedUser,
-  ): Promise<{ processadas: number; criadas: number; semAlteracao: number; erros: string[] }> {
+  ): Promise<{ processadas: number; criadas: number; semAlteracao: number; eliminadas: number; erros: string[] }> {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
     const sheet = workbook.worksheets[0];
@@ -537,6 +543,7 @@ export class GapAnalysisService {
     const idxColaborador = cabecalho.findIndex((h) => h === 'colaboradorId');
     const idxCompetencia = cabecalho.findIndex((h) => h === 'competenciaId');
     const idxNivel = cabecalho.findIndex((h) => h === 'nivelId');
+    const idxDelete = cabecalho.findIndex((h) => h === 'DELETE');
     if (idxColaborador === -1 || idxCompetencia === -1 || idxNivel === -1) {
       throw new BadRequestException('Ficheiro sem as colunas obrigatórias: colaboradorId, competenciaId, nivelId.');
     }
@@ -546,25 +553,46 @@ export class GapAnalysisService {
       return v && typeof v === 'object' && 'result' in v ? (v as { result: unknown }).result : v;
     };
 
-    const linhasBrutas: { r: number; colaboradorId: number; competenciaId: number; nivelId: number }[] = [];
+    const linhasBrutas: { r: number; colaboradorId: number; competenciaId: number; nivelId: number; delete: boolean }[] = [];
     for (let r = 2; r <= sheet.rowCount; r++) {
       const linha = sheet.getRow(r);
       if (linha.values == null || (Array.isArray(linha.values) && linha.values.length === 0)) continue;
       const colaboradorId = ler(linha, idxColaborador);
       const competenciaId = ler(linha, idxCompetencia);
       const nivelId = ler(linha, idxNivel);
-      if (colaboradorId == null || competenciaId == null || nivelId == null) continue;
-      linhasBrutas.push({ r, colaboradorId: Number(colaboradorId), competenciaId: Number(competenciaId), nivelId: Number(nivelId) });
+      const marcaDelete = idxDelete !== -1 && ehMarcaDelete(linha.getCell(idxDelete).value);
+      if (colaboradorId == null || competenciaId == null || (nivelId == null && !marcaDelete)) continue;
+      linhasBrutas.push({
+        r,
+        colaboradorId: Number(colaboradorId),
+        competenciaId: Number(competenciaId),
+        nivelId: Number(nivelId ?? 0),
+        delete: marcaDelete,
+      });
     }
 
-    const resumo = { processadas: linhasBrutas.length, criadas: 0, semAlteracao: 0, erros: [] as string[] };
+    const resumo = { processadas: linhasBrutas.length, criadas: 0, semAlteracao: 0, eliminadas: 0, erros: [] as string[] };
     if (linhasBrutas.length === 0) return resumo;
 
     const idsColaboradores = [...new Set(linhasBrutas.map((l) => l.colaboradorId))];
     const niveisAtuais = await this.buscarNiveisAtuaisEmLote(idsColaboradores);
+    const competencias = await this.prisma.competencia.findMany({
+      where: { id: { in: [...new Set(linhasBrutas.map((l) => l.competenciaId))] } },
+      select: { id: true, tipo: true },
+    });
+    const tipoPorCompetencia = new Map(competencias.map((c) => [c.id, c.tipo]));
 
     for (const linha of linhasBrutas) {
       try {
+        if (linha.delete) {
+          if (tipoPorCompetencia.get(linha.competenciaId) === 'TECNICA') {
+            throw new Error('não é possível eliminar avaliações de competências técnicas — o histórico é sempre append-only.');
+          }
+          await this.colaboradores.eliminarCompetencia(linha.colaboradorId, linha.competenciaId, user);
+          resumo.eliminadas++;
+          continue;
+        }
+
         if (!Number.isInteger(linha.nivelId) || linha.nivelId < 0 || linha.nivelId > 5) {
           throw new Error(`nível inválido: "${linha.nivelId}" (tem de ser um inteiro 0-5).`);
         }

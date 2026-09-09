@@ -55,7 +55,7 @@ function DadosColaboradorEspecialCard({ item }: { item: (typeof DADOS_COLABORADO
     mutationFn: (file: File) => endpoints.dadosColaboradoresImportar(item.chave, file),
     onSuccess: (resumo) => setRelatorio(resumo),
     onError: (err) =>
-      setRelatorio({ criados: 0, atualizados: 0, erros: [err instanceof ApiError ? err.message : 'Não foi possível importar o ficheiro.'] }),
+      setRelatorio({ criados: 0, atualizados: 0, eliminados: 0, erros: [err instanceof ApiError ? err.message : 'Não foi possível importar o ficheiro.'] }),
   });
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -136,7 +136,7 @@ export function CatalogoPage() {
       setRelatorioImportacao(resumo);
     },
     onError: (err) =>
-      setRelatorioImportacao({ criados: 0, atualizados: 0, erros: [err instanceof ApiError ? err.message : 'Não foi possível importar o ficheiro.'] }),
+      setRelatorioImportacao({ criados: 0, atualizados: 0, eliminados: 0, erros: [err instanceof ApiError ? err.message : 'Não foi possível importar o ficheiro.'] }),
   });
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
