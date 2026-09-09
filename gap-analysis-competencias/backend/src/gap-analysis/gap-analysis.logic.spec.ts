@@ -77,15 +77,23 @@ describe('calcularGapCertificacao', () => {
   });
 
   it('cumpre se a validade é hoje ou no futuro', () => {
-    const registo: CertificacaoColaboradorInput = { dataValidade: new Date('2026-08-01'), dataObtencao: null };
+    const registo: CertificacaoColaboradorInput = { dataValidade: new Date('2026-08-01'), dataObtencao: new Date('2020-01-01') };
     const r = calcularGapCertificacao(requisitoCertificacao(), registo, HOJE);
     expect(r.cumprido).toBe(true);
   });
 
   it('NÃO cumpre se a certificação está expirada, mesmo possuindo-a', () => {
-    const registo: CertificacaoColaboradorInput = { dataValidade: new Date('2026-01-01'), dataObtencao: null };
+    const registo: CertificacaoColaboradorInput = { dataValidade: new Date('2026-01-01'), dataObtencao: new Date('2020-01-01') };
     const r = calcularGapCertificacao(requisitoCertificacao(), registo, HOJE);
     expect(r.possui).toBe(true);
+    expect(r.valida).toBe(false);
+    expect(r.cumprido).toBe(false);
+  });
+
+  it('NÃO cumpre se a data de obtenção foi apagada, mesmo com registo e validade preenchidos (reverter para "em falta")', () => {
+    const registo: CertificacaoColaboradorInput = { dataValidade: new Date('2026-08-01'), dataObtencao: null };
+    const r = calcularGapCertificacao(requisitoCertificacao(), registo, HOJE);
+    expect(r.possui).toBe(false);
     expect(r.valida).toBe(false);
     expect(r.cumprido).toBe(false);
   });

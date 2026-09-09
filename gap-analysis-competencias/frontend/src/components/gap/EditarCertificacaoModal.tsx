@@ -53,8 +53,8 @@ export function EditarCertificacaoModal({ colaboradorId, certificacaoId, certifi
     setSubmitting(true);
     try {
       await endpoints.upsertCertificacao(colaboradorId, certificacaoId, {
-        dataObtencao: dataObtencao || undefined,
-        dataValidade: dataValidade || undefined,
+        dataObtencao: dataObtencao || null,
+        dataValidade: dataValidade || null,
         version: base?.version,
       });
       onSuccess();

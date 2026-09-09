@@ -111,8 +111,8 @@ export interface CreateAvaliacaoInput {
 }
 
 export interface UpsertCertificacaoInput {
-  dataObtencao?: string;
-  dataValidade?: string;
+  dataObtencao?: string | null;
+  dataValidade?: string | null;
   anexoUrl?: string;
   version?: number;
 }

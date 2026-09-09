@@ -55,7 +55,10 @@ export function calcularGapCertificacao(
   registo: CertificacaoColaboradorInput | undefined,
   hoje: Date,
 ): GapCertificacao {
-  const possui = registo !== undefined;
+  // "possui" exige dataObtencao preenchida — permite apagar a data (ex.: registo
+  // por engano) para reverter a certificação para "em falta", sem ter de apagar
+  // a linha inteira (dataValidade/anexo podem já ter sido preenchidos entretanto).
+  const possui = registo !== undefined && registo.dataObtencao !== null;
   const valida = possui && (registo!.dataValidade === null || registo!.dataValidade >= hoje);
   return {
     certificacaoId: requisito.certificacaoId,

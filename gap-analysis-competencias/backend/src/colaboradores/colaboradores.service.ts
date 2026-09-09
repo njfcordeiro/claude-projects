@@ -590,8 +590,8 @@ export class ColaboradoresService {
   async upsertCertificacao(colaboradorId: number, certificacaoId: string, dto: UpsertCertificacaoDto, user: AuthenticatedUser) {
     await this.podeEditar(colaboradorId, user);
     const dados = {
-      dataObtencao: dto.dataObtencao ? new Date(dto.dataObtencao) : undefined,
-      dataValidade: dto.dataValidade ? new Date(dto.dataValidade) : undefined,
+      dataObtencao: dto.dataObtencao === undefined ? undefined : dto.dataObtencao === null ? null : new Date(dto.dataObtencao),
+      dataValidade: dto.dataValidade === undefined ? undefined : dto.dataValidade === null ? null : new Date(dto.dataValidade),
       anexoUrl: dto.anexoUrl,
     };
 
