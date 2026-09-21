@@ -167,6 +167,15 @@ export const endpoints = {
     api.delete<void>(`/colaboradores/${colaboradorId}/formacoes-concluidas/${id}`),
 
   // --- Gestão de Dados: export/import em massa (dados de colaboradores) ------
+  dadosColaboradoresListar: <T>(chave: string, filtros: FiltrosOrganizacionais = {}) => {
+    const params = new URLSearchParams();
+    if (filtros.direcaoId) params.set('direcaoId', String(filtros.direcaoId));
+    if (filtros.areaId) params.set('areaId', String(filtros.areaId));
+    if (filtros.nucleoId) params.set('nucleoId', String(filtros.nucleoId));
+    if (filtros.cargoId) params.set('cargoId', filtros.cargoId);
+    const qs = params.toString();
+    return api.get<T[]>(`/dados-colaboradores/${chave}${qs ? `?${qs}` : ''}`);
+  },
   dadosColaboradoresExportar: (chave: string) => downloadFile(`/dados-colaboradores/${chave}/export`, `${chave}.xlsx`),
   dadosColaboradoresImportar: (chave: string, file: File) => {
     const form = new FormData();

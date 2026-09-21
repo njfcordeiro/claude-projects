@@ -157,6 +157,40 @@ export interface UpdateFormacaoConcluidaInput {
   avaliacao?: AvaliacaoFormacao;
 }
 
+// --- Gestão de Dados: grelhas de "Dados de colaboradores" (backend/src/dados-colaboradores) ---
+
+export interface DadosCompetenciaColaborador {
+  colaboradorId: number;
+  colaboradorNome: string;
+  competenciaId: number;
+  competenciaNome: string;
+  nivelId: number;
+  nivelNome: string;
+  dataAvaliacao: string;
+}
+
+export interface DadosCertificacaoColaborador {
+  colaboradorId: number;
+  colaboradorNome: string;
+  certificacaoId: string;
+  certificacaoNome: string;
+  dataObtencao: string;
+  dataValidade: string | null;
+  anexoUrl: string | null;
+  version: number;
+}
+
+export interface DadosFormacaoConcluidaColaborador {
+  id: number;
+  colaboradorId: number;
+  colaboradorNome: string;
+  formacaoId: number;
+  formacaoNome: string;
+  dataConclusao: string;
+  horasFormacao: number;
+  avaliacao: AvaliacaoFormacao;
+}
+
 /** Todas as vertentes de um Projeto (catálogo) — usado pelo modal "Registar participação" para escolher mais do que a vertente que originou o clique. */
 export interface ProjetoVertenteDetalhe {
   id: number;

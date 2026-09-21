@@ -11,6 +11,9 @@ import { PrintButton } from '../components/ui/PrintButton';
 import { CatalogoRecordModal } from '../components/catalogo/CatalogoRecordModal';
 import { CatalogoCelula } from '../components/catalogo/CatalogoCelula';
 import { UploadReportModal } from '../components/catalogo/UploadReportModal';
+import { GrelhaCompetencias } from '../components/catalogo/GrelhaCompetencias';
+import { GrelhaCertificacoes } from '../components/catalogo/GrelhaCertificacoes';
+import { GrelhaFormacoesConcluidas } from '../components/catalogo/GrelhaFormacoesConcluidas';
 
 /**
  * Export/import em massa dos dados históricos/avaliação dos colaboradores
@@ -70,7 +73,12 @@ const GRUPOS_CATALOGO: GrupoCatalogo[] = [
   { id: 'lobs', label: 'LOBs', tabelas: ['lobs', 'lob-requisitos-competencia', 'lob-requisitos-certificacao', 'lob-recomendacoes'] },
 ];
 
-/** Bloco de Download/Upload para uma das tabelas especiais acima — sem grelha, sem criar/eliminar linha a linha. */
+/**
+ * Bloco de Download/Upload (para operações em massa) para uma das tabelas
+ * especiais acima, seguido da grelha própria de edição linha-a-linha
+ * (pedido do utilizador: "também deve ser listada a tabela... e que
+ * permita editar, adicionar, remover os dados").
+ */
 function DadosColaboradorEspecialCard({ item }: { item: (typeof DADOS_COLABORADORES_ITENS)[number] }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [relatorio, setRelatorio] = useState<ResumoImportacao | null>(null);
@@ -89,29 +97,34 @@ function DadosColaboradorEspecialCard({ item }: { item: (typeof DADOS_COLABORADO
   }
 
   return (
-    <Card
-      title={item.label}
-      action={
-        <div className="flex flex-wrap gap-2 no-print">
-          <Button variant="secondary" onClick={() => endpoints.dadosColaboradoresExportar(item.chave)}>
-            <span className="flex items-center gap-1.5">
-              <Download size={14} /> Download
-            </span>
-          </Button>
-          <Button variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={importar.isPending}>
-            <span className="flex items-center gap-1.5">
-              <Upload size={14} /> {importar.isPending ? 'A importar…' : 'Upload'}
-            </span>
-          </Button>
-          <input ref={fileInputRef} type="file" accept=".xlsx" className="hidden" onChange={handleFileChange} />
-        </div>
-      }
-    >
-      <p className="text-sm text-fiori-text-secondary">{item.descricao}</p>
-      {relatorio && (
-        <UploadReportModal resumo={relatorio} onClose={() => setRelatorio(null)} />
-      )}
-    </Card>
+    <div className="space-y-4">
+      <Card
+        title={item.label}
+        action={
+          <div className="flex flex-wrap gap-2 no-print">
+            <Button variant="secondary" onClick={() => endpoints.dadosColaboradoresExportar(item.chave)}>
+              <span className="flex items-center gap-1.5">
+                <Download size={14} /> Download
+              </span>
+            </Button>
+            <Button variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={importar.isPending}>
+              <span className="flex items-center gap-1.5">
+                <Upload size={14} /> {importar.isPending ? 'A importar…' : 'Upload'}
+              </span>
+            </Button>
+            <input ref={fileInputRef} type="file" accept=".xlsx" className="hidden" onChange={handleFileChange} />
+          </div>
+        }
+      >
+        <p className="text-sm text-fiori-text-secondary">{item.descricao}</p>
+        {relatorio && <UploadReportModal resumo={relatorio} onClose={() => setRelatorio(null)} />}
+      </Card>
+
+      {item.chave === 'competencias-tecnicas' && <GrelhaCompetencias tipo="TECNICA" />}
+      {item.chave === 'competencias-comportamentais' && <GrelhaCompetencias tipo="COMPORTAMENTAL" />}
+      {item.chave === 'certificacoes' && <GrelhaCertificacoes />}
+      {item.chave === 'formacoes-concluidas' && <GrelhaFormacoesConcluidas />}
+    </div>
   );
 }
 

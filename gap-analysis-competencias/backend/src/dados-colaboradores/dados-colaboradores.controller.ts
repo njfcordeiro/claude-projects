@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Post, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Post, Query, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
@@ -8,7 +8,17 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { AuthenticatedUser } from '../auth/jwt-payload.interface';
+import { FiltrosOrganizacionais } from '../gap-analysis/gap-analysis.types';
 import { DadosColaboradoresService } from './dados-colaboradores.service';
+
+function filtrosDe(direcaoId?: string, areaId?: string, nucleoId?: string, cargoId?: string): FiltrosOrganizacionais {
+  return {
+    direcaoId: direcaoId ? Number(direcaoId) : undefined,
+    areaId: areaId ? Number(areaId) : undefined,
+    nucleoId: nucleoId ? Number(nucleoId) : undefined,
+    cargoId: cargoId || undefined,
+  };
+}
 
 const LIMITE_FICHEIRO_BYTES = 10 * 1024 * 1024;
 
@@ -31,6 +41,16 @@ function ficheiroObrigatorio(file: Express.Multer.File | undefined): Express.Mul
 export class DadosColaboradoresController {
   constructor(private readonly service: DadosColaboradoresService) {}
 
+  @Get('competencias-tecnicas')
+  listarCompetenciasTecnicas(
+    @Query('direcaoId') direcaoId: string | undefined,
+    @Query('areaId') areaId: string | undefined,
+    @Query('nucleoId') nucleoId: string | undefined,
+    @Query('cargoId') cargoId: string | undefined,
+  ) {
+    return this.service.listarCompetencias('TECNICA', filtrosDe(direcaoId, areaId, nucleoId, cargoId));
+  }
+
   @Get('competencias-tecnicas/export')
   async exportarCompetenciasTecnicas(@Res() res: Response) {
     const buffer = await this.service.exportarCompetencias('TECNICA');
@@ -43,6 +63,16 @@ export class DadosColaboradoresController {
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: LIMITE_FICHEIRO_BYTES } }))
   importarCompetenciasTecnicas(@UploadedFile() file: Express.Multer.File | undefined, @CurrentUser() user: AuthenticatedUser) {
     return this.service.importarCompetencias('TECNICA', ficheiroObrigatorio(file).buffer, user);
+  }
+
+  @Get('competencias-comportamentais')
+  listarCompetenciasComportamentais(
+    @Query('direcaoId') direcaoId: string | undefined,
+    @Query('areaId') areaId: string | undefined,
+    @Query('nucleoId') nucleoId: string | undefined,
+    @Query('cargoId') cargoId: string | undefined,
+  ) {
+    return this.service.listarCompetencias('COMPORTAMENTAL', filtrosDe(direcaoId, areaId, nucleoId, cargoId));
   }
 
   @Get('competencias-comportamentais/export')
@@ -59,6 +89,16 @@ export class DadosColaboradoresController {
     return this.service.importarCompetencias('COMPORTAMENTAL', ficheiroObrigatorio(file).buffer, user);
   }
 
+  @Get('certificacoes')
+  listarCertificacoes(
+    @Query('direcaoId') direcaoId: string | undefined,
+    @Query('areaId') areaId: string | undefined,
+    @Query('nucleoId') nucleoId: string | undefined,
+    @Query('cargoId') cargoId: string | undefined,
+  ) {
+    return this.service.listarCertificacoes(filtrosDe(direcaoId, areaId, nucleoId, cargoId));
+  }
+
   @Get('certificacoes/export')
   async exportarCertificacoes(@Res() res: Response) {
     const buffer = await this.service.exportarCertificacoes();
@@ -71,6 +111,16 @@ export class DadosColaboradoresController {
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: LIMITE_FICHEIRO_BYTES } }))
   importarCertificacoes(@UploadedFile() file: Express.Multer.File | undefined, @CurrentUser() user: AuthenticatedUser) {
     return this.service.importarCertificacoes(ficheiroObrigatorio(file).buffer, user);
+  }
+
+  @Get('formacoes-concluidas')
+  listarFormacoesConcluidas(
+    @Query('direcaoId') direcaoId: string | undefined,
+    @Query('areaId') areaId: string | undefined,
+    @Query('nucleoId') nucleoId: string | undefined,
+    @Query('cargoId') cargoId: string | undefined,
+  ) {
+    return this.service.listarFormacoesConcluidas(filtrosDe(direcaoId, areaId, nucleoId, cargoId));
   }
 
   @Get('formacoes-concluidas/export')
