@@ -5,6 +5,12 @@ import { PrismaService } from '../prisma/prisma.service';
 export class LobsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** nivelMinimoId (0-5) não tem FK formal — a escala é sempre a da Competência (ver comentário em schema.prisma, modelo Nivel). */
+  private async nomesDeNiveis(): Promise<Map<string, string>> {
+    const niveis = await this.prisma.nivel.findMany();
+    return new Map(niveis.map((n) => [`${n.tipo}:${n.id}`, n.nome]));
+  }
+
   async listar() {
     const lobs = await this.prisma.lob.findMany({
       include: {
@@ -25,20 +31,23 @@ export class LobsService {
   }
 
   async obterDetalhe(id: number) {
-    const lob = await this.prisma.lob.findUnique({
-      where: { id },
-      include: {
-        area: { select: { nome: true } },
-        requisitosCompetencia: {
-          include: { competencia: { select: { nome: true } }, nivelMinimo: { select: { nome: true } } },
-          orderBy: { competencia: { nome: 'asc' } },
+    const [lob, nomesNiveis] = await Promise.all([
+      this.prisma.lob.findUnique({
+        where: { id },
+        include: {
+          area: { select: { nome: true } },
+          requisitosCompetencia: {
+            include: { competencia: { select: { nome: true, tipo: true } } },
+            orderBy: { competencia: { nome: 'asc' } },
+          },
+          requisitosCertificacao: {
+            include: { certificacao: { select: { nome: true } } },
+            orderBy: { certificacao: { nome: 'asc' } },
+          },
         },
-        requisitosCertificacao: {
-          include: { certificacao: { select: { nome: true } } },
-          orderBy: { certificacao: { nome: 'asc' } },
-        },
-      },
-    });
+      }),
+      this.nomesDeNiveis(),
+    ]);
     if (!lob) throw new NotFoundException(`LOB ${id} não encontrada.`);
 
     return {
@@ -52,7 +61,7 @@ export class LobsService {
         obrigatorio: r.obrigatorio,
         pontos: r.pontos,
         nivelMinimoId: r.nivelMinimoId,
-        nivelMinimoNome: r.nivelMinimo.nome,
+        nivelMinimoNome: nomesNiveis.get(`${r.competencia.tipo}:${r.nivelMinimoId}`) ?? `Nível ${r.nivelMinimoId}`,
       })),
       requisitosCertificacao: lob.requisitosCertificacao.map((r) => ({
         certificacaoId: r.certificacaoId,

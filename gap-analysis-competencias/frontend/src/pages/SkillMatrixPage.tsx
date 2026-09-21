@@ -176,9 +176,12 @@ export function SkillMatrixPage() {
   const [colLobIdComp, setColLobIdComp] = useState('');
   const [colCompetenciaIds, setColCompetenciaIds] = useState<number[]>([]);
 
-  const [celulaEmEdicao, setCelulaEmEdicao] = useState<{ colaboradorId: number; competenciaId: number; competenciaNome: string } | null>(
-    null,
-  );
+  const [celulaEmEdicao, setCelulaEmEdicao] = useState<{
+    colaboradorId: number;
+    competenciaId: number;
+    competenciaNome: string;
+    competenciaTipo: 'TECNICA' | 'COMPORTAMENTAL';
+  } | null>(null);
   const [relatorioNiveis, setRelatorioNiveis] = useState<ResumoImportacaoNiveis | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -269,7 +272,12 @@ export function SkillMatrixPage() {
               editavel
                 ? (e) => {
                     e.stopPropagation();
-                    setCelulaEmEdicao({ colaboradorId: l.colaboradorId, competenciaId: col.id, competenciaNome: col.nome });
+                    setCelulaEmEdicao({
+                      colaboradorId: l.colaboradorId,
+                      competenciaId: col.id,
+                      competenciaNome: col.nome,
+                      competenciaTipo: col.tipo ?? 'TECNICA',
+                    });
                   }
                 : undefined
             }
@@ -527,6 +535,7 @@ export function SkillMatrixPage() {
           colaboradorId={celulaEmEdicao.colaboradorId}
           competenciaId={celulaEmEdicao.competenciaId}
           competenciaNome={celulaEmEdicao.competenciaNome}
+          competenciaTipo={celulaEmEdicao.competenciaTipo}
           onClose={() => setCelulaEmEdicao(null)}
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ['skill-matrix'] });

@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { EstadoPdi, OrigemAvaliacao, OrigemPdi, Prisma } from '@prisma/client';
+import { EstadoPdi, OrigemAvaliacao, OrigemPdi, Prisma, TipoDesenvolvimento } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { ColaboradoresService } from '../colaboradores/colaboradores.service';
+import { ColaboradoresService, validarNivelPertenceAoTipo } from '../colaboradores/colaboradores.service';
 import { GapAnalysisService } from '../gap-analysis/gap-analysis.service';
 import { AuthenticatedUser } from '../auth/jwt-payload.interface';
 import { CreatePdiItemDto } from './dto/create-pdi-item.dto';
@@ -11,12 +11,11 @@ import { GerarParaProximoCargoDto } from './dto/gerar-para-proximo-cargo.dto';
 import { LobObjetivosService } from './lob-objetivos.service';
 
 const INCLUDE_ITEM = {
-  competencia: { select: { nome: true } },
+  competencia: { select: { nome: true, tipo: true } },
   certificacao: { select: { nome: true } },
   formacao: { select: { nome: true, duracaoHoras: true } },
   lob: { select: { nome: true } },
   cargo: { select: { nome: true } },
-  nivelAlvo: { select: { nome: true } },
 } as const;
 
 interface CandidatoPdi {
@@ -79,13 +78,34 @@ export class PdiService {
     private readonly lobObjetivos: LobObjetivosService,
   ) {}
 
+  /**
+   * nivelAlvoId (0-5) não tem FK formal para Nivel — a escala é sempre a da
+   * Competência do item (ver comentário em schema.prisma, modelo Nivel).
+   * Anexa `nivelAlvo.nome` a cada item, resolvendo pela escala certa —
+   * substitui o antigo `include: { nivelAlvo: ... } }` do Prisma.
+   */
+  private async comNivelAlvo<T extends { nivelAlvoId: number | null; competencia: { tipo: TipoDesenvolvimento } | null }>(
+    itens: T[],
+  ): Promise<(T & { nivelAlvo: { nome: string } | null })[]> {
+    const niveis = await this.prisma.nivel.findMany();
+    const nomePorChave = new Map(niveis.map((n) => [`${n.tipo}:${n.id}`, n.nome]));
+    return itens.map((item) => ({
+      ...item,
+      nivelAlvo:
+        item.nivelAlvoId !== null && item.competencia
+          ? { nome: nomePorChave.get(`${item.competencia.tipo}:${item.nivelAlvoId}`) ?? `Nível ${item.nivelAlvoId}` }
+          : null,
+    }));
+  }
+
   async listar(colaboradorId: number, user: AuthenticatedUser) {
     await this.colaboradores.obterComVerificacaoDeAcesso(colaboradorId, user);
-    return this.prisma.pdiItem.findMany({
+    const itens = await this.prisma.pdiItem.findMany({
       where: { colaboradorId },
       include: INCLUDE_ITEM,
       orderBy: [{ estado: 'asc' }, { createdAt: 'asc' }],
     });
+    return this.comNivelAlvo(itens);
   }
 
   /** Escolhe automaticamente a LOB-alvo (BUD, senão sistema, ambos por maior prontidão) e gera sugestões só para essa. */
@@ -311,12 +331,10 @@ export class PdiService {
       if (dto.nivelAlvoId === undefined) {
         throw new BadRequestException('Indica o nível que o colaborador tem de atingir nesta competência.');
       }
-      const [competencia, nivel] = await Promise.all([
-        this.prisma.competencia.findUnique({ where: { id: dto.competenciaId } }),
-        this.prisma.nivel.findUnique({ where: { id: dto.nivelAlvoId } }),
-      ]);
+      const competencia = await this.prisma.competencia.findUnique({ where: { id: dto.competenciaId } });
       if (!competencia) throw new NotFoundException(`Competência ${dto.competenciaId} não encontrada.`);
-      if (!nivel) throw new NotFoundException(`Nível ${dto.nivelAlvoId} não encontrado.`);
+      await validarNivelPertenceAoTipo(this.prisma, dto.competenciaId, dto.nivelAlvoId);
+      const nivel = await this.prisma.nivel.findUniqueOrThrow({ where: { tipo_id: { tipo: competencia.tipo, id: dto.nivelAlvoId } } });
       nivelAlvoId = dto.nivelAlvoId;
       descricao = `Reforçar competência "${competencia.nome}" até ao nível "${nivel.nome}".`;
     } else {
@@ -342,7 +360,7 @@ export class PdiService {
         include: INCLUDE_ITEM,
       }),
     );
-    return criado;
+    return (await this.comNivelAlvo([criado]))[0];
   }
 
   /**
@@ -394,7 +412,8 @@ export class PdiService {
         await this.colaboradores.subirNivelSeSuperior(tx, colaboradorId, r.competenciaId, r.nivelId, OrigemAvaliacao.CERTIFICACAO, user.sub);
       }
     });
-    return this.prisma.pdiItem.findUniqueOrThrow({ where: { id: itemId }, include: INCLUDE_ITEM });
+    const atualizado = await this.prisma.pdiItem.findUniqueOrThrow({ where: { id: itemId }, include: INCLUDE_ITEM });
+    return (await this.comNivelAlvo([atualizado]))[0];
   }
 
   async eliminar(colaboradorId: number, itemId: number, user: AuthenticatedUser) {

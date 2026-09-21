@@ -119,6 +119,7 @@ export function CompetenciasComportamentaisSection({ colaboradorId }: { colabora
           colaboradorId={colaboradorId}
           competenciaId={competenciaEmEdicao.id}
           competenciaNome={competenciaEmEdicao.nome}
+          competenciaTipo="COMPORTAMENTAL"
           onClose={() => setCompetenciaEmEdicao(null)}
           onSuccess={() => {
             setCompetenciaEmEdicao(null);

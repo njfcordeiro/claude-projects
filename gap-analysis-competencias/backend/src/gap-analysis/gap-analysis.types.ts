@@ -5,9 +5,13 @@
  * secção 3, tabela `niveis`).
  */
 
+import { TipoDesenvolvimento } from '@prisma/client';
+
 export interface RequisitoCompetenciaInput {
   competenciaId: number;
   competenciaNome: string;
+  /** Técnica ou Comportamental — determina a escala válida de nivelMinimo/nivelAtual (ver comentário em schema.prisma, modelo Nivel). */
+  competenciaTipo: TipoDesenvolvimento;
   obrigatorio: boolean;
   pontos: number;
   nivelMinimo: number;
@@ -40,6 +44,7 @@ export interface CertificacaoColaboradorInput {
 export interface GapCompetencia {
   competenciaId: number;
   competenciaNome: string;
+  competenciaTipo: TipoDesenvolvimento;
   obrigatorio: boolean;
   nivelExigido: number;
   nivelAtual: number;
@@ -338,6 +343,8 @@ export interface SkillMatrixColuna {
   nome: string;
   areaId: number;
   areaNome: string;
+  /** Só presente na dimensão 'competencia' — Técnica ou Comportamental, define a escala de nível desta coluna. */
+  tipo?: TipoDesenvolvimento;
   /** Só presente na dimensão 'competencia' — LOBs que exigem esta competência (usado no filtro "por LOB"). */
   lobIds?: number[];
 }

@@ -299,18 +299,35 @@ model CargoProgressao {
 }
 
 // Escala de proficiência única, 0-5, partilhada por toda a app.
+// Duas escalas de níveis — Técnica e Comportamental (pedido do utilizador:
+// "é preciso uma nova escala de competências, para as comportamentais").
+// Ambas usam os MESMOS números de nível (0-5): qualquer código que trate
+// nivelId como uma ordem numérica (cor do heatmap da Skill Matrix, "nível
+// X de 5", comparações >=) continua a funcionar em qualquer das escalas
+// sem alteração nenhuma — só o NOME de cada nível pode divergir por
+// escala (começam iguais, pedido do utilizador: "de momento podem ficar
+// iguais, que eu depois ajusto"). Por isso a chave é composta (tipo, id):
+// sem isto não seria possível ter, por exemplo, um nível 3 "Proficiente"
+// Técnico e um nível 3 diferente Comportamental em simultâneo.
+//
+// As tabelas que guardam um nível (CertificacaoRequisitoCompetencia,
+// FormacaoRequisitoCompetencia, CargoRequisitoCompetencia,
+// LobRequisitoCompetencia, ColaboradorCompetencia, PdiItem) guardam só o
+// nivelId (0-5) — nunca o tipo: a escala correta é sempre a da
+// Competência associada nessa mesma linha. Como isso já não é uma FK de
+// uma só coluna para uma PK composta, essas tabelas deixam de ter uma
+// relação Prisma formal para Nivel — a validação de que o nivelId
+// pertence à escala certa passa a ser feita em código
+// (CatalogoService "relationFiltroDeCampo", ColaboradoresService.
+// validarNivelPertenceAoTipo, etc.), não por uma FK da base de dados.
 model Nivel {
-  id        Int    @id
-  nome      String @unique
+  id        Int
+  tipo      TipoDesenvolvimento
+  nome      String
   descricao String
 
-  certificacaoRequisitos  CertificacaoRequisitoCompetencia[]
-  formacaoRequisitos      FormacaoRequisitoCompetencia[]
-  lobRequisitos           LobRequisitoCompetencia[]
-  colaboradorCompetencias ColaboradorCompetencia[]
-  cargoRequisitos         CargoRequisitoCompetencia[]
-  pdiItensAlvo            PdiItem[]
-
+  @@id([tipo, id])
+  @@unique([tipo, nome])
   @@map("niveis")
 }
 
@@ -366,7 +383,7 @@ model CertificacaoRequisitoCompetencia {
 
   certificacao Certificacao @relation(fields: [certificacaoId], references: [id])
   competencia  Competencia  @relation(fields: [competenciaId], references: [id])
-  nivel        Nivel        @relation(fields: [nivelId], references: [id])
+  // nivelId (0-5) sem relação Prisma formal — ver comentário em Nivel.
 
   @@unique([certificacaoId, competenciaId])
   @@map("certificacao_requisito_competencia")
@@ -401,7 +418,7 @@ model FormacaoRequisitoCompetencia {
 
   formacao    Formacao    @relation(fields: [formacaoId], references: [id])
   competencia Competencia @relation(fields: [competenciaId], references: [id])
-  nivel       Nivel       @relation(fields: [nivelId], references: [id])
+  // nivelId (0-5) sem relação Prisma formal — ver comentário em Nivel.
 
   @@unique([formacaoId, competenciaId])
   @@map("formacao_requisito_competencia")
@@ -525,7 +542,7 @@ model CargoRequisitoCompetencia {
 
   cargo        Cargo       @relation(fields: [cargoId], references: [id])
   competencia  Competencia @relation(fields: [competenciaId], references: [id])
-  nivelExigido Nivel       @relation(fields: [nivelExigidoId], references: [id])
+  // nivelExigidoId (0-5) sem relação Prisma formal — ver comentário em Nivel.
 
   @@id([cargoId, competenciaId])
   @@map("cargo_requisito_competencia")
@@ -541,7 +558,7 @@ model LobRequisitoCompetencia {
 
   lob         Lob         @relation(fields: [lobId], references: [id])
   competencia Competencia @relation(fields: [competenciaId], references: [id])
-  nivelMinimo Nivel       @relation(fields: [nivelMinimoId], references: [id])
+  // nivelMinimoId (0-5) sem relação Prisma formal — ver comentário em Nivel.
 
   @@unique([lobId, competenciaId])
   @@map("lob_requisito_competencia")
@@ -684,7 +701,7 @@ model ColaboradorCompetencia {
 
   colaborador Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
   competencia Competencia @relation(fields: [competenciaId], references: [id])
-  nivel       Nivel       @relation(fields: [nivelId], references: [id])
+  // nivelId (0-5) sem relação Prisma formal — ver comentário em Nivel.
   avaliador   User?       @relation("Avaliador", fields: [avaliadoPor], references: [id])
 
   @@index([colaboradorId, competenciaId, dataAvaliacao])
@@ -814,7 +831,7 @@ model PdiItem {
   formacao     Formacao?     @relation(fields: [formacaoId], references: [id], onDelete: Restrict)
   lob          Lob?          @relation(fields: [lobId], references: [id], onDelete: Restrict)
   cargo        Cargo?        @relation(fields: [cargoId], references: [id], onDelete: Restrict)
-  nivelAlvo    Nivel?        @relation(fields: [nivelAlvoId], references: [id], onDelete: Restrict)
+  // nivelAlvoId (0-5) sem relação Prisma formal — ver comentário em Nivel.
 
   @@index([colaboradorId])
   @@map("pdi_items")

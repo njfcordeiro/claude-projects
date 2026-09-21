@@ -41,6 +41,7 @@ export function calcularGapCompetencia(
   return {
     competenciaId: requisito.competenciaId,
     competenciaNome: requisito.competenciaNome,
+    competenciaTipo: requisito.competenciaTipo,
     obrigatorio: requisito.obrigatorio,
     nivelExigido: requisito.nivelMinimo,
     nivelAtual,

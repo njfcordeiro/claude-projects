@@ -199,6 +199,7 @@ export interface ProjetoVertenteCandidata {
 export interface RelatorioGapCompetencia {
   competenciaId: number;
   competenciaNome: string;
+  competenciaTipo: 'TECNICA' | 'COMPORTAMENTAL';
   obrigatorio: boolean;
   nivelExigido: number;
   nivelAtual: number;
@@ -399,7 +400,7 @@ export interface CandidatosPorColaboradorResponse {
 
 // --- Catálogo genérico (backend/src/catalogo) -----------------------------
 
-export type CatalogoTipoCampo = 'string' | 'int' | 'boolean' | 'relation' | 'enum';
+export type CatalogoTipoCampo = 'string' | 'int' | 'boolean' | 'relation' | 'enum' | 'nivel';
 
 export interface CatalogoOpcaoEnum {
   value: string;
@@ -417,6 +418,8 @@ export interface CatalogoCampoDef {
   relationFiltro?: { campo: string; valor: string };
   /** Só para tipo 'enum'. */
   opcoes?: CatalogoOpcaoEnum[];
+  /** Só para tipo 'nivel': campo desta MESMA linha que identifica a Competência cujo tipo determina a escala válida (0-5). */
+  nivelDeCompetenciaCampo?: string;
 }
 
 export interface CatalogoTabelaMeta {
@@ -554,6 +557,8 @@ export interface SkillMatrixColuna {
   nome: string;
   areaId: number;
   areaNome: string;
+  /** Só presente na dimensão 'competencia' — define a escala de nível desta coluna (Técnica/Comportamental). */
+  tipo?: 'TECNICA' | 'COMPORTAMENTAL';
   /** Só presente na dimensão 'competencia' — LOBs que exigem esta competência (usado no filtro "por LOB"). */
   lobIds?: number[];
 }
