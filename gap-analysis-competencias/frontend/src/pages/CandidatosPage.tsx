@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { endpoints } from '../api/endpoints';
 import { Card } from '../components/ui/Card';
+import { AjudaContextual } from '../components/ui/AjudaContextual';
 import { Badge } from '../components/ui/Badge';
 import { DataTable, DataTableColumn } from '../components/ui/DataTable';
 import { PrintButton } from '../components/ui/PrintButton';
@@ -373,7 +374,10 @@ export function CandidatosPage() {
     <div className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-fiori-text">Candidatos a carreira</h1>
+          <h1 className="flex items-center gap-1.5 text-xl font-semibold text-fiori-text">
+            Candidatos a carreira
+            <AjudaContextual ecraId="candidatos" />
+          </h1>
           <p className="text-sm text-fiori-text-secondary">
             {visao === 'carreira'
               ? 'Colaboradores cujo Cargo atual é um predecessor direto (Progressão de Cargos) do Cargo escolhido.'

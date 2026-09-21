@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { endpoints } from '../api/endpoints';
 import { Card } from '../components/ui/Card';
+import { AjudaContextual } from '../components/ui/AjudaContextual';
 import { DataTable } from '../components/ui/DataTable';
 
 /** Ecrã de gestão de LOBs (requisitos) — leitura por agora, ver docs/02-arquitetura-tecnica.md secção 8 para CRUD completo. */
@@ -15,7 +16,10 @@ export function LobsListPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold text-fiori-text">LOBs</h1>
+        <h1 className="flex items-center gap-1.5 text-xl font-semibold text-fiori-text">
+          LOBs
+          <AjudaContextual ecraId="lobs" />
+        </h1>
         <p className="text-sm text-fiori-text-secondary">Linhas de negócio e os seus requisitos de competência/certificação.</p>
       </div>
       <Card>

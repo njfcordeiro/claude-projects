@@ -11,6 +11,7 @@ import { ProgressRing } from '../components/ui/ProgressRing';
 import { Badge } from '../components/ui/Badge';
 import { DataTable } from '../components/ui/DataTable';
 import { PrintButton } from '../components/ui/PrintButton';
+import { AjudaContextual } from '../components/ui/AjudaContextual';
 import { Modal } from '../components/ui/Modal';
 import { Button, Field, Input, Select } from '../components/ui/form';
 import { LobGapDetail } from '../components/gap/LobGapDetail';
@@ -277,7 +278,8 @@ export function ColaboradorProfilePage() {
     <div className="space-y-6">
       <Card
         action={
-          <div className="no-print">
+          <div className="flex items-center gap-1 no-print">
+            <AjudaContextual ecraId="colaborador-perfil" />
             <PrintButton label="Imprimir ficha" />
           </div>
         }

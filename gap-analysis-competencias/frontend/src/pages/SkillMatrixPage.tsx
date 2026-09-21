@@ -6,6 +6,7 @@ import { endpoints } from '../api/endpoints';
 import { ApiError } from '../api/client';
 import { DimensaoSkillMatrix, ResumoImportacaoNiveis, SkillMatrixColuna, SkillMatrixLinha } from '../types/api';
 import { Card } from '../components/ui/Card';
+import { AjudaContextual } from '../components/ui/AjudaContextual';
 import { DataTable, DataTableColumn } from '../components/ui/DataTable';
 import { PrintButton } from '../components/ui/PrintButton';
 import { Button, Checkbox, Field, Input, normalizar, Select } from '../components/ui/form';
@@ -311,7 +312,10 @@ export function SkillMatrixPage() {
     <div className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-fiori-text">Skill Matrix</h1>
+          <h1 className="flex items-center gap-1.5 text-xl font-semibold text-fiori-text">
+            Skill Matrix
+            <AjudaContextual ecraId="skill-matrix" />
+          </h1>
           <p className="text-sm text-fiori-text-secondary">
             {dimensao === 'lob' ? 'Prontidão (%) de cada colaborador por LOB.' : 'Nível atual (0-5) de cada colaborador por competência.'}
           </p>

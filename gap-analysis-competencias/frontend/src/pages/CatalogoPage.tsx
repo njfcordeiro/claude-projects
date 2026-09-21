@@ -5,6 +5,7 @@ import { endpoints } from '../api/endpoints';
 import { ApiError } from '../api/client';
 import { CatalogoRegisto, ResumoImportacao } from '../types/api';
 import { Card } from '../components/ui/Card';
+import { AjudaContextual } from '../components/ui/AjudaContextual';
 import { DataTable } from '../components/ui/DataTable';
 import { Button } from '../components/ui/form';
 import { PrintButton } from '../components/ui/PrintButton';
@@ -220,7 +221,10 @@ export function CatalogoPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold text-fiori-text">Gestão de Dados</h1>
+        <h1 className="flex items-center gap-1.5 text-xl font-semibold text-fiori-text">
+          Gestão de Dados
+          <AjudaContextual ecraId="gestao-dados" />
+        </h1>
         <p className="text-sm text-fiori-text-secondary">Criar, editar, eliminar e importar/exportar as tabelas de catálogo.</p>
       </div>
 

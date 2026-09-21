@@ -5,6 +5,7 @@ import { endpoints } from '../api/endpoints';
 import { ApiError } from '../api/client';
 import { ColaboradorResumo, ResumoAtribuicao } from '../types/api';
 import { Card } from '../components/ui/Card';
+import { AjudaContextual } from '../components/ui/AjudaContextual';
 import { Button, Field, Input, Select } from '../components/ui/form';
 
 type TipoAtribuicao = 'competencia' | 'certificacao';
@@ -97,7 +98,10 @@ export function AtribuicoesPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold text-fiori-text">Atribuição em Massa</h1>
+        <h1 className="flex items-center gap-1.5 text-xl font-semibold text-fiori-text">
+          Atribuição em Massa
+          <AjudaContextual ecraId="atribuicoes" />
+        </h1>
         <p className="text-sm text-fiori-text-secondary">
           Seleciona colaboradores à esquerda e associa-lhes uma competência ou certificação de uma vez.
         </p>

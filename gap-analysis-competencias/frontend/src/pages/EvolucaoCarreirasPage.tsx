@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { endpoints } from '../api/endpoints';
 import { CargoEvolucao, ProgressaoCargo } from '../types/api';
 import { Card } from '../components/ui/Card';
+import { AjudaContextual } from '../components/ui/AjudaContextual';
 import { Field, Select } from '../components/ui/form';
 import { PrintButton } from '../components/ui/PrintButton';
 
@@ -217,7 +218,10 @@ export function EvolucaoCarreirasPage() {
     <div className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-fiori-text">Evolução de Carreiras</h1>
+          <h1 className="flex items-center gap-1.5 text-xl font-semibold text-fiori-text">
+            Evolução de Carreiras
+            <AjudaContextual ecraId="evolucao-carreiras" />
+          </h1>
           <p className="text-sm text-fiori-text-secondary">
             Progressão de Cargos entre Carreiras — cada seta é uma linha de "Progressão de Cargos" em Gestão de Dados.
           </p>
