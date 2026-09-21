@@ -7,7 +7,6 @@ import { ColaboradoresListPage } from './pages/ColaboradoresListPage';
 import { ColaboradorProfilePage } from './pages/ColaboradorProfilePage';
 import { LobsListPage } from './pages/LobsListPage';
 import { LobDetailPage } from './pages/LobDetailPage';
-import { FormacoesPage } from './pages/FormacoesPage';
 import { AdminPage } from './pages/AdminPage';
 import { CatalogoPage } from './pages/CatalogoPage';
 import { CandidatosPage } from './pages/CandidatosPage';
@@ -39,8 +38,6 @@ export function App() {
 
             <Route path="/lobs" element={<LobsListPage />} />
             <Route path="/lobs/:id" element={<LobDetailPage />} />
-
-            <Route path="/formacoes" element={<FormacoesPage />} />
 
             <Route path="/como-funciona" element={<ComoFuncionaPage />} />
 
