@@ -198,18 +198,19 @@ const TABELAS: TabelaModelo[] = [
   {
     grupo: 'Organização',
     model: 'Nivel',
-    tabela: 'niveis',
+    tabela: 'niveis-tecnicos / niveis-comportamentais',
     campos: [
-      { nome: 'id', tipo: 'Int (PK)', nota: '0–5' },
-      { nome: 'nome', tipo: 'String', nota: 'único' },
+      { nome: 'id', tipo: 'Int', nota: '0–5' },
+      { nome: 'tipo', tipo: 'Enum (PK composta com id)', nota: 'TECNICA | COMPORTAMENTAL' },
+      { nome: 'nome', tipo: 'String', nota: 'único dentro do tipo' },
       { nome: 'descricao', tipo: 'String' },
     ],
     relacoes: [
-      'Escala única de proficiência partilhada por toda a app',
-      '1—N CertificacaoRequisitoCompetencia, FormacaoRequisitoCompetencia, LobRequisitoCompetencia, ColaboradorCompetencia',
+      'Duas escalas independentes (pedido do utilizador) — mesma faixa 0-5 nas duas, só o nome/descrição pode divergir por escala.',
+      'Sem FK formal das tabelas que guardam um nível (CertificacaoRequisitoCompetencia, FormacaoRequisitoCompetencia, LobRequisitoCompetencia, CargoRequisitoCompetencia, ColaboradorCompetencia, PdiItem) — a escala válida é sempre a da Competência associada nessa mesma linha, validada em código.',
     ],
     visibilidade: 'total',
-    visibilidadeTexto: 'Gestão de Dados → "Níveis". Usado em todos os seletores de nível de competência da app.',
+    visibilidadeTexto: 'Gestão de Dados → "Escala Técnica" / "Escala Comportamental". A escala certa fica automaticamente disponível em cada campo de nível, conforme o tipo da competência.',
   },
 
   // --- Catálogo --------------------------------------------------------

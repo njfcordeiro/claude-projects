@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { endpoints } from '../../api/endpoints';
 import { ApiError } from '../../api/client';
@@ -6,19 +7,12 @@ import { ConflitoResponse, UltimaAvaliacao } from '../../types/api';
 import { Modal } from '../ui/Modal';
 import { Button, Field, Select } from '../ui/form';
 
-const NIVEIS = [
-  { id: 0, nome: 'Inexistente' },
-  { id: 1, nome: 'Familiarizado' },
-  { id: 2, nome: 'Principiante' },
-  { id: 3, nome: 'Proficiente' },
-  { id: 4, nome: 'Especialista' },
-  { id: 5, nome: 'Referência' },
-];
-
 interface Props {
   colaboradorId: number;
   competenciaId: number;
   competenciaNome: string;
+  /** Determina a escala de níveis (Técnica/Comportamental) a mostrar — pedido do utilizador: escala automática conforme o tipo da competência. */
+  competenciaTipo: 'TECNICA' | 'COMPORTAMENTAL';
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -30,7 +24,17 @@ interface Props {
  * backend recusa com 409 e mostramos o valor atual em vez de o
  * sobrescrever às cegas (docs/02-arquitetura-tecnica.md secção 4.5).
  */
-export function AvaliarCompetenciaModal({ colaboradorId, competenciaId, competenciaNome, onClose, onSuccess }: Props) {
+export function AvaliarCompetenciaModal({ colaboradorId, competenciaId, competenciaNome, competenciaTipo, onClose, onSuccess }: Props) {
+  const tabelaNiveis = competenciaTipo === 'COMPORTAMENTAL' ? 'niveis-comportamentais' : 'niveis-tecnicos';
+  const { data: niveisBrutos } = useQuery({
+    queryKey: ['catalogo', tabelaNiveis],
+    queryFn: () => endpoints.catalogoListar(tabelaNiveis),
+  });
+  const niveis = (niveisBrutos ?? [])
+    .map((n) => ({ id: Number(n.id), nome: String(n.nome) }))
+    .sort((a, b) => a.id - b.id);
+  const nomeDoNivel = (id: number) => niveis.find((n) => n.id === id)?.nome ?? String(id);
+
   const [base, setBase] = useState<UltimaAvaliacao | null | undefined>(undefined); // undefined = ainda a carregar
   const [falhaAoCarregar, setFalhaAoCarregar] = useState<string | null>(null);
   const [nivelId, setNivelId] = useState(0);
@@ -105,7 +109,7 @@ export function AvaliarCompetenciaModal({ colaboradorId, competenciaId, competen
               </p>
               {conflito.current && (
                 <p className="mb-2 text-fiori-text-secondary">
-                  Nível atual no servidor: <strong>{NIVEIS[conflito.current.nivel_id]?.nome}</strong> (avaliado por{' '}
+                  Nível atual no servidor: <strong>{nomeDoNivel(conflito.current.nivel_id)}</strong> (avaliado por{' '}
                   {conflito.current.origem}, em {new Date(conflito.current.data_avaliacao).toLocaleDateString('pt-PT')}).
                 </p>
               )}
@@ -121,14 +125,14 @@ export function AvaliarCompetenciaModal({ colaboradorId, competenciaId, competen
 
           {!conflito && base && (
             <p className="mb-3 text-xs text-fiori-text-secondary">
-              Nível atual: <strong>{NIVEIS[base.nivel_id]?.nome}</strong> (desde{' '}
+              Nível atual: <strong>{nomeDoNivel(base.nivel_id)}</strong> (desde{' '}
               {new Date(base.data_avaliacao).toLocaleDateString('pt-PT')})
             </p>
           )}
 
           <Field label="Novo nível">
             <Select value={nivelId} onChange={(e) => setNivelId(Number(e.target.value))} disabled={!!conflito}>
-              {NIVEIS.map((n) => (
+              {niveis.map((n) => (
                 <option key={n.id} value={n.id}>
                   {n.id} — {n.nome}
                 </option>

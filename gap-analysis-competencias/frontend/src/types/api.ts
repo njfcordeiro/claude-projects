@@ -157,6 +157,40 @@ export interface UpdateFormacaoConcluidaInput {
   avaliacao?: AvaliacaoFormacao;
 }
 
+// --- Gestão de Dados: grelhas de "Dados de colaboradores" (backend/src/dados-colaboradores) ---
+
+export interface DadosCompetenciaColaborador {
+  colaboradorId: number;
+  colaboradorNome: string;
+  competenciaId: number;
+  competenciaNome: string;
+  nivelId: number;
+  nivelNome: string;
+  dataAvaliacao: string;
+}
+
+export interface DadosCertificacaoColaborador {
+  colaboradorId: number;
+  colaboradorNome: string;
+  certificacaoId: string;
+  certificacaoNome: string;
+  dataObtencao: string;
+  dataValidade: string | null;
+  anexoUrl: string | null;
+  version: number;
+}
+
+export interface DadosFormacaoConcluidaColaborador {
+  id: number;
+  colaboradorId: number;
+  colaboradorNome: string;
+  formacaoId: number;
+  formacaoNome: string;
+  dataConclusao: string;
+  horasFormacao: number;
+  avaliacao: AvaliacaoFormacao;
+}
+
 /** Todas as vertentes de um Projeto (catálogo) — usado pelo modal "Registar participação" para escolher mais do que a vertente que originou o clique. */
 export interface ProjetoVertenteDetalhe {
   id: number;
@@ -199,6 +233,7 @@ export interface ProjetoVertenteCandidata {
 export interface RelatorioGapCompetencia {
   competenciaId: number;
   competenciaNome: string;
+  competenciaTipo: 'TECNICA' | 'COMPORTAMENTAL';
   obrigatorio: boolean;
   nivelExigido: number;
   nivelAtual: number;
@@ -399,7 +434,7 @@ export interface CandidatosPorColaboradorResponse {
 
 // --- Catálogo genérico (backend/src/catalogo) -----------------------------
 
-export type CatalogoTipoCampo = 'string' | 'int' | 'boolean' | 'relation' | 'enum';
+export type CatalogoTipoCampo = 'string' | 'int' | 'boolean' | 'relation' | 'enum' | 'nivel';
 
 export interface CatalogoOpcaoEnum {
   value: string;
@@ -417,6 +452,8 @@ export interface CatalogoCampoDef {
   relationFiltro?: { campo: string; valor: string };
   /** Só para tipo 'enum'. */
   opcoes?: CatalogoOpcaoEnum[];
+  /** Só para tipo 'nivel': campo desta MESMA linha que identifica a Competência cujo tipo determina a escala válida (0-5). */
+  nivelDeCompetenciaCampo?: string;
 }
 
 export interface CatalogoTabelaMeta {
@@ -554,6 +591,8 @@ export interface SkillMatrixColuna {
   nome: string;
   areaId: number;
   areaNome: string;
+  /** Só presente na dimensão 'competencia' — define a escala de nível desta coluna (Técnica/Comportamental). */
+  tipo?: 'TECNICA' | 'COMPORTAMENTAL';
   /** Só presente na dimensão 'competencia' — LOBs que exigem esta competência (usado no filtro "por LOB"). */
   lobIds?: number[];
 }

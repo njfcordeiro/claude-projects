@@ -41,15 +41,18 @@ export class CatalogoService {
   async listar(tabela: string) {
     const def = encontrarTabela(tabela);
     const include = this.construirInclude(def);
-    const linhas: Record<string, unknown>[] = await (this.prisma as any)[def.delegate].findMany(
-      Object.keys(include).length ? { include } : undefined,
-    );
+    const where = this.baseFiltroWhere(def);
+    const linhas: Record<string, unknown>[] = await (this.prisma as any)[def.delegate].findMany({
+      ...(Object.keys(include).length ? { include } : {}),
+      ...(where ? { where } : {}),
+    });
     return linhas.map((linha) => this.comLabelsDeRelacao(def, linha));
   }
 
   async criar(tabela: string, dados: Record<string, unknown>, user: AuthenticatedUser) {
     const def = encontrarTabela(tabela);
     const data = await this.validarEcoagir(def, dados, /* exigirObrigatorios */ true);
+    if (def.baseFiltro) data[def.baseFiltro.campo] = def.baseFiltro.valor;
 
     try {
       const criado = await this.prisma.runAsUser<Record<string, unknown>>(user.sub, (tx) =>
@@ -64,7 +67,7 @@ export class CatalogoService {
   async atualizar(tabela: string, dados: Record<string, unknown>, user: AuthenticatedUser) {
     const def = encontrarTabela(tabela);
     const data = await this.validarEcoagir(def, dados, /* exigirObrigatorios */ false);
-    const where = this.construirWhereIdentidade(def, data);
+    const where = { ...this.construirWhereIdentidade(def, data), ...this.baseFiltroWhere(def) };
     const { ...alteracoes } = data;
     for (const chave of def.identityFields) delete (alteracoes as Record<string, unknown>)[chave];
 
@@ -85,7 +88,7 @@ export class CatalogoService {
   async eliminar(tabela: string, identidade: Record<string, unknown>, user: AuthenticatedUser) {
     const def = encontrarTabela(tabela);
     const chave = await this.extrairIdentidade(def, identidade);
-    const where = this.construirWhereIdentidade(def, chave);
+    const where = { ...this.construirWhereIdentidade(def, chave), ...this.baseFiltroWhere(def) };
 
     try {
       const resultado = await this.prisma.runAsUser<{ count: number }>(user.sub, (tx) =>
@@ -115,7 +118,13 @@ export class CatalogoService {
   async exportar(tabela: string): Promise<Buffer> {
     const def = encontrarTabela(tabela);
     const select = Object.fromEntries(def.campos.map((c) => [c.key, true]));
-    const linhas: Record<string, unknown>[] = await (this.prisma as any)[def.delegate].findMany({ select });
+    const camposNivel = def.campos.filter((c) => c.tipo === 'nivel');
+    const where = this.baseFiltroWhere(def);
+    const linhas: Record<string, unknown>[] = await (this.prisma as any)[def.delegate].findMany({
+      select,
+      ...(where ? { where } : {}),
+    });
+    const nomesNiveis = camposNivel.length > 0 ? await this.nomesDeNiveisPorCompetencia(def, camposNivel, linhas) : null;
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet(def.tabela.slice(0, 31));
@@ -127,7 +136,7 @@ export class CatalogoService {
       indiceColuna++;
       cabecalhos.push(c.key);
       colunaPorCampo.set(c.key, numParaColunaExcel(indiceColuna));
-      if (c.tipo === 'relation' && c.relationAccessor) {
+      if ((c.tipo === 'relation' && c.relationAccessor) || c.tipo === 'nivel') {
         indiceColuna++;
         cabecalhos.push(`${c.label} — nome atual`);
       }
@@ -145,6 +154,12 @@ export class CatalogoService {
         if (c.tipo === 'relation' && c.relationAccessor && c.relatedTable) {
           const folha = nomeFolhaDeOpcoes(encontrarTabela(c.relatedTable).label);
           valores.push(formulaNomeAtual(`${colunaPorCampo.get(c.key)}${linhaExcel}`, folha));
+        } else if (c.tipo === 'nivel') {
+          // Não pode ser uma fórmula VLOOKUP como as relações normais — a
+          // escala certa depende da Competência desta MESMA linha (ver
+          // CatalogoCampoDef.nivelDeCompetenciaCampo), por isso o nome é
+          // escrito como texto fixo no momento da exportação.
+          valores.push(nomesNiveis?.get(`${linha[c.key]}@${linha[c.nivelDeCompetenciaCampo!]}`) ?? String(linha[c.key] ?? ''));
         }
       }
       valores.push(null);
@@ -154,9 +169,56 @@ export class CatalogoService {
 
     const tabelasRelacionadas = [...new Set(def.campos.filter((c) => c.tipo === 'relation' && c.relatedTable).map((c) => c.relatedTable!))];
     await adicionarFolhasDeOpcoes(workbook, this.prisma, tabelasRelacionadas);
+    if (camposNivel.length > 0) await this.adicionarFolhaDeNiveis(workbook);
 
     const buffer = await workbook.xlsx.writeBuffer();
     return Buffer.from(buffer);
+  }
+
+  /**
+   * Nomes de nível para as linhas exportadas de uma tabela com campo(s)
+   * tipo 'nivel' — batch: 1 query para todas as competências envolvidas +
+   * 1 para todos os níveis, nunca N+1 por linha.
+   */
+  private async nomesDeNiveisPorCompetencia(
+    def: CatalogoTabelaDef,
+    camposNivel: CatalogoCampoDef[],
+    linhas: Record<string, unknown>[],
+  ): Promise<Map<string, string>> {
+    const idsCompetencia = new Set<number>();
+    for (const c of camposNivel) {
+      for (const linha of linhas) {
+        const v = linha[c.nivelDeCompetenciaCampo!];
+        if (typeof v === 'number') idsCompetencia.add(v);
+      }
+    }
+    const [competencias, niveis] = await Promise.all([
+      this.prisma.competencia.findMany({ where: { id: { in: [...idsCompetencia] } }, select: { id: true, tipo: true } }),
+      this.prisma.nivel.findMany(),
+    ]);
+    const tipoPorCompetencia = new Map(competencias.map((c) => [c.id, c.tipo]));
+    const nomePorEscala = new Map(niveis.map((n) => [`${n.tipo}:${n.id}`, n.nome]));
+
+    const resultado = new Map<string, string>();
+    for (const c of camposNivel) {
+      for (const linha of linhas) {
+        const nivelId = linha[c.key];
+        const competenciaId = linha[c.nivelDeCompetenciaCampo!];
+        const tipo = tipoPorCompetencia.get(competenciaId as number);
+        if (tipo && typeof nivelId === 'number') {
+          resultado.set(`${nivelId}@${competenciaId}`, nomePorEscala.get(`${tipo}:${nivelId}`) ?? String(nivelId));
+        }
+      }
+    }
+    return resultado;
+  }
+
+  /** Sheet de referência para campos tipo 'nivel' — mostra as duas escalas lado a lado (id/escala/nome), pedido do utilizador. */
+  private async adicionarFolhaDeNiveis(workbook: ExcelJS.Workbook): Promise<void> {
+    const niveis = await this.prisma.nivel.findMany({ orderBy: [{ tipo: 'asc' }, { id: 'asc' }] });
+    const sheet = workbook.addWorksheet(nomeFolhaDeOpcoes('Níveis'));
+    sheet.addRow(['id', 'escala', 'nome']);
+    for (const n of niveis) sheet.addRow([n.id, n.tipo === 'TECNICA' ? 'Técnica' : 'Comportamental', n.nome]);
   }
 
   async importar(tabela: string, buffer: Buffer, user: AuthenticatedUser): Promise<ResumoImportacao> {
@@ -203,12 +265,13 @@ export class CatalogoService {
 
         if (idxDelete !== -1 && ehMarcaDelete(linha.getCell(idxDelete).value)) {
           const chave = await this.validarEcoagir({ ...def, campos: camposIdentidade }, bruto, true, false);
-          linhasParaEliminar.push({ where: this.construirWhereIdentidade(def, chave) });
+          linhasParaEliminar.push({ where: { ...this.construirWhereIdentidade(def, chave), ...this.baseFiltroWhere(def) } });
           continue;
         }
 
         const data = await this.validarEcoagirImport(def, bruto);
-        const where = this.construirWhereIdentidade(def, data);
+        if (def.baseFiltro) data[def.baseFiltro.campo] = def.baseFiltro.valor;
+        const where = { ...this.construirWhereIdentidade(def, data), ...this.baseFiltroWhere(def) };
         linhasValidas.push({ data, where });
       } catch (err) {
         const mensagem = err instanceof Error ? err.message : 'Erro desconhecido.';
@@ -298,7 +361,41 @@ export class CatalogoService {
       }
       resultado[c.key] = valor;
     }
+    if (validarFiltro) await this.validarCamposNivel(def, resultado);
     return resultado;
+  }
+
+  /** `baseFiltro` de `def`, pronto a espalhar num `where` do Prisma — `{}` se a tabela não tiver. */
+  private baseFiltroWhere(def: CatalogoTabelaDef): Record<string, string> {
+    return def.baseFiltro ? { [def.baseFiltro.campo]: def.baseFiltro.valor } : {};
+  }
+
+  /**
+   * Valida todos os campos tipo 'nivel' de `resultado` (já coagidos) contra
+   * a escala da Competência do campo-irmão indicado em
+   * `nivelDeCompetenciaCampo` — pedido do utilizador: "sempre que existe um
+   * campo de nível, [...] a escala respetiva" (ver comentário em
+   * CatalogoCampoDef.nivelDeCompetenciaCampo).
+   */
+  private async validarCamposNivel(def: CatalogoTabelaDef, resultado: Record<string, unknown>): Promise<void> {
+    for (const c of def.campos) {
+      if (c.tipo !== 'nivel' || resultado[c.key] === undefined) continue;
+      const competenciaId = resultado[c.nivelDeCompetenciaCampo!];
+      if (competenciaId === undefined) continue; // campo-irmão em falta — a validação de obrigatório dele já apanha isto
+      const competencia = await this.prisma.competencia.findUnique({
+        where: { id: competenciaId as number },
+        select: { tipo: true, nome: true },
+      });
+      if (!competencia) continue; // a relação do próprio campo-irmão já valida/vai validar a existência
+      const nivel = await this.prisma.nivel.findUnique({
+        where: { tipo_id: { tipo: competencia.tipo, id: resultado[c.key] as number } },
+      });
+      if (!nivel) {
+        throw new BadRequestException(
+          `"${c.label}" (${resultado[c.key]}) não existe na escala ${competencia.tipo === 'TECNICA' ? 'Técnica' : 'Comportamental'} — a escala da competência "${competencia.nome}".`,
+        );
+      }
+    }
   }
 
   /**
@@ -348,12 +445,14 @@ export class CatalogoService {
         resultado[c.key] = this.coagirValor(c, bruto);
       }
     }
+    await this.validarCamposNivel(def, resultado);
     return resultado;
   }
 
   private coagirValor(campo: CatalogoCampoDef, bruto: unknown): unknown {
     switch (campo.tipo) {
-      case 'int': {
+      case 'int':
+      case 'nivel': {
         if (typeof bruto === 'number') return bruto;
         return Number(String(bruto).trim());
       }

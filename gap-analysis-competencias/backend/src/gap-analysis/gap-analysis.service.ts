@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { Cargo, OrigemAvaliacao, PapelUtilizador, Prisma } from '@prisma/client';
+import { Cargo, OrigemAvaliacao, PapelUtilizador, Prisma, TipoDesenvolvimento } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
 import { ColaboradoresService } from '../colaboradores/colaboradores.service';
@@ -150,7 +150,7 @@ export class GapAnalysisService {
         where: { tipo: 'COMPORTAMENTAL', id: { in: [...niveisAtuais.keys()] } },
         orderBy: { nome: 'asc' },
       }),
-      this.prisma.nivel.findMany(),
+      this.prisma.nivel.findMany({ where: { tipo: 'COMPORTAMENTAL' } }),
     ]);
     const nomePorNivel = new Map(niveis.map((n) => [n.id, n.nome]));
 
@@ -392,6 +392,7 @@ export class GapAnalysisService {
       nome: c.nome,
       areaId: c.areaId,
       areaNome: c.area.nome,
+      tipo: c.tipo,
       lobIds: c.lobRequisitos.map((r) => r.lobId),
     }));
     const linhas = colaboradores.map((c) => {
@@ -496,8 +497,10 @@ export class GapAnalysisService {
     const matriz = await this.obterSkillMatrix('competencia', filtros, user);
     const colunas =
       competenciaIds && competenciaIds.length > 0 ? matriz.colunas.filter((c) => competenciaIds.includes(c.id)) : matriz.colunas;
-    const niveis = await this.prisma.nivel.findMany({ orderBy: { id: 'asc' } });
-    const nomeNivel = new Map(niveis.map((n) => [n.id, n.nome]));
+    // nivelId (0-5) não tem FK formal — a escala é sempre a da Competência
+    // de cada coluna (ver comentário em schema.prisma, modelo Nivel).
+    const niveis = await this.prisma.nivel.findMany({ orderBy: [{ tipo: 'asc' }, { id: 'asc' }] });
+    const nomeNivel = new Map(niveis.map((n) => [`${n.tipo}:${n.id}`, n.nome]));
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('niveis-competencia');
@@ -505,13 +508,14 @@ export class GapAnalysisService {
     for (const linha of matriz.linhas) {
       for (const col of colunas) {
         const nivelId = linha.valores[String(col.id)] ?? 0;
-        sheet.addRow([linha.colaboradorId, linha.nome, col.id, col.nome, nivelId, nomeNivel.get(nivelId) ?? String(nivelId), null]);
+        const nome = nomeNivel.get(`${col.tipo}:${nivelId}`) ?? String(nivelId);
+        sheet.addRow([linha.colaboradorId, linha.nome, col.id, col.nome, nivelId, nome, null]);
       }
     }
 
     const opcoes = workbook.addWorksheet('Opções — Nível');
-    opcoes.addRow(['id', 'nome']);
-    for (const n of niveis) opcoes.addRow([n.id, n.nome]);
+    opcoes.addRow(['id', 'escala', 'nome']);
+    for (const n of niveis) opcoes.addRow([n.id, n.tipo === 'TECNICA' ? 'Técnica' : 'Comportamental', n.nome]);
 
     return Buffer.from(await workbook.xlsx.writeBuffer());
   }
@@ -1357,11 +1361,18 @@ export class GapAnalysisService {
   }
 
   private mapearRequisitosCompetencia(
-    requisitos: { competenciaId: number; competencia: { nome: string }; obrigatorio: boolean; pontos: number; nivelMinimoId: number }[],
+    requisitos: {
+      competenciaId: number;
+      competencia: { nome: string; tipo: TipoDesenvolvimento };
+      obrigatorio: boolean;
+      pontos: number;
+      nivelMinimoId: number;
+    }[],
   ): RequisitoCompetenciaInput[] {
     return requisitos.map((r) => ({
       competenciaId: r.competenciaId,
       competenciaNome: r.competencia.nome,
+      competenciaTipo: r.competencia.tipo,
       obrigatorio: r.obrigatorio,
       pontos: r.pontos,
       nivelMinimo: r.nivelMinimoId,

@@ -20,7 +20,7 @@ import { NotFoundException } from '@nestjs/common';
  * `@@unique`/`@@id` composta do schema Prisma — nunca o autoincrement.
  */
 
-export type CatalogoTipoCampo = 'string' | 'int' | 'boolean' | 'relation' | 'enum';
+export type CatalogoTipoCampo = 'string' | 'int' | 'boolean' | 'relation' | 'enum' | 'nivel';
 
 export interface CatalogoOpcaoEnum {
   value: string;
@@ -45,6 +45,19 @@ export interface CatalogoCampoDef {
   relationFiltro?: { campo: string; valor: string };
   /** Só para tipo 'enum': valores válidos (ex. TipoDesenvolvimento) e o texto a mostrar por cada um. */
   opcoes?: CatalogoOpcaoEnum[];
+  /**
+   * Só para tipo 'nivel': nome do campo desta MESMA linha que identifica a
+   * Competência cujo tipo (Técnica/Comportamental) determina a escala
+   * válida deste nível (0-5) — pedido do utilizador: "sempre que existe um
+   * campo de nível, automaticamente fique disponível a respetiva escala,
+   * caso a competência seja técnica ou comportamental". Nivel deixou de
+   * ter uma FK/relação Prisma formal (chave passou a ser composta
+   * (tipo, id) — ver comentário em schema.prisma), por isso não é um
+   * 'relation' comum: as opções do <select> e a validação na escrita são
+   * resolvidas à parte (CatalogoService.validarCampoNivel), olhando para
+   * o valor desse campo-irmão em vez de um relatedTable fixo.
+   */
+  nivelDeCompetenciaCampo?: string;
 }
 
 export interface CatalogoTabelaDef {
@@ -54,6 +67,15 @@ export interface CatalogoTabelaDef {
   delegate: string;
   campos: CatalogoCampoDef[];
   identityFields: string[];
+  /**
+   * Restringe esta "vista" da tabela a linhas em que `campo === valor`, e
+   * injeta esse valor automaticamente ao criar/importar — usado para
+   * expor a mesma tabela subjacente como duas entradas independentes do
+   * registo (ex. "niveis" dividida em Escala Técnica/Comportamental,
+   * pedido do utilizador). Aplicado em listar/exportar/criar/atualizar/
+   * eliminar/importar — nunca só cosmético.
+   */
+  baseFiltro?: { campo: string; valor: string };
 }
 
 function campo(
@@ -182,11 +204,25 @@ export const CATALOGO_REGISTRY: CatalogoTabelaDef[] = [
       campo('proximoCargoId', 'Próximo cargo', 'relation', true, { relatedTable: 'cargos', relationAccessor: 'proximoCargo' }),
     ],
   },
+  // Duas escalas de níveis (pedido do utilizador: "é preciso uma nova
+  // escala de competências, para as comportamentais — a que já existe só
+  // se aplica às técnicas") — mesma tabela subjacente (Nivel), duas
+  // "vistas" independentes via baseFiltro. Os ids 0-5 são partilhados
+  // pelas duas escalas (ver comentário em schema.prisma, modelo Nivel).
   {
-    tabela: 'niveis',
-    label: 'Níveis',
+    tabela: 'niveis-tecnicos',
+    label: 'Escala Técnica',
     delegate: 'nivel',
     identityFields: ['id'],
+    baseFiltro: { campo: 'tipo', valor: 'TECNICA' },
+    campos: [campo('id', 'ID', 'int'), campo('nome', 'Nome', 'string'), campo('descricao', 'Descrição', 'string')],
+  },
+  {
+    tabela: 'niveis-comportamentais',
+    label: 'Escala Comportamental',
+    delegate: 'nivel',
+    identityFields: ['id'],
+    baseFiltro: { campo: 'tipo', valor: 'COMPORTAMENTAL' },
     campos: [campo('id', 'ID', 'int'), campo('nome', 'Nome', 'string'), campo('descricao', 'Descrição', 'string')],
   },
   {
@@ -216,7 +252,7 @@ export const CATALOGO_REGISTRY: CatalogoTabelaDef[] = [
     campos: [
       campo('certificacaoId', 'Certificação', 'relation', true, { relatedTable: 'certificacoes', relationAccessor: 'certificacao' }),
       campo('competenciaId', 'Competência', 'relation', true, { relatedTable: 'competencias', relationAccessor: 'competencia' }),
-      campo('nivelId', 'Nível exigido', 'relation', true, { relatedTable: 'niveis', relationAccessor: 'nivel' }),
+      campo('nivelId', 'Nível exigido', 'nivel', true, { nivelDeCompetenciaCampo: 'competenciaId' }),
     ],
   },
   {
@@ -239,7 +275,7 @@ export const CATALOGO_REGISTRY: CatalogoTabelaDef[] = [
     campos: [
       campo('formacaoId', 'Formação', 'relation', true, { relatedTable: 'formacoes', relationAccessor: 'formacao' }),
       campo('competenciaId', 'Competência', 'relation', true, { relatedTable: 'competencias', relationAccessor: 'competencia' }),
-      campo('nivelId', 'Nível oferecido', 'relation', true, { relatedTable: 'niveis', relationAccessor: 'nivel' }),
+      campo('nivelId', 'Nível oferecido', 'nivel', true, { nivelDeCompetenciaCampo: 'competenciaId' }),
     ],
   },
   {
@@ -290,7 +326,7 @@ export const CATALOGO_REGISTRY: CatalogoTabelaDef[] = [
         relationAccessor: 'competencia',
         relationFiltro: { campo: 'tipo', valor: 'COMPORTAMENTAL' },
       }),
-      campo('nivelExigidoId', 'Nível exigido', 'relation', true, { relatedTable: 'niveis', relationAccessor: 'nivelExigido' }),
+      campo('nivelExigidoId', 'Nível exigido', 'nivel', true, { nivelDeCompetenciaCampo: 'competenciaId' }),
     ],
   },
   {
@@ -303,7 +339,7 @@ export const CATALOGO_REGISTRY: CatalogoTabelaDef[] = [
       campo('competenciaId', 'Competência', 'relation', true, { relatedTable: 'competencias', relationAccessor: 'competencia' }),
       campo('obrigatorio', 'Obrigatório', 'boolean'),
       campo('pontos', 'Pontos', 'int'),
-      campo('nivelMinimoId', 'Nível mínimo', 'relation', true, { relatedTable: 'niveis', relationAccessor: 'nivelMinimo' }),
+      campo('nivelMinimoId', 'Nível mínimo', 'nivel', true, { nivelDeCompetenciaCampo: 'competenciaId' }),
     ],
   },
   {

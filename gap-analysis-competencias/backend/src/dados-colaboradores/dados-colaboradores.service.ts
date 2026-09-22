@@ -1,11 +1,12 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { AvaliacaoFormacao, TipoDesenvolvimento } from '@prisma/client';
+import { AvaliacaoFormacao, Prisma, TipoDesenvolvimento } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
 import { ColaboradoresService } from '../colaboradores/colaboradores.service';
 import { FormacoesConcluidasService } from '../formacoes-concluidas/formacoes-concluidas.service';
 import { AuthenticatedUser } from '../auth/jwt-payload.interface';
 import { ehMarcaDelete } from '../catalogo/catalogo.service';
+import { FiltrosOrganizacionais } from '../gap-analysis/gap-analysis.types';
 
 export interface ResumoImportacaoDados {
   criados: number;
@@ -63,25 +64,75 @@ export class DadosColaboradoresService {
 
   // --- Competências técnicas / comportamentais ------------------------------
 
-  async exportarCompetencias(tipo: TipoDesenvolvimento): Promise<Buffer> {
+  /**
+   * IDs de colaboradores que cumprem os filtros organizacionais (os mesmos
+   * usados noutros ecrãs de colaboradores — Direção/Área/Núcleo/Cargo,
+   * pedido do utilizador) — `null` quando não há filtro nenhum, para os
+   * chamadores saberem que não precisam de restringir a query.
+   */
+  private async idsColaboradoresFiltrados(filtros: FiltrosOrganizacionais): Promise<number[] | null> {
+    if (!filtros.direcaoId && !filtros.areaId && !filtros.nucleoId && !filtros.cargoId) return null;
+    const colaboradores = await this.prisma.colaborador.findMany({
+      where: {
+        ...(filtros.direcaoId ? { direcaoId: filtros.direcaoId } : {}),
+        ...(filtros.areaId ? { areaId: filtros.areaId } : {}),
+        ...(filtros.nucleoId ? { nucleoId: filtros.nucleoId } : {}),
+        ...(filtros.cargoId ? { cargoId: filtros.cargoId } : {}),
+      },
+      select: { id: true },
+    });
+    return colaboradores.map((c) => c.id);
+  }
+
+  /**
+   * Grelha da Gestão de Dados (pedido do utilizador: "também deve ser
+   * listada a tabela... e que permita editar, adicionar, remover") — os
+   * mesmos dados do export, em JSON, com os mesmos filtros organizacionais
+   * usados noutros ecrãs de colaboradores.
+   */
+  async listarCompetencias(tipo: TipoDesenvolvimento, filtros: FiltrosOrganizacionais) {
+    const ids = await this.idsColaboradoresFiltrados(filtros);
+    if (ids !== null && ids.length === 0) return [];
     const linhas = await this.prisma.$queryRaw<
-      { colaborador_id: number; colaborador_nome: string; competencia_id: number; competencia_nome: string; nivel_id: number; nivel_nome: string }[]
+      {
+        colaborador_id: number;
+        colaborador_nome: string;
+        competencia_id: number;
+        competencia_nome: string;
+        nivel_id: number;
+        nivel_nome: string;
+        data_avaliacao: Date;
+      }[]
     >`
       SELECT c.id AS colaborador_id, c.nome AS colaborador_nome, comp.id AS competencia_id, comp.nome AS competencia_nome,
-             a.nivel_id, n.nome AS nivel_nome
+             a.nivel_id, n.nome AS nivel_nome, a.data_avaliacao
       FROM colaboradores c
       JOIN colaborador_competencia_atual a ON a.colaborador_id = c.id
       JOIN competencias comp ON comp.id = a.competencia_id
-      JOIN niveis n ON n.id = a.nivel_id
+      JOIN niveis n ON n.tipo = comp.tipo AND n.id = a.nivel_id
       WHERE comp.tipo = ${tipo}::tipo_desenvolvimento
+      ${ids !== null ? Prisma.sql`AND c.id = ANY(${ids})` : Prisma.empty}
       ORDER BY c.nome, comp.nome
     `;
+    return linhas.map((l) => ({
+      colaboradorId: l.colaborador_id,
+      colaboradorNome: l.colaborador_nome,
+      competenciaId: l.competencia_id,
+      competenciaNome: l.competencia_nome,
+      nivelId: l.nivel_id,
+      nivelNome: l.nivel_nome,
+      dataAvaliacao: l.data_avaliacao,
+    }));
+  }
+
+  async exportarCompetencias(tipo: TipoDesenvolvimento): Promise<Buffer> {
+    const linhas = await this.listarCompetencias(tipo, {});
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('competencias');
     sheet.addRow(['colaboradorId', 'Colaborador', 'competenciaId', 'Competência', 'nivelId', 'Nível — nome atual', 'DELETE']);
     for (const l of linhas) {
-      sheet.addRow([l.colaborador_id, l.colaborador_nome, l.competencia_id, l.competencia_nome, l.nivel_id, l.nivel_nome, null]);
+      sheet.addRow([l.colaboradorId, l.colaboradorNome, l.competenciaId, l.competenciaNome, l.nivelId, l.nivelNome, null]);
     }
     return Buffer.from(await workbook.xlsx.writeBuffer());
   }
@@ -150,11 +201,28 @@ export class DadosColaboradoresService {
 
   // --- Certificações ---------------------------------------------------------
 
-  async exportarCertificacoes(): Promise<Buffer> {
+  async listarCertificacoes(filtros: FiltrosOrganizacionais) {
+    const ids = await this.idsColaboradoresFiltrados(filtros);
+    if (ids !== null && ids.length === 0) return [];
     const linhas = await this.prisma.colaboradorCertificacao.findMany({
+      where: ids !== null ? { colaboradorId: { in: ids } } : undefined,
       include: { colaborador: { select: { nome: true } }, certificacao: { select: { nome: true } } },
       orderBy: [{ colaborador: { nome: 'asc' } }, { certificacao: { nome: 'asc' } }],
     });
+    return linhas.map((l) => ({
+      colaboradorId: l.colaboradorId,
+      colaboradorNome: l.colaborador.nome,
+      certificacaoId: l.certificacaoId,
+      certificacaoNome: l.certificacao.nome,
+      dataObtencao: l.dataObtencao,
+      dataValidade: l.dataValidade,
+      anexoUrl: l.anexoUrl,
+      version: l.version,
+    }));
+  }
+
+  async exportarCertificacoes(): Promise<Buffer> {
+    const linhas = await this.listarCertificacoes({});
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('certificacoes');
@@ -162,9 +230,9 @@ export class DadosColaboradoresService {
     for (const l of linhas) {
       sheet.addRow([
         l.colaboradorId,
-        l.colaborador.nome,
+        l.colaboradorNome,
         l.certificacaoId,
-        l.certificacao.nome,
+        l.certificacaoNome,
         l.dataObtencao.toISOString().slice(0, 10),
         l.dataValidade ? l.dataValidade.toISOString().slice(0, 10) : null,
         l.anexoUrl ?? null,
@@ -238,27 +306,34 @@ export class DadosColaboradoresService {
 
   // --- Histórico de Formação ---------------------------------------------------
 
-  async exportarFormacoesConcluidas(): Promise<Buffer> {
+  async listarFormacoesConcluidas(filtros: FiltrosOrganizacionais) {
+    const ids = await this.idsColaboradoresFiltrados(filtros);
+    if (ids !== null && ids.length === 0) return [];
     const linhas = await this.prisma.colaboradorFormacao.findMany({
+      where: ids !== null ? { colaboradorId: { in: ids } } : undefined,
       include: { colaborador: { select: { nome: true } }, formacao: { select: { nome: true } } },
       orderBy: [{ colaborador: { nome: 'asc' } }, { dataConclusao: 'desc' }],
     });
+    return linhas.map((l) => ({
+      id: l.id,
+      colaboradorId: l.colaboradorId,
+      colaboradorNome: l.colaborador.nome,
+      formacaoId: l.formacaoId,
+      formacaoNome: l.formacao.nome,
+      dataConclusao: l.dataConclusao,
+      horasFormacao: l.horasFormacao,
+      avaliacao: l.avaliacao,
+    }));
+  }
+
+  async exportarFormacoesConcluidas(): Promise<Buffer> {
+    const linhas = await this.listarFormacoesConcluidas({});
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('formacoes-concluidas');
     sheet.addRow(['id', 'colaboradorId', 'Colaborador', 'formacaoId', 'Formação', 'dataConclusao', 'horasFormacao', 'avaliacao', 'DELETE']);
     for (const l of linhas) {
-      sheet.addRow([
-        l.id,
-        l.colaboradorId,
-        l.colaborador.nome,
-        l.formacaoId,
-        l.formacao.nome,
-        l.dataConclusao.toISOString().slice(0, 10),
-        l.horasFormacao,
-        l.avaliacao,
-        null,
-      ]);
+      sheet.addRow([l.id, l.colaboradorId, l.colaboradorNome, l.formacaoId, l.formacaoNome, l.dataConclusao.toISOString().slice(0, 10), l.horasFormacao, l.avaliacao, null]);
     }
 
     const opcoes = workbook.addWorksheet('Opções — Avaliação');

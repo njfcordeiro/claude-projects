@@ -42,6 +42,35 @@ const SELECT_RESUMO = {
 
 type ColaboradorComRelacoes = Prisma.ColaboradorGetPayload<{ select: typeof SELECT_RESUMO }>;
 
+/**
+ * Garante que `nivelId` (0-5) pertence à escala certa (Técnica ou
+ * Comportamental) da Competência indicada — pedido do utilizador: "uma
+ * nova escala de competências para as comportamentais... quando faço
+ * importações e colocar o ID do nível, que seja assumido a escala
+ * respetiva". Como Nivel deixou de ter uma FK formal para as tabelas que o
+ * referenciam (ver comentário em schema.prisma, modelo Nivel — a chave
+ * passou a ser composta (tipo, id), e o tipo não é guardado nessas
+ * tabelas), esta validação é o que impede gravar, p.ex., o nível 3 da
+ * escala Comportamental como se fosse o nível 3 de uma competência
+ * Técnica.
+ */
+export async function validarNivelPertenceAoTipo(
+  prisma: Pick<Prisma.TransactionClient, 'competencia' | 'nivel'>,
+  competenciaId: number,
+  nivelId: number,
+): Promise<void> {
+  const competencia = await prisma.competencia.findUnique({ where: { id: competenciaId }, select: { tipo: true, nome: true } });
+  if (!competencia) {
+    throw new NotFoundException(`Competência ${competenciaId} não encontrada.`);
+  }
+  const nivel = await prisma.nivel.findUnique({ where: { tipo_id: { tipo: competencia.tipo, id: nivelId } } });
+  if (!nivel) {
+    throw new BadRequestException(
+      `Nível ${nivelId} não existe na escala ${competencia.tipo === 'TECNICA' ? 'Técnica' : 'Comportamental'} — a escala da competência "${competencia.nome}".`,
+    );
+  }
+}
+
 /** Achata as relações (nome + relevância de Direção/Área/Núcleo, nome do gestor) para um DTO simples — nunca devolvemos a forma aninhada do Prisma ao cliente. */
 function mapearResumo(c: ColaboradorComRelacoes) {
   return {
@@ -532,6 +561,7 @@ export class ColaboradoresService {
    */
   async criarAvaliacao(colaboradorId: number, dto: CreateAvaliacaoDto, user: AuthenticatedUser) {
     await this.podeEditar(colaboradorId, user);
+    await validarNivelPertenceAoTipo(this.prisma, dto.competenciaId, dto.nivelId);
 
     const origem: OrigemAvaliacao =
       user.role === PapelUtilizador.MANAGER ? OrigemAvaliacao.MANAGER : (dto.origem ?? OrigemAvaliacao.FORMAL);
@@ -575,7 +605,7 @@ export class ColaboradoresService {
           avaliadoPor: user.sub,
           origem,
         },
-        include: { competencia: { select: { nome: true } }, nivel: { select: { nome: true } } },
+        include: { competencia: { select: { nome: true } } },
       });
     });
   }

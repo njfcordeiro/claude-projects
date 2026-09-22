@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { OrigemAvaliacao, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { ColaboradoresService } from '../colaboradores/colaboradores.service';
+import { ColaboradoresService, validarNivelPertenceAoTipo } from '../colaboradores/colaboradores.service';
 import { AuthenticatedUser } from '../auth/jwt-payload.interface';
 import { AtribuirCompetenciaDto } from './dto/atribuir-competencia.dto';
 import { AtribuirCertificacaoDto } from './dto/atribuir-certificacao.dto';
@@ -27,6 +27,11 @@ export class AtribuicoesService {
   ) {}
 
   async atribuirCompetencia(dto: AtribuirCompetenciaDto, user: AuthenticatedUser): Promise<ResumoAtribuicao> {
+    // Mesmo nivelId/competenciaId para todos os colaboradores do lote — só
+    // é preciso validar a escala uma vez (ver comentário em schema.prisma,
+    // modelo Nivel).
+    await validarNivelPertenceAoTipo(this.prisma, dto.competenciaId, dto.nivelId);
+
     const resumo: ResumoAtribuicao = { processados: dto.colaboradorIds.length, criados: 0, atualizados: 0, erros: [] };
     const dataAvaliacao = dto.dataAvaliacao ? new Date(dto.dataAvaliacao) : new Date();
 
