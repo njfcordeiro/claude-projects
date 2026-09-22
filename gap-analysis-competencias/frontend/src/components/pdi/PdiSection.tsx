@@ -46,9 +46,11 @@ function AdicionarPdiItemModal({ modo, colaboradorId, onClose }: { modo: ModoAdi
     queryFn: () => endpoints.catalogoListar('certificacoes'),
     enabled: !ehCompetencia,
   });
+  // A escala de níveis (Técnica/Comportamental) é sempre a do modo escolhido — pedido do utilizador.
+  const tabelaNiveis = modo === 'COMPORTAMENTAL' ? 'niveis-comportamentais' : 'niveis-tecnicos';
   const { data: niveis } = useQuery({
-    queryKey: ['catalogo', 'niveis'],
-    queryFn: () => endpoints.catalogoListar('niveis'),
+    queryKey: ['catalogo', tabelaNiveis],
+    queryFn: () => endpoints.catalogoListar(tabelaNiveis),
     enabled: ehCompetencia,
   });
   const opcoes = ehCompetencia ? (competencias ?? []).filter((c) => c.tipo === modo) : (certificacoes ?? []);
@@ -90,11 +92,14 @@ function AdicionarPdiItemModal({ modo, colaboradorId, onClose }: { modo: ModoAdi
           <Field label="Nível a atingir">
             <Select value={nivelAlvoId} onChange={(e) => setNivelAlvoId(e.target.value)}>
               <option value="">— selecionar —</option>
-              {(niveis ?? []).map((n) => (
-                <option key={String(n.id)} value={String(n.id)}>
-                  {String(n.id)} — {String(n.nome)}
-                </option>
-              ))}
+              {(niveis ?? [])
+                .slice()
+                .sort((a, b) => Number(a.id) - Number(b.id))
+                .map((n) => (
+                  <option key={String(n.id)} value={String(n.id)}>
+                    {String(n.id)} — {String(n.nome)}
+                  </option>
+                ))}
             </Select>
           </Field>
         )}

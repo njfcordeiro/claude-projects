@@ -5,6 +5,12 @@ import { PrismaService } from '../prisma/prisma.service';
 export class FormacoesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** nivelId (0-5) não tem FK formal — a escala é sempre a da Competência (ver comentário em schema.prisma, modelo Nivel). */
+  private async nomesDeNiveis(): Promise<Map<string, string>> {
+    const niveis = await this.prisma.nivel.findMany();
+    return new Map(niveis.map((n) => [`${n.tipo}:${n.id}`, n.nome]));
+  }
+
   async listar() {
     const formacoes = await this.prisma.formacao.findMany({
       include: {
@@ -23,16 +29,19 @@ export class FormacoesService {
   }
 
   async obterDetalhe(id: number) {
-    const formacao = await this.prisma.formacao.findUnique({
-      where: { id },
-      include: {
-        area: { select: { nome: true } },
-        requisitosCompetencia: {
-          include: { competencia: { select: { nome: true } }, nivel: { select: { nome: true } } },
-          orderBy: { competencia: { nome: 'asc' } },
+    const [formacao, nomesNiveis] = await Promise.all([
+      this.prisma.formacao.findUnique({
+        where: { id },
+        include: {
+          area: { select: { nome: true } },
+          requisitosCompetencia: {
+            include: { competencia: { select: { nome: true, tipo: true } } },
+            orderBy: { competencia: { nome: 'asc' } },
+          },
         },
-      },
-    });
+      }),
+      this.nomesDeNiveis(),
+    ]);
     if (!formacao) throw new NotFoundException(`Formação ${id} não encontrada.`);
 
     return {
@@ -44,7 +53,7 @@ export class FormacoesService {
         competenciaId: r.competenciaId,
         competenciaNome: r.competencia.nome,
         nivelId: r.nivelId,
-        nivelNome: r.nivel.nome,
+        nivelNome: nomesNiveis.get(`${r.competencia.tipo}:${r.nivelId}`) ?? `Nível ${r.nivelId}`,
       })),
     };
   }

@@ -21,7 +21,9 @@ export function LobGapDetail({ colaboradorId, lobId }: { colaboradorId: number; 
     queryFn: () => endpoints.gapLob(colaboradorId, lobId),
   });
 
-  const [competenciaEmEdicao, setCompetenciaEmEdicao] = useState<{ id: number; nome: string } | null>(null);
+  const [competenciaEmEdicao, setCompetenciaEmEdicao] = useState<{ id: number; nome: string; tipo: 'TECNICA' | 'COMPORTAMENTAL' } | null>(
+    null,
+  );
   const [certificacaoEmEdicao, setCertificacaoEmEdicao] = useState<{ id: string; nome: string } | null>(null);
   const [participacaoEmEdicao, setParticipacaoEmEdicao] = useState<ProjetoVertenteCandidata | null>(null);
 
@@ -77,7 +79,7 @@ export function LobGapDetail({ colaboradorId, lobId }: { colaboradorId: number; 
                   {podeEditar && (
                     <button
                       type="button"
-                      onClick={() => setCompetenciaEmEdicao({ id: c.competenciaId, nome: c.competenciaNome })}
+                      onClick={() => setCompetenciaEmEdicao({ id: c.competenciaId, nome: c.competenciaNome, tipo: c.competenciaTipo })}
                       className="text-fiori-text-secondary hover:text-fiori-primary"
                       title="Avaliar"
                     >
@@ -159,6 +161,7 @@ export function LobGapDetail({ colaboradorId, lobId }: { colaboradorId: number; 
           colaboradorId={colaboradorId}
           competenciaId={competenciaEmEdicao.id}
           competenciaNome={competenciaEmEdicao.nome}
+          competenciaTipo={competenciaEmEdicao.tipo}
           onClose={() => setCompetenciaEmEdicao(null)}
           onSuccess={aoGuardarComSucesso}
         />

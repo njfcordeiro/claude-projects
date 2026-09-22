@@ -1,4 +1,4 @@
-import { BookOpen, Compass, Database, GitBranch, GraduationCap, Grid3x3, LayoutGrid, Network, ShieldCheck, Target, UserCog, Users } from 'lucide-react';
+import { BookOpen, Compass, Database, GitBranch, Grid3x3, LayoutGrid, Network, ShieldCheck, Target, UserCog, Users } from 'lucide-react';
 import { PapelUtilizador } from '../../types/api';
 
 export interface NavItem {
@@ -13,7 +13,6 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutGrid, roles: ['ADMIN_RH', 'MANAGER', 'VIEWER'] },
   { to: '/colaboradores', label: 'Colaboradores', icon: Users, roles: ['ADMIN_RH', 'VIEWER'] },
   { to: '/lobs', label: 'LOBs', icon: Target },
-  { to: '/formacoes', label: 'Formações', icon: GraduationCap },
   { to: '/candidatos', label: 'Candidatos', icon: Compass, roles: ['ADMIN_RH', 'MANAGER', 'VIEWER'] },
   { to: '/evolucao-carreiras', label: 'Evolução de Carreiras', icon: GitBranch, roles: ['ADMIN_RH', 'MANAGER', 'VIEWER'] },
   { to: '/skill-matrix', label: 'Skill Matrix', icon: Grid3x3, roles: ['ADMIN_RH', 'MANAGER', 'VIEWER'] },

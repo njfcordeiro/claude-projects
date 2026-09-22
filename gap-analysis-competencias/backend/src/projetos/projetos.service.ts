@@ -68,7 +68,10 @@ export class ProjetosService {
       throw new ConflictException('Este colaborador já participou neste projeto — cada projeto só conta uma vez.');
     }
 
-    const nivelMaximo = await this.prisma.nivel.findFirstOrThrow({ orderBy: { id: 'desc' } });
+    // As duas escalas (Técnica/Comportamental) partilham o mesmo topo (0-5)
+    // — ver comentário em schema.prisma, modelo Nivel — por isso não é
+    // preciso saber o tipo da competência de cada vertente para obter o cap.
+    const nivelMaximo = await this.prisma.nivel.findFirstOrThrow({ where: { tipo: 'TECNICA' }, orderBy: { id: 'desc' } });
 
     return this.prisma.runAsUser(user.sub, async (tx) => {
       const participacao = await tx.colaboradorProjeto.create({

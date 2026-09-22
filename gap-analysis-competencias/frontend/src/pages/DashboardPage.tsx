@@ -10,6 +10,7 @@ import { ReadinessBarChart } from '../components/ui/ReadinessBarChart';
 import { DataTable } from '../components/ui/DataTable';
 import { Badge } from '../components/ui/Badge';
 import { PrintButton } from '../components/ui/PrintButton';
+import { AjudaContextual } from '../components/ui/AjudaContextual';
 import { CoberturaArquitetos, DashboardResponse } from '../types/api';
 
 const DIMENSOES: {
@@ -43,7 +44,10 @@ export function DashboardPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-fiori-text">Dashboard</h1>
+          <h1 className="flex items-center gap-1.5 text-xl font-semibold text-fiori-text">
+            Dashboard
+            <AjudaContextual ecraId="dashboard" />
+          </h1>
           <p className="text-sm text-fiori-text-secondary">
             {user?.role === 'MANAGER' ? 'Prontidão da tua equipa direta para os respetivos cargos.' : 'Prontidão de toda a organização para os respetivos cargos.'}
           </p>

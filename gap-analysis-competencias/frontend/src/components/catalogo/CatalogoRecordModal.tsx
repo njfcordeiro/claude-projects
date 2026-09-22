@@ -58,6 +58,61 @@ function CampoRelacao({
   );
 }
 
+/**
+ * Campo de nível (0-5): a escala (Técnica/Comportamental) é sempre a da
+ * Competência escolhida no campo-irmão indicado por
+ * `campo.nivelDeCompetenciaCampo` — pedido do utilizador: "sempre que
+ * existe um campo de nível, automaticamente fique disponível a respetiva
+ * escala, caso a competência seja técnica ou comportamental".
+ */
+function CampoNivel({
+  campo,
+  valor,
+  competenciaId,
+  disabled,
+  onChange,
+}: {
+  campo: CatalogoCampoDef;
+  valor: string;
+  competenciaId: string;
+  disabled: boolean;
+  onChange: (v: string) => void;
+}) {
+  const { data: competencias } = useQuery({
+    queryKey: ['catalogo', 'competencias'],
+    queryFn: () => endpoints.catalogoListar('competencias'),
+  });
+  const tipo = competencias?.find((c) => String(c.id) === competenciaId)?.tipo as string | undefined;
+  const tabelaNiveis = tipo === 'COMPORTAMENTAL' ? 'niveis-comportamentais' : tipo === 'TECNICA' ? 'niveis-tecnicos' : null;
+  const { data: niveis } = useQuery({
+    queryKey: ['catalogo', tabelaNiveis],
+    queryFn: () => endpoints.catalogoListar(tabelaNiveis!),
+    enabled: tabelaNiveis !== null,
+  });
+
+  if (!tabelaNiveis) {
+    return (
+      <Select value="" onChange={() => {}} disabled>
+        <option value="">— escolhe primeiro a Competência —</option>
+      </Select>
+    );
+  }
+
+  return (
+    <Select value={valor} onChange={(e) => onChange(e.target.value)} disabled={disabled} required={campo.obrigatorio}>
+      <option value="">— selecionar —</option>
+      {(niveis ?? [])
+        .slice()
+        .sort((a, b) => Number(a.id) - Number(b.id))
+        .map((n) => (
+          <option key={String(n.id)} value={String(n.id)}>
+            {String(n.id)} — {String(n.nome)}
+          </option>
+        ))}
+    </Select>
+  );
+}
+
 export function CatalogoRecordModal({ tabelaDef, registoInicial, onClose }: Props) {
   const queryClient = useQueryClient();
   const aEditar = registoInicial !== null;
@@ -125,6 +180,14 @@ export function CatalogoRecordModal({ tabelaDef, registoInicial, onClose }: Prop
                 <CampoRelacao
                   campo={c}
                   valor={String(valores[c.key] ?? '')}
+                  disabled={disabled}
+                  onChange={(val) => setValores((v) => ({ ...v, [c.key]: val }))}
+                />
+              ) : c.tipo === 'nivel' ? (
+                <CampoNivel
+                  campo={c}
+                  valor={String(valores[c.key] ?? '')}
+                  competenciaId={String(valores[c.nivelDeCompetenciaCampo!] ?? '')}
                   disabled={disabled}
                   onChange={(val) => setValores((v) => ({ ...v, [c.key]: val }))}
                 />

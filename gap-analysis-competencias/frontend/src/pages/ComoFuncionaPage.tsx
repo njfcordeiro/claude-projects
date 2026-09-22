@@ -1,126 +1,140 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  AlertTriangle,
   Award,
-  BookOpen,
   Briefcase,
-  Building2,
   Compass,
-  Grid3x3,
   GraduationCap,
   Layers,
-  Lock,
-  Puzzle,
-  Scale,
+  ListChecks,
   Sparkles,
-  Star,
   Target,
-  Trash2,
-  TrendingUp,
-  UserCircle,
-  UserX,
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { PrintButton } from '../components/ui/PrintButton';
 import { endpoints } from '../api/endpoints';
 import { PesosProntidao } from '../types/api';
+import { AJUDA_ECRAS } from '../lib/ajudaEcras';
 
 const PESOS_PADRAO: PesosProntidao = { pesoCompetencias: 40, pesoCertificacoes: 40, pesoPontos: 20 };
 
-// --- Modelo de dados: diagrama ---------------------------------------------
+// --- Glossário: os conceitos principais, em linguagem simples --------------
 
-type ClusterId = 'organizacao' | 'catalogo' | 'pessoas';
-
-interface NoModelo {
-  id: string;
-  cluster: ClusterId;
-  nome: string;
-  icone: typeof Building2;
-  campos: string[];
-  relacao: string;
+interface Conceito {
+  icone: typeof Target;
+  titulo: string;
+  paragrafos: string[];
 }
 
-const NOS: NoModelo[] = [
-  { id: 'direcao', cluster: 'organizacao', nome: 'Direção', icone: Building2, campos: ['id', 'nome', 'relevante'], relacao: 'Nível organizacional mais alto. Um Colaborador pertence a uma Direção (opcional).' },
-  { id: 'area', cluster: 'organizacao', nome: 'Área', icone: Building2, campos: ['id', 'nome', 'relevante'], relacao: 'Agrupa Competências, LOBs e Formações — e também Colaboradores diretamente.' },
-  { id: 'nucleo', cluster: 'organizacao', nome: 'Núcleo', icone: Building2, campos: ['id', 'nome', 'relevante'], relacao: 'Sem ligação a Direção no modelo (confirmado com o utilizador) — é um agrupamento independente.' },
-  { id: 'carreira', cluster: 'organizacao', nome: 'Carreira', icone: Compass, campos: ['id (código)', 'nome', 'relevante'], relacao: 'Um percurso (ex. "Arquiteto"), com vários Cargos possíveis ao longo do caminho.' },
-  { id: 'cargo', cluster: 'organizacao', nome: 'Cargo', icone: Target, campos: ['id (código)', 'nome', 'carreiraId', 'categoriaId', 'lobsExigidos'], relacao: '"lobsExigidos" é só um número-limiar — não aponta para LOBs específicas.' },
-  { id: 'categoria', cluster: 'organizacao', nome: 'Categoria', icone: Layers, campos: ['id (código)', 'nome'], relacao: 'Classificação transversal do Cargo (ex. nível hierárquico).' },
-
-  { id: 'competencia', cluster: 'catalogo', nome: 'Competência', icone: Sparkles, campos: ['id', 'nome', 'areaId'], relacao: 'Avaliada por Colaborador numa escala única de proficiência, 0 a 5 (Nível).' },
-  { id: 'certificacao', cluster: 'catalogo', nome: 'Certificação', icone: Award, campos: ['id (código)', 'nome'], relacao: 'Pode validar Competências específicas e tem data de validade por Colaborador.' },
-  { id: 'formacao', cluster: 'catalogo', nome: 'Formação', icone: GraduationCap, campos: ['id', 'nome', 'areaId', 'duracaoHoras'], relacao: 'Sugerida automaticamente para colmatar lacunas de Competência.' },
-  { id: 'lob', cluster: 'catalogo', nome: 'LOB', icone: Layers, campos: ['id', 'nome', 'areaId', 'pontosMinimos'], relacao: 'O motor de gap real — exige pontos de Competências e posse de Certificações.' },
-
-  { id: 'colaborador', cluster: 'pessoas', nome: 'Colaborador', icone: UserCircle, campos: ['id', 'nome', 'cargoId', 'managerId', 'version'], relacao: 'Entidade central — liga-se a toda a Organização e ao seu próprio histórico.' },
-  { id: 'avaliacao', cluster: 'pessoas', nome: 'Avaliação (histórico)', icone: Sparkles, campos: ['colaboradorId', 'competenciaId', 'nivelId', 'origem'], relacao: 'Append-only — o "nível atual" é sempre a mais recente, nunca um UPDATE.' },
-  { id: 'certificacao-colab', cluster: 'pessoas', nome: 'Certificação do colaborador', icone: Award, campos: ['certificacaoId', 'dataObtencao', 'dataValidade', 'version'], relacao: 'Tem locking otimista próprio, tal como o Colaborador. dataObtencao pode ser apagada — reverte para "em falta".' },
-  { id: 'formacao-colab', cluster: 'pessoas', nome: 'Histórico de Formação', icone: GraduationCap, campos: ['formacaoId', 'dataConclusao', 'horasFormacao', 'avaliacao'], relacao: 'Lista, não upsert — o mesmo colaborador pode repetir a mesma Formação. Aprovado sobe o nível de competência (nunca desce).' },
-  { id: 'pdi', cluster: 'pessoas', nome: 'PDI', icone: BookOpen, campos: ['descricao', 'nivelAlvoId', 'estado', 'origem'], relacao: 'Gerado a partir das lacunas do motor de gap; acompanhado manualmente depois. Concluir um item de Certificação também sobe o nível de competência transmitido, se superior.' },
+const CONCEITOS: Conceito[] = [
+  {
+    icone: Sparkles,
+    titulo: 'Competência',
+    paragrafos: [
+      'Uma capacidade que uma pessoa tem — por exemplo "SAP ABAP" ou "Liderança". Cada colaborador tem um nível nessa competência, de 0 (não tem) a 5 (é uma referência).',
+      'Há dois tipos: Técnica (conhecimento de uma ferramenta, tecnologia ou área de trabalho) e Comportamental (uma soft skill, como comunicação ou liderança). O histórico de competências técnicas fica sempre guardado — não podem ser apagadas, só reavaliadas para um nível diferente. As comportamentais podem ser removidas, porque são atribuídas manualmente.',
+    ],
+  },
+  {
+    icone: Award,
+    titulo: 'Certificação',
+    paragrafos: [
+      'Um certificado externo (de um fornecedor como a SAP, por exemplo) que uma pessoa obteve. Regista-se a data em que foi obtida e, se aplicável, até quando é válida.',
+      'Se a data de validade passar, a certificação deixa de contar como "válida" — mesmo continuando registada. E se apagares a data de obtenção por engano, a certificação volta a ficar "em falta" (nunca fica uma linha vazia guardada).',
+    ],
+  },
+  {
+    icone: GraduationCap,
+    titulo: 'Formação',
+    paragrafos: [
+      'Um curso ou ação de formação do catálogo. Cada vez que um colaborador conclui uma, fica registada no seu histórico com a data, as horas e se foi Aprovado, Reprovado ou se Faltou — e a mesma formação pode repetir-se (ex. reprovar e voltar a fazer).',
+      'Concluir uma formação com Aprovado pode subir automaticamente o nível de uma competência, se essa formação estiver associada a ela — mas nunca desce um nível já alcançado.',
+    ],
+  },
+  {
+    icone: Layers,
+    titulo: 'LOB',
+    paragrafos: [
+      'Uma LOB é um conjunto de exigências que define um objetivo a atingir — pensa nela como um crachá que se ganha ao reunir um conjunto de competências (a um certo nível) e, por vezes, certificações.',
+      'Cada colaborador tem uma "próxima LOB" sugerida automaticamente, e pode ainda ter LOBs recomendadas pelo seu gestor direto.',
+    ],
+  },
+  {
+    icone: Target,
+    titulo: 'Prontidão',
+    paragrafos: [
+      'Uma percentagem que resume o quanto falta a uma pessoa para atingir uma LOB. 100% significa que está tudo cumprido; abaixo disso, falta pelo menos uma coisa (uma competência, uma certificação, ou pontos suficientes).',
+      'É sempre uma combinação de 3 partes — competências obrigatórias, certificações obrigatórias e pontos — cada uma com um peso configurável. Experimenta o simulador mais abaixo para veres isto em ação.',
+    ],
+  },
+  {
+    icone: Compass,
+    titulo: 'Cargo e Carreira',
+    paragrafos: [
+      'Um Cargo é uma posição concreta (ex. "Arquiteto Sénior"). Uma Carreira é o caminho — a sequência de Cargos por onde uma pessoa pode ir progredindo.',
+      'A app sabe de que Cargo se pode progredir para que outro (ver "Evolução de Carreiras"), e usa isso para sugerir quem já pode avançar (ver "Candidatos").',
+    ],
+  },
+  {
+    icone: ListChecks,
+    titulo: 'PDI — Plano de Desenvolvimento Individual',
+    paragrafos: [
+      'A lista de "próximos passos" de cada pessoa. Pode ser gerada automaticamente (com base no que falta para as suas LOBs, ou para o cargo atual/seguinte) ou criada à mão.',
+      'Cada item pode ser marcado como Pendente, Em Curso ou Concluído — e concluir um item de Certificação ou Formação pode subir automaticamente o nível de competência associado.',
+    ],
+  },
+  {
+    icone: Briefcase,
+    titulo: 'Projetos',
+    paragrafos: [
+      'Uma forma alternativa de subir de nível numa competência, para além de Formações e Certificações: ao participar numa vertente de um projeto, a competência ligada a essa vertente sobe 1 nível (até ao máximo da escala). Cada pessoa só conta a participação num dado projeto uma vez.',
+    ],
+  },
 ];
 
-const CLUSTERS: { id: ClusterId; label: string; nota: string; corBorda: string; corTexto: string }[] = [
-  { id: 'organizacao', label: 'Organização', nota: '→ atribuída a cada Colaborador', corBorda: 'border-t-fiori-primary', corTexto: 'text-fiori-primary' },
-  { id: 'catalogo', label: 'Catálogo', nota: '→ compõe os requisitos das LOBs', corBorda: 'border-t-fiori-success', corTexto: 'text-fiori-success' },
-  { id: 'pessoas', label: 'Pessoas', nota: '→ onde Organização + Catálogo se encontram', corBorda: 'border-t-fiori-warning', corTexto: 'text-fiori-warning' },
-];
-
-function DiagramaModelo() {
-  const [selecionado, setSelecionado] = useState('colaborador');
-  const no = NOS.find((n) => n.id === selecionado)!;
-
+function GlossarioConceitos() {
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {CLUSTERS.map((cluster) => (
-          <div key={cluster.id} className={`rounded-md border border-fiori-border border-t-4 bg-fiori-canvas p-3 ${cluster.corBorda}`}>
-            <p className={`text-sm font-semibold ${cluster.corTexto}`}>{cluster.label}</p>
-            <p className="mb-2 text-xs text-fiori-text-secondary">{cluster.nota}</p>
-            <div className="flex flex-wrap gap-1.5">
-              {NOS.filter((n) => n.cluster === cluster.id).map((n) => {
-                const Icone = n.icone;
-                const ativo = n.id === selecionado;
-                return (
-                  <button
-                    key={n.id}
-                    type="button"
-                    onClick={() => setSelecionado(n.id)}
-                    className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                      ativo
-                        ? 'border-fiori-primary bg-fiori-primary text-white'
-                        : 'border-fiori-border bg-fiori-surface text-fiori-text hover:border-fiori-primary'
-                    }`}
-                  >
-                    <Icone size={12} /> {n.nome}
-                  </button>
-                );
-              })}
+    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+      {CONCEITOS.map((c) => {
+        const Icone = c.icone;
+        return (
+          <div key={c.titulo} className="rounded-md border border-fiori-border p-3">
+            <div className="mb-1.5 flex items-center gap-2">
+              <Icone size={16} className="text-fiori-primary" />
+              <p className="text-sm font-semibold text-fiori-text">{c.titulo}</p>
             </div>
+            {c.paragrafos.map((p, i) => (
+              <p key={i} className="mb-1.5 text-sm text-fiori-text-secondary last:mb-0">
+                {p}
+              </p>
+            ))}
           </div>
-        ))}
-      </div>
-
-      <div className="rounded-md border border-fiori-border bg-fiori-primary-bg p-3">
-        <div className="mb-1 flex items-center gap-2">
-          <no.icone size={16} className="text-fiori-primary" />
-          <p className="text-sm font-semibold text-fiori-text">{no.nome}</p>
-        </div>
-        <p className="mb-2 text-sm text-fiori-text-secondary">{no.relacao}</p>
-        <div className="flex flex-wrap gap-1.5">
-          {no.campos.map((campo) => (
-            <span key={campo} className="rounded bg-fiori-surface px-1.5 py-0.5 font-mono text-[11px] text-fiori-text-secondary shadow-fiori">
-              {campo}
-            </span>
-          ))}
-        </div>
-      </div>
+        );
+      })}
     </div>
   );
 }
 
-// --- Simulador do motor de gap ---------------------------------------------
+// --- Ecrã a ecrã (reaproveita o mesmo conteúdo dos ícones de ajuda) --------
+
+function EcraAEcra() {
+  return (
+    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+      {AJUDA_ECRAS.map((a) => (
+        <div key={a.id} className="rounded-md border border-fiori-border p-3">
+          <p className="mb-1.5 text-sm font-semibold text-fiori-text">{a.titulo}</p>
+          {a.paragrafos.map((p, i) => (
+            <p key={i} className="mb-1.5 text-sm text-fiori-text-secondary last:mb-0">
+              {p}
+            </p>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// --- Simulador do motor de gap — experimenta o cálculo de prontidão --------
 
 interface RequisitoSimulado {
   nome: string;
@@ -155,10 +169,7 @@ function SimuladorMotorGap({ pesos }: { pesos: PesosProntidao }) {
     const certCumprida = certPossui && certValida;
 
     const obrigComp = competencias.filter((c) => c.obrigatorio);
-    // Sem crédito parcial (mesmo princípio de calcularGapCompetencia) — uma competência
-    // obrigatória conta 1 (cumprida) ou 0. LOB sem obrigatórias desse tipo conta como 1.
     const ratioComp = obrigComp.length === 0 ? 1 : obrigComp.filter((c) => c.cumprido).length / obrigComp.length;
-    // A certificação do simulador é sempre obrigatória (badge fixa) — 1 obrigatória, ratio binário.
     const ratioCert = certCumprida ? 1 : 0;
     const ratioPontos = pontosMinimos > 0 ? Math.min(1, pontosObtidos / pontosMinimos) : 1;
 
@@ -166,15 +177,15 @@ function SimuladorMotorGap({ pesos }: { pesos: PesosProntidao }) {
     const atingido = pontosObtidos >= pontosMinimos && obrigatoriosEmFalta === 0;
     const prontidao = Math.round(pesos.pesoCompetencias * ratioComp + pesos.pesoCertificacoes * ratioCert + pesos.pesoPontos * ratioPontos);
 
-    return { competencias, pontosObtidos, obrigatoriosEmFalta, atingido, prontidao, certCumprida, ratioComp, ratioCert, ratioPontos };
+    return { competencias, pontosObtidos, obrigatoriosEmFalta, atingido, prontidao, ratioComp, ratioCert, ratioPontos };
   }, [requisitos, certPossui, certValida, pontosMinimos, pesos]);
 
   return (
     <div className="space-y-3">
       <p className="text-sm text-fiori-text-secondary">
-        Ajusta os "níveis atuais" e o botão da certificação — o resultado (prontidão, atingido?) recalcula-se em tempo real, exatamente
-        com a fórmula do backend (<code className="rounded bg-fiori-canvas px-1 font-mono text-xs">gap-analysis.logic.ts</code>), usando
-        os pesos atualmente configurados ({pesos.pesoCompetencias}% / {pesos.pesoCertificacoes}% / {pesos.pesoPontos}%).
+        Esta é uma LOB de exemplo. Mexe nos "níveis atuais" e no botão da certificação — o resultado (prontidão, atingiu ou não) recalcula-se
+        logo, exatamente como aconteceria na aplicação a sério, usando os pesos atualmente configurados ({pesos.pesoCompetencias}% /{' '}
+        {pesos.pesoCertificacoes}% / {pesos.pesoPontos}%).
       </p>
 
       <div className="flex items-center gap-2">
@@ -203,7 +214,7 @@ function SimuladorMotorGap({ pesos }: { pesos: PesosProntidao }) {
                 )}
               </p>
               <p className="text-xs text-fiori-text-secondary">
-                Nível exigido: {r.nivelExigido} · vale {r.pontos} pontos {cumprido ? '(sem crédito parcial)' : '(0 pontos — abaixo do nível exigido)'}
+                Nível exigido: {r.nivelExigido} · vale {r.pontos} pontos {cumprido ? '(cumprida)' : '(0 pontos — ainda não chegou ao nível exigido)'}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -227,7 +238,7 @@ function SimuladorMotorGap({ pesos }: { pesos: PesosProntidao }) {
           <p className="text-sm font-medium text-fiori-text">
             Certificação X <span className="ml-1 rounded bg-fiori-error-bg px-1.5 py-0.5 text-[10px] font-semibold text-fiori-error">OBRIGATÓRIA</span>
           </p>
-          <p className="text-xs text-fiori-text-secondary">Não vale pontos — só bloqueia se estiver em falta ou expirada.</p>
+          <p className="text-xs text-fiori-text-secondary">Não vale pontos — só bloqueia a LOB se estiver em falta ou expirada.</p>
         </div>
         <div className="flex items-center gap-3 text-xs">
           <label className="flex items-center gap-1.5">
@@ -235,14 +246,20 @@ function SimuladorMotorGap({ pesos }: { pesos: PesosProntidao }) {
             Possui
           </label>
           <label className="flex items-center gap-1.5">
-            <input type="checkbox" checked={certValida} onChange={(e) => setCertValida(e.target.checked)} className="h-4 w-4 accent-fiori-primary" disabled={!certPossui} />
+            <input
+              type="checkbox"
+              checked={certValida}
+              onChange={(e) => setCertValida(e.target.checked)}
+              className="h-4 w-4 accent-fiori-primary"
+              disabled={!certPossui}
+            />
             Dentro da validade
           </label>
         </div>
       </div>
 
       <div className="space-y-2 rounded-md border border-fiori-border p-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-fiori-text-secondary">Repartição por critério</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-fiori-text-secondary">Como se chegou a este resultado</p>
         {(
           [
             { label: `Competências obrigatórias (${pesos.pesoCompetencias}%)`, ratio: resultado.ratioComp, peso: pesos.pesoCompetencias, cor: 'bg-fiori-primary' },
@@ -255,9 +272,7 @@ function SimuladorMotorGap({ pesos }: { pesos: PesosProntidao }) {
             <div className="h-2 flex-1 overflow-hidden rounded-full bg-fiori-surface">
               <div className={`h-full rounded-full ${linha.cor}`} style={{ width: `${Math.round(linha.ratio * 100)}%` }} />
             </div>
-            <span className="w-24 shrink-0 text-right text-xs font-medium text-fiori-text">
-              {Math.round(linha.ratio * 100)}% × {linha.peso}% = {Math.round(linha.ratio * linha.peso)}pp
-            </span>
+            <span className="w-16 shrink-0 text-right text-xs font-medium text-fiori-text">{Math.round(linha.ratio * 100)}%</span>
           </div>
         ))}
       </div>
@@ -265,7 +280,7 @@ function SimuladorMotorGap({ pesos }: { pesos: PesosProntidao }) {
       <div className={`rounded-md border p-3 ${resultado.atingido ? 'border-fiori-success bg-fiori-success-bg' : 'border-fiori-error bg-fiori-error-bg'}`}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className={`text-sm font-semibold ${resultado.atingido ? 'text-fiori-success' : 'text-fiori-error'}`}>
-            {resultado.atingido ? 'LOB atingida ✓' : 'LOB não atingida'}
+            {resultado.atingido ? 'LOB atingida ✓' : 'LOB ainda não atingida'}
           </p>
           <p className="text-xs text-fiori-text-secondary">
             {resultado.pontosObtidos} / {pontosMinimos} pontos · {resultado.obrigatoriosEmFalta} obrigatório
@@ -278,377 +293,75 @@ function SimuladorMotorGap({ pesos }: { pesos: PesosProntidao }) {
             style={{ width: `${resultado.prontidao}%` }}
           />
         </div>
-        <p className="mt-1 text-xs text-fiori-text-secondary">
-          Prontidão: {resultado.prontidao}% {resultado.atingido ? '' : resultado.prontidao === 100 ? '(nunca acontece — atingido implica sempre 100%)' : ''}
-        </p>
+        <p className="mt-1 text-xs text-fiori-text-secondary">Prontidão: {resultado.prontidao}%</p>
       </div>
-    </div>
-  );
-}
-
-// --- Cartões de regras -------------------------------------------------------
-
-const REGRAS = [
-  {
-    icone: Scale,
-    titulo: 'Fórmula de Prontidão',
-    texto:
-      'A prontidão de uma LOB é a média ponderada de 3 critérios, cada um um rácio entre 0 e 1: Competências obrigatórias (nº cumpridas ÷ nº obrigatórias totais dessa LOB — sem crédito parcial, mesmo princípio de "cumprido"/"não cumprido" usado no resto do motor), Certificações obrigatórias (nº válidas ÷ nº obrigatórias totais) e Pontos (pontos obtidos ÷ pontos mínimos, capado a 100%). Uma LOB sem nenhuma competência (ou certificação) obrigatória conta esse critério como cumprido por vacuidade (rácio 1) — não há nada a bloquear nesse eixo. Os pesos são globais (uma única configuração para toda a organização, não por LOB) e editáveis em Gestão de Dados por ADMIN_RH, sempre a somar 100 pontos percentuais — ver secção "Pesos de Prontidão" acima. Esta fórmula garante que 100% de prontidão implica sempre LOB atingida, e vice-versa: já não é possível mostrar 100% com um obrigatório em falta.',
-    formula:
-      'prontidão = pesoCompetências × ratioCompetências + pesoCertificações × ratioCertificações + pesoPontos × ratioPontos · ratioPontos = mín(1, pontosObtidos ÷ pontosMínimos) · atingido ⇔ prontidão = 100%',
-  },
-  {
-    icone: Compass,
-    titulo: 'Candidatos a carreira',
-    texto:
-      'Escolhe-se uma Carreira e, opcionalmente, um Cargo dessa carreira (ou "Todos os cargos"). Para cada Cargo-alvo, os candidatos são os colaboradores cujo Cargo ATUAL é um predecessor direto desse Cargo na tabela Progressão de Cargos — não interessa a Carreira atual do colaborador, só essa ligação. Por isso alguém já dentro da carreira, num cargo anterior, também aparece como candidato ao próximo cargo. Um mesmo colaborador pode aparecer em mais que uma linha se o seu cargo atual progride para mais do que um Cargo-alvo. A Elegibilidade ("Apto") exige DUAS condições em relação ao Cargo-alvo dessa linha — antiguidade e LOBs — e falha se qualquer uma não se verificar, listando qual(is). A Prontidão mostrada é sempre a da "Próxima LOB" do colaborador (só de leitura — sempre derivada dos Objetivos de LOB, ver regra acima) — nunca a média geral.',
-    formula:
-      'apto = aptoAntiguidade E aptoLOBs · aptoAntiguidade = anosExperienciaMinimo do cargo-alvo = 0 OU antiguidade ≥ esse mínimo · aptoLOBs = lobsAtingidas ≥ lobsExigidas do cargo-alvo',
-  },
-  {
-    icone: Target,
-    titulo: 'Objetivos de LOB',
-    texto:
-      'Cada colaborador tem até 3 LOBs sugeridas automaticamente pelo sistema — da sua própria Área, ainda não atingidas, pela maior % de prontidão (as mais próximas de serem alcançadas entram primeiro) — sempre calculadas ao vivo na ficha, nunca guardadas, por isso nunca ficam desatualizadas. A qualquer uma delas soma-se as LOBs recomendadas manualmente pelo BUD (o gestor direto do colaborador, ou ADMIN_RH — mesma permissão de escrita do resto da ficha): sem limite de quantidade, e sem obrigação de pertencerem à Área do colaborador. Todas em conjunto formam os "objetivos de LOB" desse colaborador. O campo "Próxima LOB" mostrado (só de leitura) no cabeçalho da ficha é sempre derivado destes mesmos objetivos, nunca um valor guardado à parte: a primeira recomendação do BUD ainda não atingida, senão a sugestão do sistema de maior prontidão ainda não atingida.',
-    formula:
-      'auto = até 3 LOBs da Área, não atingidas, ordenadas por prontidão desc · bud = recomendações do gestor/ADMIN_RH (sem restrição de Área) · próximaLOB = primeira de bud não atingida, senão primeira de auto',
-  },
-  {
-    icone: Layers,
-    titulo: 'Quadro de LOBs — filtro por Área',
-    texto:
-      'Na ficha do colaborador, o quadro de LOBs mostra, por omissão, só as LOBs da Área do colaborador — um seletor "Área do colaborador" / "Todas as LOBs" alterna para ver o catálogo completo. Sem Área definida, mostra sempre todas. O quadro fica lado a lado com o Detalhe da LOB selecionada, num ecrã largo o suficiente.',
-    formula: 'lobsExibidas = todasAsLobs SE mostrarTodas OU colaborador sem área, senão lobs.filter(lob.areaId === colaborador.areaId)',
-  },
-  {
-    icone: Sparkles,
-    titulo: 'PDI — sugestões automáticas',
-    texto:
-      '"Gerar sugestões" já não visa uma única LOB: percorre TODOS os objetivos de LOB ativos do colaborador (sistema + BUD, ver "Objetivos de LOB" acima) e sugere o que estiver em falta em cada uma, sem duplicar entre elas. No PDI, os itens aparecem separados em 3 grupos, por esta ordem: "Recomendadas pelo BUD", "Sugeridas pelo sistema" e "Outras competências" (itens manuais, ou cuja LOB de origem já não é um objetivo atual); dentro de "Recomendadas pelo BUD" e "Sugeridas pelo sistema", os itens aparecem ainda sub-agrupados pela LOB de origem. Se uma LOB for, ao mesmo tempo, sugestão do sistema e recomendação do BUD, os seus itens contam para o grupo BUD. Qualquer item — gerado ou adicionado manualmente — pode ser eliminado, e "Gerar sugestões" pode ser chamado de novo a qualquer momento (não duplica o que já existe).',
-    formula: 'itens sugeridos = ⋃ᴸᴼᴮ∈objetivos { competências/certificações em falta nessa LOB }, sem duplicados · grupo do item = BUD, senão Sistema, senão Outras · sub-agrupado por LOB dentro de BUD/Sistema',
-  },
-  {
-    icone: Layers,
-    titulo: 'Competências e LOBs — Técnicas vs. Comportamentais',
-    texto:
-      'Competência e LOB têm um campo "Tipo" (Técnica ou Comportamental), editável em Gestão de Dados — tudo o que já existia fica "Técnica" por omissão, sem quebrar nada. Cada colaborador tem também, na sua ficha, a secção "Competências Comportamentais" — não é o catálogo inteiro, é uma lista editável (adicionar, remover, mudar o nível) das que lhe foram mesmo atribuídas, sempre manualmente por ADMIN_RH/gestor direto; sem nenhuma atribuída, a secção está simplesmente vazia.',
-    formula: 'Competencia.tipo, Lob.tipo ∈ {TECNICA, COMPORTAMENTAL}',
-  },
-  {
-    icone: Target,
-    titulo: 'Perfil de Competências de um Cargo',
-    texto:
-      'Cada Cargo pode ter um Perfil de Competências — uma lista de competências com o nível exigido, gerida em Gestão de Dados ("Perfil de Competências por Cargo"), tal como uma LOB tem os seus requisitos de competência. Como as linhas dessa tabela SÃO o perfil (não há uma entidade "Perfil" à parte), um Cargo só pode ter um perfil possível — não faz sentido ter dois. Só é possível escolher competências Comportamentais nesta tabela (as Técnicas continuam a ser cobertas pelas LOBs/Objetivos de LOB, não por aqui) — o próprio formulário só lista Comportamentais, e o backend rejeita a escrita de uma Técnica mesmo por fora do formulário. Avaliado pelo mesmo motor de sugestões já usado para LOBs (formações candidatas incluídas). Sem nenhuma linha para um Cargo, o perfil está simplesmente vazio — nada bloqueado, os botões do PDI abaixo só não geram nada para esse Cargo até ser preenchido. Na ficha do colaborador, ao lado de "Competências Comportamentais", a secção "Perfil de Competências Comportamentais por Cargo" mostra o mesmo gap para qualquer Cargo à escolha (por omissão o cargo atual) — é só visualização, não gera nada.',
-    formula:
-      'CargoRequisitoCompetencia(cargoId, competenciaId, nivelExigidoId) — um único perfil por cargo, imposto pela chave composta · competenciaId restrito a Competencia.tipo = COMPORTAMENTAL',
-  },
-  {
-    icone: Briefcase,
-    titulo: 'PDI — necessidades do Cargo Atual e do Próximo Cargo',
-    texto:
-      '"Gerar para o Cargo Atual" avalia o colaborador contra o Perfil de Competências do seu cargo atual e sugere o que estiver em falta — mesmo motor de "Gerar sugestões", só muda a fonte das competências-alvo. "Gerar para o Próximo Cargo" faz o mesmo para o cargo seguinte, resolvido via Progressão de Cargos: com um único cargo seguinte possível, escolhe-o sozinho; havendo mais que um, pede para escolher qual antes de gerar. Os itens resultantes aparecem no PDI em dois grupos próprios, "Necessidades do Cargo Atual" e "Necessidades do Próximo Cargo" — a seguir a BUD/Sistema e antes de Outras. A deduplicação ao gerar é sempre relativa à MESMA origem (a mesma LOB ou o mesmo Cargo): gerar duas vezes para o Cargo Atual não duplica, mas a mesma competência exigida pelo Cargo Atual E pelo Próximo Cargo (com níveis diferentes, ex. "Proficiente" depois "Especialista") produz sempre duas linhas — são dois alvos distintos, o colaborador tem de trabalhar um de cada vez. Sem perfil definido para o Cargo, o botão não gera nada — avisa em vez de falhar.',
-    formula: 'competências-alvo = CargoRequisitoCompetencia.where(cargoId = atual OU próximo) · próximo cargo = único predecessor→sucessor em CargoProgressao, ou escolhido manualmente se houver mais que um · dedup = mesma competência/certificação NA MESMA origem (lobId ou cargoId)',
-  },
-  {
-    icone: TrendingUp,
-    titulo: 'PDI — subir de nível ao concluir Certificação ou Formação',
-    texto:
-      'Um item de PDI de Certificação transmite os níveis definidos em "Requisitos de competência das certificações" ao colaborador quando é marcado como Concluído pela primeira vez — mas só sobe, nunca desce: se o nível transmitido for igual ou inferior ao que o colaborador já tem, nada muda. Reabrir o item para Pendente/Em Curso não apaga o nível já atribuído. O mesmo acontece no Histórico de Formação (ver regra abaixo) quando a Avaliação de uma linha fica "Aprovado", usando os níveis de "Requisitos de competência das formações" — via alternativa a Formação/Certificação, ao lado de Projetos, para subir de nível numa competência.',
-    formula: 'novoNível = nível transmitido, aplicado SE novoNível > nívelAtual, senão sem alteração · origem da avaliação = CERTIFICACAO ou FORMACAO',
-  },
-  {
-    icone: GraduationCap,
-    titulo: 'Histórico de Formação',
-    texto:
-      'Secção na ficha do colaborador que regista cada participação numa Formação: Formação, Data de conclusão, Horas (por omissão a "Duração (horas)" do catálogo, sempre editável manualmente) e Avaliação (Aprovado, Reprovado ou Faltou). Ao contrário da Certificação do colaborador (um estado "atual" por certificação), é uma lista — o mesmo colaborador pode repetir a mesma Formação (ex. Reprovado e depois repete), cada participação fica com a sua própria linha, editável e eliminável.',
-    formula: 'ColaboradorFormacao: sem único(colaboradorId, formacaoId) — lista, não upsert · subida de nível só quando avaliacao = APROVADO',
-  },
-  {
-    icone: Puzzle,
-    titulo: 'Projetos — subir de nível por participação',
-    texto:
-      'Via alternativa a Formação/Certificação para o colaborador subir de nível numa competência. Um Projeto (catálogo, gerido em Gestão de Dados) tem uma ou mais Vertentes, cada uma ligada a UMA competência. Ao registar a participação de um colaborador num projeto, escolhe-se em quais vertentes participou (no mínimo uma, pode ser mais do que uma) — é assim que se indica quais competências vão ser desenvolvidas por essa participação. Cada vertente escolhida sobe sempre +1 nível na sua competência (nunca leva a um nível fixo, ao contrário de Formação/Certificação), capado ao nível máximo da escala (0-5). Um colaborador só participa num dado projeto uma única vez — depois de registada a participação, esse projeto deixa de ser sugerido. As vertentes disponíveis aparecem como sugestão junto de cada competência em falta na Ficha do Colaborador (Detalhe da LOB), ao lado de Formações e Certificações.',
-    formula: 'nível novo = mín(nível atual + 1, nível máximo da escala) por cada vertente escolhida · 1 participação por colaborador+projeto',
-  },
-  {
-    icone: AlertTriangle,
-    titulo: 'Risco de fuga de talento',
-    texto:
-      'Heurística explícita, não um facto medido (não há dados de rotatividade no modelo): identifica quem está pronto há tempo, sem próximo passo de carreira visível.',
-    formula: 'prontidão ≥ 85% E ≥ 2 anos no cargo atual E cargo sem entrada em cargo_progressao',
-  },
-  {
-    icone: Star,
-    titulo: 'Relevância',
-    texto:
-      'Direção, Área e Núcleo têm um campo "relevante", editável em Gestão de Dados. Um colaborador é considerado "relevante" no ecrã de Colaboradores se pertencer a QUALQUER uma das três marcada como tal.',
-    formula: 'relevante(colaborador) = direção.relevante OU área.relevante OU núcleo.relevante',
-  },
-  {
-    icone: Award,
-    titulo: 'Certificação — apagar a data de obtenção',
-    texto:
-      'Na Certificação do colaborador, a data de obtenção pode ser apagada (voltar a vazia), não só preenchida — corrige um registo feito por engano sem ter de eliminar a linha inteira (a data de validade/anexo já preenchidos não se perdem). Ao contrário do que a existência da linha sozinha podia sugerir, a certificação só conta como "possuída" na análise de gap se a data de obtenção estiver preenchida — apagá-la reverte-a para "em falta" em todas as LOBs onde é exigida.',
-    formula: 'possui = existe registo E dataObtencao !== null · cumprido = possui E (sem dataValidade OU dataValidade ≥ hoje)',
-  },
-  {
-    icone: Lock,
-    titulo: 'Locking otimista',
-    texto:
-      'Colaborador e a Certificação do colaborador têm um campo "version", incrementado a cada escrita. Um pedido de atualização tem de enviar a versão que leu — se já não bater certo, o backend rejeita em vez de sobrescrever silenciosamente a alteração de outra pessoa.',
-    formula: 'PATCH devolve 409 Conflict se version enviada ≠ version atual na base de dados',
-  },
-  {
-    icone: UserCircle,
-    titulo: 'Nível de Gestão e Local de Trabalho',
-    texto:
-      'Dois atributos adicionais do colaborador, editáveis na ficha (secção ADMIN_RH): "Nível de Gestão" (ex. BUD, BUM, Team Leader) e "Local de Trabalho". As opções vêm de duas tabelas de catálogo geridas em Gestão de Dados ("Níveis de Gestão" e "Locais de Trabalho") — não são texto livre. Ambos aparecem como colunas na lista de Colaboradores e no Dashboard, e podem ser usados como dimensão de agrupamento no Dashboard e na Skill Matrix.',
-    formula: 'colaborador.nivelGestaoId → niveis_gestao · colaborador.localTrabalhoId → locais_trabalho',
-  },
-  {
-    icone: UserX,
-    titulo: 'Colaboradores inativos',
-    texto:
-      'O campo "Estado" (Ativo/Inativo) na ficha do colaborador — pedido do utilizador: colaboradores inativos são excluídos de toda a análise agregada: Dashboard (KPIs, gráfico de prontidão, tabela de colaboradores), Skill Matrix e Candidatos a carreira. Continuam visíveis e geríveis no ecrã de Colaboradores (com filtro "Estado: Todos/Ativos/Inativos"), e a ficha individual de um colaborador inativo continua acessível. Se um colaborador for desativado sem lhe reatribuir a equipa primeiro, um alerta aparece nos Insights automáticos do Dashboard e na própria ficha desse colaborador.',
-    formula: 'calcularResumos/obterSkillMatrix filtram sempre ativo = true, independentemente dos restantes filtros',
-  },
-  {
-    icone: Trash2,
-    titulo: 'Eliminar um colaborador',
-    texto:
-      'Pedido do utilizador: eliminar um colaborador tem de ser sempre possível, independentemente de estar associado a outros dados. Registos que lhe pertencem (avaliações, certificações, recomendações de LOB, PDI) são eliminados em cascata junto com ele. Referências vindas de outro lado ficam a null em vez de bloquear a eliminação: colaboradores que o tinham como gestor ficam sem gestor definido, e a conta de utilizador associada perde a ligação (a conta em si não é eliminada).',
-    formula: 'onDelete: Cascade nos dados do próprio colaborador · onDelete: SetNull nas referências de outros para ele (managerId, users.colaboradorId)',
-  },
-  {
-    icone: Grid3x3,
-    titulo: 'Skill Matrix — edição e importação em massa de níveis',
-    texto:
-      'No separador "Por Competência", clicar numa célula abre o mesmo formulário de avaliação da ficha do colaborador (locking otimista incluído) — disponível para ADMIN_RH e MANAGER (dentro da sua equipa). "Download níveis" exporta exatamente as colunas visíveis (respeitando os filtros ativos) num ficheiro com o id e o nome associado lado a lado (colaboradorId/Colaborador, competenciaId/Competência, nivelId/Nível); reenviar esse mesmo ficheiro em "Upload níveis" só grava uma nova avaliação (histórico append-only) para as linhas cujo nível pedido é diferente do nível atual — reenviar sem alterações não cria ruído no histórico. Os colaboradores podem ainda ser agrupados em blocos por Direção, Área, Núcleo ou Núcleo+Área, tal como as LOBs (separador "Por LOB") são agrupadas visualmente por Área.',
-    formula: 'grava nova avaliação apenas se nivelId do ficheiro ≠ nível atual do colaborador nessa competência',
-  },
-  {
-    icone: Grid3x3,
-    titulo: 'Gestão de Dados — dados de colaboradores em massa',
-    texto:
-      'Além das tabelas de catálogo, Gestão de Dados tem uma secção própria "Dados de colaboradores" para exportar/importar em massa: Competências técnicas, Competências comportamentais, Certificações e Histórico de Formação. Ao contrário do catálogo genérico, não há grelha editável célula-a-célula aqui (cada tabela tem uma regra de escrita própria — append-only, locking otimista, subida automática de nível — que a grelha genérica não modela) — só Download/Upload; a edição linha-a-linha continua nos ecrãs próprios da ficha do colaborador. Reimportar aplica cada linha exatamente como se tivesse sido gravada manualmente nesse ecrã (mesma validação, mesmas regras), nunca um caminho de escrita paralelo.',
-    formula: 'cada linha do ficheiro → mesmo método de serviço do ecrã individual (criarAvaliacao, upsertCertificacao, FormacoesConcluidasService.criar/atualizar)',
-  },
-  {
-    icone: Building2,
-    titulo: 'Cobertura de Arquitetos por Área/Núcleo',
-    texto:
-      'Regra de dimensionamento pedida para o quadro "Cobertura de Arquitetos" no Dashboard: cada combinação Núcleo/Área precisa de Arquitetos proporcionalmente à sua dimensão. Combinações pequenas não entram em défice — assume-se que são cobertas por Arquitetos de outras áreas ("apoio transversal"). Uma linha por combinação Núcleo/Área (tabela "Áreas por Núcleo"), contando só colaboradores cuja Área E Núcleo próprios batem certo com essa combinação — não só a Área. Áreas sem nenhum Núcleo associado mostram uma linha própria com o total da Área inteira. Quando uma combinação está em défice, os seus colaboradores passam à frente na lista de Candidatos à carreira de Arquiteto, logo a seguir à elegibilidade por antiguidade e antes do critério de gap/prontidão.',
-    formula:
-      'exigidos = 0 se colaboradores < 10, senão max(1, arredondar para cima de colaboradores/10) · défice = max(0, exigidos − arquitetos)',
-  },
-];
-
-function CartoesRegras() {
-  return (
-    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-      {REGRAS.map((r) => {
-        const Icone = r.icone;
-        return (
-          <div key={r.titulo} className="rounded-md border border-fiori-border p-3">
-            <div className="mb-1.5 flex items-center gap-2">
-              <Icone size={16} className="text-fiori-primary" />
-              <p className="text-sm font-semibold text-fiori-text">{r.titulo}</p>
-            </div>
-            <p className="mb-2 text-sm text-fiori-text-secondary">{r.texto}</p>
-            <code className="block rounded bg-fiori-canvas px-2 py-1 font-mono text-[11px] text-fiori-text">{r.formula}</code>
-          </div>
-        );
-      })}
     </div>
   );
 }
 
 // --- Pesos de Prontidão -------------------------------------------------------
 
-const CRITERIOS_PESO: { chave: keyof PesosProntidao; label: string; calculo: string }[] = [
-  { chave: 'pesoCompetencias', label: 'Competências obrigatórias', calculo: 'nº obrigatórias cumpridas ÷ nº obrigatórias totais' },
-  { chave: 'pesoCertificacoes', label: 'Certificações obrigatórias', calculo: 'nº obrigatórias válidas ÷ nº obrigatórias totais' },
-  { chave: 'pesoPontos', label: 'Pontos mínimos', calculo: 'mín(1, pontos obtidos ÷ pontos mínimos)' },
+const CRITERIOS_PESO: { chave: keyof PesosProntidao; label: string; explicacao: string }[] = [
+  { chave: 'pesoCompetencias', label: 'Competências obrigatórias', explicacao: 'quantas das obrigatórias já estão cumpridas' },
+  { chave: 'pesoCertificacoes', label: 'Certificações obrigatórias', explicacao: 'quantas das obrigatórias já são válidas' },
+  { chave: 'pesoPontos', label: 'Pontos mínimos', explicacao: 'quantos pontos já foram somados, até ao mínimo exigido' },
 ];
 
-interface ExemploPontidao {
-  titulo: string;
-  cenario: string;
-  ratioComp: number;
-  ratioCert: number;
-  ratioPontos: number;
-  vacuidadeComp?: boolean;
-  vacuidadeCert?: boolean;
-}
-
-const EXEMPLOS_PRONTIDAO: ExemploPontidao[] = [
-  {
-    titulo: 'Tudo cumprido',
-    cenario: '1 competência obrigatória cumprida · 1 certificação obrigatória válida · 50/50 pontos.',
-    ratioComp: 1,
-    ratioCert: 1,
-    ratioPontos: 1,
-  },
-  {
-    titulo: 'Falta 1 certificação obrigatória',
-    cenario: 'Competência obrigatória cumprida e 50/50 pontos — mas a certificação obrigatória está em falta.',
-    ratioComp: 1,
-    ratioCert: 0,
-    ratioPontos: 1,
-  },
-  {
-    titulo: 'Sem obrigatórias, só pontos parciais',
-    cenario: 'Esta LOB não tem nenhuma competência/certificação obrigatória — só 10 de 50 pontos obtidos.',
-    ratioComp: 1,
-    ratioCert: 1,
-    ratioPontos: 0.2,
-    vacuidadeComp: true,
-    vacuidadeCert: true,
-  },
-];
-
-/** Documentação viva (sem edição — os pesos só mudam em Gestão de Dados) — mostra os pesos atuais e exemplos de cálculo com esses pesos. */
+/** Documentação viva (sem edição — os pesos só mudam em Gestão de Dados) — mostra os pesos atuais em uso. */
 function SecaoPesosProntidao({ pesos }: { pesos: PesosProntidao }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <p className="text-sm text-fiori-text-secondary">
-        Os pesos que o motor de gap usa para calcular a prontidão de uma LOB (ver "Fórmula de Prontidão" nas regras de negócio abaixo) —
-        configuração global, aplicada a toda a organização, não por LOB.
+        A prontidão de uma LOB junta 3 critérios, cada um com um peso — a soma dos 3 pesos é sempre 100%. É uma configuração única para toda
+        a organização (não varia por LOB), e só um Admin RH a pode mudar, em Gestão de Dados.
       </p>
-
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-fiori-border text-xs uppercase tracking-wide text-fiori-text-secondary">
-              <th className="py-2 pr-3">Critério</th>
-              <th className="py-2 pr-3">Peso</th>
-              <th className="py-2">Cálculo dentro do critério</th>
-            </tr>
-          </thead>
-          <tbody>
-            {CRITERIOS_PESO.map((c) => (
-              <tr key={c.chave} className="border-b border-fiori-border last:border-0">
-                <td className="py-2 pr-3 font-medium text-fiori-text">{c.label}</td>
-                <td className="py-2 pr-3">
-                  <span className="rounded bg-fiori-primary-bg px-2 py-0.5 font-semibold text-fiori-primary">{pesos[c.chave]}%</span>
-                </td>
-                <td className="py-2 font-mono text-xs text-fiori-text-secondary">{c.calculo}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <p className="mt-2 text-xs italic text-fiori-text-secondary">
-          Soma: 100% — uma LOB sem nenhuma competência (ou certificação) obrigatória conta esse critério como cumprido por vacuidade
-          (100%), não há nada a bloquear nesse eixo.
-        </p>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {CRITERIOS_PESO.map((c) => (
+          <div key={c.chave} className="rounded-md border border-fiori-border p-3 text-center">
+            <p className="text-2xl font-bold text-fiori-primary">{pesos[c.chave]}%</p>
+            <p className="text-sm font-medium text-fiori-text">{c.label}</p>
+            <p className="mt-1 text-xs text-fiori-text-secondary">{c.explicacao}</p>
+          </div>
+        ))}
       </div>
-
-      <div>
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-fiori-text-secondary">
-          Exemplos de cálculo — LOB "Payroll" (pontos mínimos: 50), com os pesos acima
-        </p>
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-          {EXEMPLOS_PRONTIDAO.map((ex) => {
-            const prontidao = Math.round(pesos.pesoCompetencias * ex.ratioComp + pesos.pesoCertificacoes * ex.ratioCert + pesos.pesoPontos * ex.ratioPontos);
-            const atingido = prontidao === 100;
-            const linhas = [
-              { label: 'Competências', ratio: ex.ratioComp, peso: pesos.pesoCompetencias, cor: 'bg-fiori-primary', vacuidade: ex.vacuidadeComp },
-              { label: 'Certificações', ratio: ex.ratioCert, peso: pesos.pesoCertificacoes, cor: 'bg-fiori-warning', vacuidade: ex.vacuidadeCert },
-              { label: 'Pontos', ratio: ex.ratioPontos, peso: pesos.pesoPontos, cor: 'bg-fiori-success' },
-            ];
-            return (
-              <div key={ex.titulo} className="overflow-hidden rounded-md border border-fiori-border">
-                <div className={`flex items-center justify-between gap-2 px-3 py-2 ${atingido ? 'bg-fiori-success-bg' : 'bg-fiori-error-bg'}`}>
-                  <p className="text-sm font-semibold text-fiori-text">{ex.titulo}</p>
-                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold text-white ${atingido ? 'bg-fiori-success' : 'bg-fiori-error'}`}>
-                    {atingido ? 'LOB atingida' : 'LOB não atingida'}
-                  </span>
-                </div>
-                <div className="space-y-1.5 p-3">
-                  <p className="mb-2 text-xs text-fiori-text-secondary">{ex.cenario}</p>
-                  {linhas.map((l) => (
-                    <div key={l.label} className="flex items-center gap-2 text-xs">
-                      <span className="w-20 shrink-0 text-fiori-text-secondary">{l.label}</span>
-                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-fiori-canvas">
-                        <div className={`h-full rounded-full ${l.cor}`} style={{ width: `${Math.round(l.ratio * 100)}%` }} />
-                      </div>
-                      <span className="w-24 shrink-0 text-right font-medium text-fiori-text">
-                        {Math.round(l.ratio * 100)}{l.vacuidade ? '%*' : '%'} × {l.peso}% = {Math.round(l.ratio * l.peso)}pp
-                      </span>
-                    </div>
-                  ))}
-                  <div className="mt-2 flex items-baseline justify-between border-t border-dashed border-fiori-border pt-2">
-                    <span className="text-xs text-fiori-text-secondary">Prontidão</span>
-                    <span className={`text-xl font-bold ${atingido ? 'text-fiori-success' : 'text-fiori-error'}`}>{prontidao}%</span>
-                  </div>
-                  {(ex.vacuidadeComp || ex.vacuidadeCert) && (
-                    <p className="text-[11px] text-fiori-text-secondary">*sem obrigatórias nesse critério nesta LOB → conta por vacuidade.</p>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      <p className="text-xs italic text-fiori-text-secondary">
+        Se uma LOB não tiver nenhuma competência (ou certificação) obrigatória, esse critério conta automaticamente como cumprido — não há
+        nada nesse aspeto a bloquear a LOB.
+      </p>
     </div>
   );
 }
 
-// --- Tabela RBAC --------------------------------------------------------------
+// --- Quem vê o quê -------------------------------------------------------------
 
-const RBAC: { papel: string; dashboard: boolean; colaboradores: boolean; candidatosSkill: boolean; fichaPessoal: string; gestaoDados: boolean }[] = [
-  { papel: 'ADMIN_RH', dashboard: true, colaboradores: true, candidatosSkill: true, fichaPessoal: 'Todas', gestaoDados: true },
-  { papel: 'MANAGER', dashboard: true, colaboradores: false, candidatosSkill: true, fichaPessoal: 'A sua equipa direta', gestaoDados: false },
-  { papel: 'EMPLOYEE', dashboard: false, colaboradores: false, candidatosSkill: false, fichaPessoal: 'Só a própria', gestaoDados: false },
-  { papel: 'VIEWER', dashboard: true, colaboradores: true, candidatosSkill: true, fichaPessoal: 'Todas (leitura)', gestaoDados: false },
+const RBAC: { papel: string; label: string; descricao: string }[] = [
+  { papel: 'ADMIN_RH', label: 'Admin RH', descricao: 'Vê e edita tudo — todos os colaboradores, Gestão de Dados, administração de utilizadores.' },
+  { papel: 'MANAGER', label: 'Gestor', descricao: 'Vê o Dashboard, Candidatos e Skill Matrix da organização, mas só edita a ficha da sua própria equipa direta.' },
+  { papel: 'EMPLOYEE', label: 'Colaborador', descricao: 'Só vê a sua própria ficha — sem acesso ao Dashboard, à lista de Colaboradores ou à Skill Matrix.' },
+  { papel: 'VIEWER', label: 'Leitura', descricao: 'Vê tudo (Dashboard, Colaboradores, Candidatos, Skill Matrix, todas as fichas) mas não pode editar nada.' },
 ];
-
-function Marca({ v }: { v: boolean }) {
-  return <span className={v ? 'text-fiori-success' : 'text-fiori-text-secondary'}>{v ? '✓' : '—'}</span>;
-}
 
 function TabelaRbac() {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-left text-sm">
-        <thead>
-          <tr className="border-b border-fiori-border text-xs uppercase tracking-wide text-fiori-text-secondary">
-            <th className="py-2 pr-3">Papel</th>
-            <th className="py-2 pr-3">Dashboard / Insights</th>
-            <th className="py-2 pr-3">Lista de Colaboradores</th>
-            <th className="py-2 pr-3">Candidatos / Skill Matrix</th>
-            <th className="py-2 pr-3">Ficha pessoal</th>
-            <th className="py-2">Gestão de Dados / Admin</th>
-          </tr>
-        </thead>
-        <tbody>
-          {RBAC.map((r) => (
-            <tr key={r.papel} className="border-b border-fiori-border last:border-0">
-              <td className="py-2 pr-3 font-medium text-fiori-text">{r.papel}</td>
-              <td className="py-2 pr-3">
-                <Marca v={r.dashboard} />
-              </td>
-              <td className="py-2 pr-3">
-                <Marca v={r.colaboradores} />
-              </td>
-              <td className="py-2 pr-3">
-                <Marca v={r.candidatosSkill} />
-              </td>
-              <td className="py-2 pr-3 text-fiori-text-secondary">{r.fichaPessoal}</td>
-              <td className="py-2">
-                <Marca v={r.gestaoDados} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="space-y-2">
+      {RBAC.map((r) => (
+        <div key={r.papel} className="flex flex-col gap-1 rounded-md border border-fiori-border p-3 sm:flex-row sm:items-baseline sm:gap-3">
+          <span className="shrink-0 rounded bg-fiori-primary-bg px-2 py-0.5 text-xs font-semibold text-fiori-primary sm:w-28">{r.label}</span>
+          <p className="text-sm text-fiori-text-secondary">{r.descricao}</p>
+        </div>
+      ))}
     </div>
   );
 }
 
 // --- Página -------------------------------------------------------------------
 
-/** Documentação viva do modelo de dados e das regras de negócio, acessível a todos os papéis autenticados — a única chamada à API é a leitura (não editável aqui) dos pesos de prontidão configurados. */
+/**
+ * Guia de utilização, escrito para quem usa a aplicação no dia a dia — não
+ * é documentação técnica. Pedido do utilizador: "está muito confusa. Refaz
+ * para que seja intuitivo... como se fosse para dummies." Acessível a
+ * todos os papéis autenticados.
+ */
 export function ComoFuncionaPage() {
   const { data: pesos } = useQuery({ queryKey: ['configuracao-prontidao'], queryFn: endpoints.configuracaoProntidao });
 
@@ -657,30 +370,32 @@ export function ComoFuncionaPage() {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold text-fiori-text">Como Funciona</h1>
-          <p className="text-sm text-fiori-text-secondary">O modelo de dados e as regras de negócio por trás de cada número que vês na app.</p>
+          <p className="text-sm text-fiori-text-secondary">
+            Um guia simples da aplicação: o que cada ecrã faz, e como os conceitos principais se encaixam.
+          </p>
         </div>
         <div className="no-print">
           <PrintButton label="Imprimir" />
         </div>
       </div>
 
-      <Card title="Modelo de dados">
-        <DiagramaModelo />
+      <Card title="Os conceitos principais">
+        <GlossarioConceitos />
       </Card>
 
-      <Card title="Motor de gap — experimenta">
+      <Card title="Ecrã a ecrã">
+        <EcraAEcra />
+      </Card>
+
+      <Card title="Experimenta: como se calcula a prontidão de uma LOB">
         <SimuladorMotorGap pesos={pesos ?? PESOS_PADRAO} />
       </Card>
 
-      <Card title="Pesos de Prontidão">
+      <Card title="Os pesos usados no cálculo">
         <SecaoPesosProntidao pesos={pesos ?? PESOS_PADRAO} />
       </Card>
 
-      <Card title="Regras de negócio">
-        <CartoesRegras />
-      </Card>
-
-      <Card title="Quem vê o quê (RBAC)">
+      <Card title="Quem vê o quê">
         <TabelaRbac />
       </Card>
     </div>

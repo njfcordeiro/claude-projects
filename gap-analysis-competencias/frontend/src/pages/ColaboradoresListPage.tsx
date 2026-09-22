@@ -6,6 +6,7 @@ import { endpoints } from '../api/endpoints';
 import { ApiError } from '../api/client';
 import { ColaboradorResumo, CreateColaboradorInput, ResumoImportacao, UpdateColaboradorInput } from '../types/api';
 import { Card } from '../components/ui/Card';
+import { AjudaContextual } from '../components/ui/AjudaContextual';
 import { Badge } from '../components/ui/Badge';
 import { DataTable, DataTableColumn } from '../components/ui/DataTable';
 import { Modal } from '../components/ui/Modal';
@@ -198,7 +199,10 @@ export function ColaboradoresListPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-xl font-semibold text-fiori-text">Colaboradores</h1>
+        <h1 className="flex items-center gap-1.5 text-xl font-semibold text-fiori-text">
+          Colaboradores
+          <AjudaContextual ecraId="colaboradores" />
+        </h1>
         <div className="flex flex-wrap gap-2 no-print">
           <PrintButton label="Imprimir" />
           <Button variant="secondary" onClick={() => endpoints.colaboradoresExportar()}>

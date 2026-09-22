@@ -5,6 +5,7 @@ import { endpoints } from '../api/endpoints';
 import { ApiError } from '../api/client';
 import { ColaboradorResumo, ResumoAtribuicao } from '../types/api';
 import { Card } from '../components/ui/Card';
+import { AjudaContextual } from '../components/ui/AjudaContextual';
 import { Button, Field, Input, Select } from '../components/ui/form';
 
 type TipoAtribuicao = 'competencia' | 'certificacao';
@@ -24,7 +25,6 @@ export function AtribuicoesPage() {
   const { data: cargos } = useQuery({ queryKey: ['catalogo', 'cargos'], queryFn: () => endpoints.catalogoListar('cargos') });
   const { data: competencias } = useQuery({ queryKey: ['catalogo', 'competencias'], queryFn: () => endpoints.catalogoListar('competencias') });
   const { data: certificacoes } = useQuery({ queryKey: ['catalogo', 'certificacoes'], queryFn: () => endpoints.catalogoListar('certificacoes') });
-  const { data: niveis } = useQuery({ queryKey: ['catalogo', 'niveis'], queryFn: () => endpoints.catalogoListar('niveis') });
 
   const [termo, setTermo] = useState('');
   const [filtroDirecao, setFiltroDirecao] = useState('');
@@ -39,6 +39,16 @@ export function AtribuicoesPage() {
   const [certificacaoId, setCertificacaoId] = useState('');
   const [dataObtencao, setDataObtencao] = useState('');
   const [resultado, setResultado] = useState<ResumoAtribuicao | null>(null);
+
+  // A escala de níveis (Técnica/Comportamental) é sempre a da Competência
+  // escolhida — pedido do utilizador.
+  const competenciaTipo = competencias?.find((c) => String(c.id) === competenciaId)?.tipo as string | undefined;
+  const tabelaNiveis = competenciaTipo === 'COMPORTAMENTAL' ? 'niveis-comportamentais' : competenciaTipo === 'TECNICA' ? 'niveis-tecnicos' : null;
+  const { data: niveis } = useQuery({
+    queryKey: ['catalogo', tabelaNiveis],
+    queryFn: () => endpoints.catalogoListar(tabelaNiveis!),
+    enabled: tabelaNiveis !== null,
+  });
 
   const disponiveis = useMemo(() => {
     return (colaboradores ?? []).filter((c) => {
@@ -88,7 +98,10 @@ export function AtribuicoesPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold text-fiori-text">Atribuição em Massa</h1>
+        <h1 className="flex items-center gap-1.5 text-xl font-semibold text-fiori-text">
+          Atribuição em Massa
+          <AjudaContextual ecraId="atribuicoes" />
+        </h1>
         <p className="text-sm text-fiori-text-secondary">
           Seleciona colaboradores à esquerda e associa-lhes uma competência ou certificação de uma vez.
         </p>
@@ -205,7 +218,13 @@ export function AtribuicoesPage() {
             {tipo === 'competencia' ? (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Field label="Competência">
-                  <Select value={competenciaId} onChange={(e) => setCompetenciaId(e.target.value)}>
+                  <Select
+                    value={competenciaId}
+                    onChange={(e) => {
+                      setCompetenciaId(e.target.value);
+                      setNivelId('');
+                    }}
+                  >
                     <option value="">— selecionar —</option>
                     {(competencias ?? []).map((c) => (
                       <option key={String(c.id)} value={String(c.id)}>
@@ -215,13 +234,16 @@ export function AtribuicoesPage() {
                   </Select>
                 </Field>
                 <Field label="Nível atingido">
-                  <Select value={nivelId} onChange={(e) => setNivelId(e.target.value)}>
-                    <option value="">— selecionar —</option>
-                    {(niveis ?? []).map((n) => (
-                      <option key={String(n.id)} value={String(n.id)}>
-                        {String(n.nome)}
-                      </option>
-                    ))}
+                  <Select value={nivelId} onChange={(e) => setNivelId(e.target.value)} disabled={!tabelaNiveis}>
+                    <option value="">{tabelaNiveis ? '— selecionar —' : '— escolhe primeiro a Competência —'}</option>
+                    {(niveis ?? [])
+                      .slice()
+                      .sort((a, b) => Number(a.id) - Number(b.id))
+                      .map((n) => (
+                        <option key={String(n.id)} value={String(n.id)}>
+                          {String(n.nome)}
+                        </option>
+                      ))}
                   </Select>
                 </Field>
               </div>

@@ -21,6 +21,7 @@ function requisitoCompetencia(overrides: Partial<RequisitoCompetenciaInput> = {}
   return {
     competenciaId: 1,
     competenciaNome: 'SuccessFactors Employee Central',
+    competenciaTipo: 'TECNICA',
     obrigatorio: true,
     pontos: 20,
     nivelMinimo: 2,

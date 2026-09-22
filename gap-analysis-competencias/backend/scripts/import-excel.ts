@@ -227,6 +227,9 @@ async function importCarreiraCategoriaCargo(wb: ExcelJS.Workbook) {
 // Fase 3 — Níveis (escala única 0-5)
 // ---------------------------------------------------------------------
 
+// A folha "Níveis" do Excel de origem é sempre a escala Técnica — a escala
+// Comportantal (pedido do utilizador, ver migration 20260921152344) não
+// vem deste ficheiro, é gerida em Gestão de Dados.
 async function importNiveis(wb: ExcelJS.Workbook) {
   const ws = wb.getWorksheet('Níveis')!;
   let count = 0;
@@ -234,8 +237,8 @@ async function importNiveis(wb: ExcelJS.Workbook) {
     const id = num(ws, r, 1);
     if (id === null) continue;
     await prisma.nivel.upsert({
-      where: { id },
-      create: { id, nome: str(ws, r, 2)!, descricao: str(ws, r, 3) ?? '' },
+      where: { tipo_id: { tipo: 'TECNICA', id } },
+      create: { id, tipo: 'TECNICA', nome: str(ws, r, 2)!, descricao: str(ws, r, 3) ?? '' },
       update: { nome: str(ws, r, 2)!, descricao: str(ws, r, 3) ?? '' },
     });
     count++;

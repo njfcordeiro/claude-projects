@@ -204,7 +204,14 @@ export function Select({ value, onChange, disabled, autoFocus, className, onClic
               role="option"
               aria-selected={o.value === valorAtual}
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => escolher(o)}
+              onClick={(e) => {
+                // preventDefault (não stopPropagation) é o que suprime a ativação nativa
+                // do <label> ascendente (Field) — sem isto, o browser reencaminha o clique
+                // para o input associado à label e refoca-o, o que reabre a lista logo a
+                // seguir a escolher() a ter fechado.
+                e.preventDefault();
+                escolher(o);
+              }}
               onMouseEnter={() => setDestaque(i)}
               className={`cursor-pointer px-3 py-1.5 ${o.disabled ? 'cursor-not-allowed opacity-50' : ''} ${
                 i === destaque ? 'bg-fiori-primary text-white' : 'text-fiori-text'
