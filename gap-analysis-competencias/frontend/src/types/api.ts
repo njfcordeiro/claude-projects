@@ -191,6 +191,30 @@ export interface DadosFormacaoConcluidaColaborador {
   avaliacao: AvaliacaoFormacao;
 }
 
+export interface DadosPlanoDesenvolvimentoColaborador {
+  id: number;
+  colaboradorId: number;
+  colaboradorNome: string;
+  direcaoNome: string | null;
+  areaNome: string | null;
+  nucleoNome: string | null;
+  cargoAtualNome: string | null;
+  proximoCargoNome: string | null;
+  lobPrevistaNome: string | null;
+  tipoAlvo: 'COMPETENCIA' | 'CERTIFICACAO';
+  tipoCompetencia: 'TECNICA' | 'COMPORTAMENTAL' | null;
+  itemId: number | string;
+  itemNome: string;
+  nivelAtualId: number | null;
+  nivelAtualNome: string | null;
+  nivelEsperadoId: number | null;
+  nivelEsperadoNome: string | null;
+  formacaoSugeridaNome: string | null;
+  nivelTransmitidoId: number | null;
+  nivelTransmitidoNome: string | null;
+  estado: EstadoPdi;
+}
+
 /** Todas as vertentes de um Projeto (catálogo) — usado pelo modal "Registar participação" para escolher mais do que a vertente que originou o clique. */
 export interface ProjetoVertenteDetalhe {
   id: number;
@@ -503,6 +527,29 @@ export interface ResumoAtribuicao {
   erros: string[];
 }
 
+export type AlvoGeracaoPdiEmMassa = 'CARGO_ATUAL' | 'PROXIMO_CARGO';
+
+export interface GerarPdiEmMassaInput {
+  colaboradorIds: number[];
+  alvo: AlvoGeracaoPdiEmMassa;
+}
+
+export interface ResumoGeracaoPdiEmMassa {
+  processados: number;
+  criados: number;
+  erros: string[];
+}
+
+export interface EliminarPdiEmMassaInput {
+  colaboradorIds: number[];
+}
+
+export interface ResumoEliminacaoPdiEmMassa {
+  processados: number;
+  eliminados: number;
+  erros: string[];
+}
+
 // --- PDI (backend/src/pdi) -------------------------------------------------
 
 export type EstadoPdi = 'PENDENTE' | 'EM_CURSO' | 'CONCLUIDO';
@@ -557,10 +604,6 @@ export interface GerarPdiParaLobInput {
   lobId: number;
 }
 
-export interface GerarPdiParaProximoCargoInput {
-  proximoCargoId?: string;
-}
-
 export interface EliminarSugestoesPdiResponse {
   eliminados: number;
 }
@@ -580,6 +623,20 @@ export interface ObjetivosLobResponse {
   auto: ObjetivoLob[];
   /** Recomendadas manualmente pelo BUD (gestor direto) ou ADMIN_RH. */
   bud: ObjetivoLob[];
+}
+
+export interface ProximoCargoCandidato {
+  cargoId: string;
+  cargoNome: string;
+}
+
+export interface ProximoCargoResponse {
+  /** Derivado ao vivo de CargoProgressao a partir do cargo atual — null se não houver cargo ou progressão definida. */
+  auto: ProximoCargoCandidato | null;
+  /** Override manual — null se nunca foi definido. */
+  manual: ProximoCargoCandidato | null;
+  /** manual ?? auto — o valor a mostrar/usar. */
+  resolvido: (ProximoCargoCandidato & { origem: 'MANUAL' | 'AUTO' }) | null;
 }
 
 // --- Skill Matrix (backend/src/gap-analysis) ------------------------------
@@ -622,6 +679,7 @@ export interface CargoEvolucao {
   grupoCarreiraNome: string | null;
   categoriaId: string;
   categoriaNome: string;
+  categoriaOrdem: number | null;
   totalColaboradores: number;
   prontidaoMedia: number;
 }
@@ -706,4 +764,19 @@ export interface UsuarioResumo {
   lastLoginAt: string | null;
   createdAt: string;
   colaborador: { id: number; nome: string } | null;
+}
+
+export interface MensagemHistoricoChatbotInput {
+  role: 'user' | 'assistant';
+  conteudo: string;
+}
+
+export interface PerguntarChatbotInput {
+  pergunta: string;
+  contexto: string;
+  historico?: MensagemHistoricoChatbotInput[];
+}
+
+export interface RespostaChatbot {
+  resposta: string;
 }

@@ -136,4 +136,28 @@ export class DadosColaboradoresController {
   importarFormacoesConcluidas(@UploadedFile() file: Express.Multer.File | undefined, @CurrentUser() user: AuthenticatedUser) {
     return this.service.importarFormacoesConcluidas(ficheiroObrigatorio(file).buffer, user);
   }
+
+  @Get('planos-desenvolvimento')
+  listarPlanosDesenvolvimento(
+    @Query('direcaoId') direcaoId: string | undefined,
+    @Query('areaId') areaId: string | undefined,
+    @Query('nucleoId') nucleoId: string | undefined,
+    @Query('cargoId') cargoId: string | undefined,
+  ) {
+    return this.service.listarPlanosDesenvolvimento(filtrosDe(direcaoId, areaId, nucleoId, cargoId));
+  }
+
+  @Get('planos-desenvolvimento/export')
+  async exportarPlanosDesenvolvimento(@Res() res: Response) {
+    const buffer = await this.service.exportarPlanosDesenvolvimento({});
+    res
+      .set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename="planos-desenvolvimento.xlsx"' })
+      .send(buffer);
+  }
+
+  @Post('planos-desenvolvimento/import')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: LIMITE_FICHEIRO_BYTES } }))
+  importarPlanosDesenvolvimento(@UploadedFile() file: Express.Multer.File | undefined, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.importarPlanosDesenvolvimento(ficheiroObrigatorio(file).buffer, user);
+  }
 }

@@ -8,7 +8,6 @@ import { PdiService } from './pdi.service';
 import { CreatePdiItemDto } from './dto/create-pdi-item.dto';
 import { UpdatePdiItemDto } from './dto/update-pdi-item.dto';
 import { GerarParaLobDto } from './dto/gerar-para-lob.dto';
-import { GerarParaProximoCargoDto } from './dto/gerar-para-proximo-cargo.dto';
 
 /**
  * Plano de Desenvolvimento Individual — mesmo RBAC fino de leitura/escrita
@@ -44,14 +43,10 @@ export class PdiController {
     return this.service.gerarParaCargoAtual(id, user);
   }
 
-  /** Ver PdiService.gerarParaProximoCargo — resolve o Próximo Cargo via Progressão de Cargos. */
+  /** Ver PdiService.gerarParaProximoCargo — visa o Próximo Cargo resolvido do colaborador (ProximoCargoService). */
   @Post('gerar-para-proximo-cargo')
-  gerarParaProximoCargo(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: GerarParaProximoCargoDto,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.service.gerarParaProximoCargo(id, dto, user);
+  gerarParaProximoCargo(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.gerarParaProximoCargo(id, user);
   }
 
   @Post()
