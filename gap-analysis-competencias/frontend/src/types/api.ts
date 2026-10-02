@@ -557,10 +557,6 @@ export interface GerarPdiParaLobInput {
   lobId: number;
 }
 
-export interface GerarPdiParaProximoCargoInput {
-  proximoCargoId?: string;
-}
-
 export interface EliminarSugestoesPdiResponse {
   eliminados: number;
 }
@@ -580,6 +576,20 @@ export interface ObjetivosLobResponse {
   auto: ObjetivoLob[];
   /** Recomendadas manualmente pelo BUD (gestor direto) ou ADMIN_RH. */
   bud: ObjetivoLob[];
+}
+
+export interface ProximoCargoCandidato {
+  cargoId: string;
+  cargoNome: string;
+}
+
+export interface ProximoCargoResponse {
+  /** Derivado ao vivo de CargoProgressao a partir do cargo atual — null se não houver cargo ou progressão definida. */
+  auto: ProximoCargoCandidato | null;
+  /** Override manual — null se nunca foi definido. */
+  manual: ProximoCargoCandidato | null;
+  /** manual ?? auto — o valor a mostrar/usar. */
+  resolvido: (ProximoCargoCandidato & { origem: 'MANUAL' | 'AUTO' }) | null;
 }
 
 // --- Skill Matrix (backend/src/gap-analysis) ------------------------------

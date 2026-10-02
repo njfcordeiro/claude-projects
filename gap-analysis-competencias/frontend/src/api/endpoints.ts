@@ -22,7 +22,6 @@ import {
   FiltrosOrganizacionais,
   FormacaoResumo,
   GerarPdiParaLobInput,
-  GerarPdiParaProximoCargoInput,
   GerarPdiResponse,
   LobDetalhe,
   LobResumo,
@@ -33,6 +32,7 @@ import {
   PdiItem,
   PesosProntidao,
   ProjetoVertenteDetalhe,
+  ProximoCargoResponse,
   RegistarParticipacaoProjetoInput,
   RelatorioGapCargo,
   RelatorioGapLob,
@@ -132,8 +132,8 @@ export const endpoints = {
     api.post<GerarPdiResponse>(`/colaboradores/${colaboradorId}/pdi/gerar-para-lob`, dto),
   pdiGerarParaCargoAtual: (colaboradorId: number) =>
     api.post<GerarPdiResponse>(`/colaboradores/${colaboradorId}/pdi/gerar-para-cargo-atual`, {}),
-  pdiGerarParaProximoCargo: (colaboradorId: number, dto: GerarPdiParaProximoCargoInput) =>
-    api.post<GerarPdiResponse>(`/colaboradores/${colaboradorId}/pdi/gerar-para-proximo-cargo`, dto),
+  pdiGerarParaProximoCargo: (colaboradorId: number) =>
+    api.post<GerarPdiResponse>(`/colaboradores/${colaboradorId}/pdi/gerar-para-proximo-cargo`, {}),
   pdiCriar: (colaboradorId: number, dto: CreatePdiItemInput) => api.post<PdiItem>(`/colaboradores/${colaboradorId}/pdi`, dto),
   pdiAtualizar: (colaboradorId: number, itemId: number, dto: UpdatePdiItemInput) =>
     api.patch<PdiItem>(`/colaboradores/${colaboradorId}/pdi/${itemId}`, dto),
@@ -147,6 +147,12 @@ export const endpoints = {
     api.post<ObjetivosLobResponse>(`/colaboradores/${colaboradorId}/objetivos-lob`, { lobId }),
   removerObjetivoLob: (colaboradorId: number, lobId: number) =>
     api.delete<ObjetivosLobResponse>(`/colaboradores/${colaboradorId}/objetivos-lob/${lobId}`),
+
+  // --- Próximo Cargo -----------------------------------------------------------
+  proximoCargo: (colaboradorId: number) => api.get<ProximoCargoResponse>(`/colaboradores/${colaboradorId}/proximo-cargo`),
+  definirProximoCargo: (colaboradorId: number, cargoId: string) =>
+    api.put<ProximoCargoResponse>(`/colaboradores/${colaboradorId}/proximo-cargo`, { cargoId }),
+  removerProximoCargo: (colaboradorId: number) => api.delete<ProximoCargoResponse>(`/colaboradores/${colaboradorId}/proximo-cargo`),
 
   // --- Participação em Projetos -------------------------------------------
   projetosListar: (colaboradorId: number) => api.get<ParticipacaoProjeto[]>(`/colaboradores/${colaboradorId}/projetos`),

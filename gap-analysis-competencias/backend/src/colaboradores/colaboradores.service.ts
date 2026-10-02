@@ -11,6 +11,7 @@ import { CreateColaboradorDto } from './dto/create-colaborador.dto';
 import { UpdateColaboradorDto } from './dto/update-colaborador.dto';
 import { CreateAvaliacaoDto } from './dto/create-avaliacao.dto';
 import { UpsertCertificacaoDto } from './dto/upsert-certificacao.dto';
+import { CargoComCategoriaOrdem, escolherMelhorProximoCargo } from '../pdi/proximo-cargo.util';
 
 const SELECT_RESUMO = {
   id: true,
@@ -229,6 +230,28 @@ export class ColaboradoresService {
       orderBy: { id: 'asc' },
     });
 
+    // "Próximo Cargo" (pedido do utilizador: "alterar... por ficheiro") — a
+    // coluna editável ("proximoCargoIdManual") fica em branco quando o valor
+    // é automático (sem override) e só tem valor quando há um override
+    // manual: um round-trip sem tocar nesta coluna nunca cria um override
+    // sem querer (mesmo princípio de "célula vazia = não alterar" do resto
+    // do import). A coluna "nome atual" ao lado mostra sempre o valor
+    // EFETIVO (automático ou manual) só para contexto humano — é ignorada
+    // na importação, como as outras colunas "— nome atual".
+    const overridesProximoCargo = await this.prisma.colaboradorProximoCargo.findMany({ where: { colaboradorId: { in: linhas.map((l) => l.id) } } });
+    const overrideCargoIdPorColaborador = new Map(overridesProximoCargo.map((o) => [o.colaboradorId, o.cargoId]));
+    const cargoIdsAtuais = Array.from(new Set(linhas.map((l) => l.cargoId).filter((v): v is string => v !== null)));
+    const progressoesProximoCargo = await this.prisma.cargoProgressao.findMany({
+      where: { cargoId: { in: cargoIdsAtuais } },
+      include: { proximoCargo: { include: { categoria: true } } },
+    });
+    const candidatosProximoCargoPorOrigem = new Map<string, CargoComCategoriaOrdem[]>();
+    for (const p of progressoesProximoCargo) {
+      if (!candidatosProximoCargoPorOrigem.has(p.cargoId)) candidatosProximoCargoPorOrigem.set(p.cargoId, []);
+      candidatosProximoCargoPorOrigem.get(p.cargoId)!.push(p.proximoCargo);
+    }
+    const nomeCargoPorId = new Map((await this.prisma.cargo.findMany({ select: { id: true, nome: true } })).map((c) => [c.id, c.nome]));
+
     const FOLHA_COLABORADORES = nomeFolhaDeOpcoes('Colaboradores');
     const TABELA_RELACAO: Partial<Record<(typeof COLUNAS_IMPORT_EXPORT)[number], string>> = {
       cargoId: 'cargos',
@@ -267,6 +290,11 @@ export class ColaboradoresService {
         cabecalhos.push(`${LABEL_CAMPO[chave]} — nome atual`);
       }
     }
+    // "proximoCargoIdManual" em branco = sem override (segue o automático);
+    // escrever "AUTO" (sem distinção de maiúsculas) limpa um override
+    // existente — ver comentário mais acima.
+    cabecalhos.push('proximoCargoIdManual');
+    cabecalhos.push('Próximo Cargo (efetivo) — nome atual');
     // Coluna extra (pedido do utilizador): escrever "DELETE" nesta célula e
     // reimportar o ficheiro elimina esse colaborador.
     cabecalhos.push('DELETE');
@@ -287,6 +315,13 @@ export class ColaboradoresService {
           valores.push(formulaNomeAtual(celula, FOLHA_COLABORADORES));
         }
       }
+
+      const overrideCargoId = overrideCargoIdPorColaborador.get(l.id) ?? null;
+      const autoCargo = l.cargoId ? escolherMelhorProximoCargo(candidatosProximoCargoPorOrigem.get(l.cargoId) ?? []) : null;
+      const resolvidoCargoId = overrideCargoId ?? autoCargo?.cargoId ?? null;
+      valores.push(overrideCargoId);
+      valores.push(resolvidoCargoId ? (nomeCargoPorId.get(resolvidoCargoId) ?? resolvidoCargoId) : null);
+
       valores.push(null);
       sheet.addRow(valores);
       linhaExcel++;
@@ -335,6 +370,7 @@ export class ColaboradoresService {
       if (idx !== -1) indicePorCampo.set(chave, idx);
     }
     const idxDelete = cabecalho.findIndex((h) => h === 'DELETE');
+    const idxProximoCargoManual = cabecalho.findIndex((h) => h === 'proximoCargoIdManual');
 
     const resumo: ResumoImportacaoColaboradores = { criados: 0, atualizados: 0, eliminados: 0, erros: [] };
 
@@ -344,6 +380,12 @@ export class ColaboradoresService {
     // possível (ver eliminar acima), independentemente de dados associados.
     const linhasValidas: { data: Record<string, unknown> }[] = [];
     const idsParaEliminar: number[] = [];
+    // Override manual de "Próximo Cargo" (pedido do utilizador: "alterar...
+    // por ficheiro") — célula em branco não mexe no override existente
+    // (mesmo princípio do resto do import); "AUTO" remove um override
+    // existente (volta a seguir o automático); qualquer outro valor define
+    // o override para esse Cargo. Ver comentário em `exportar`.
+    const proximoCargoAcoes: { colaboradorId: number; cargoId: string | null }[] = [];
     for (let r = 2; r <= sheet.rowCount; r++) {
       const linha = sheet.getRow(r);
       if (linha.values == null || (Array.isArray(linha.values) && linha.values.length === 0)) continue;
@@ -367,6 +409,17 @@ export class ColaboradoresService {
         }
 
         const data = await this.mapearLinhaImport(bruto);
+
+        if (idxProximoCargoManual !== -1) {
+          const bruta = linha.getCell(idxProximoCargoManual).value;
+          const valor = bruta && typeof bruta === 'object' && 'result' in bruta ? (bruta as any).result : bruta;
+          const texto = valor === null || valor === undefined ? '' : String(valor).trim();
+          if (texto !== '') {
+            const cargoId = texto.toUpperCase() === 'AUTO' ? null : await this.resolverCargo(texto);
+            proximoCargoAcoes.push({ colaboradorId: data.id as number, cargoId });
+          }
+        }
+
         linhasValidas.push({ data });
       } catch (err) {
         const mensagem = err instanceof Error ? err.message : 'Erro desconhecido.';
@@ -392,6 +445,17 @@ export class ColaboradoresService {
         } else {
           await tx.colaborador.create({ data: data as Prisma.ColaboradorCreateInput });
           resumo.criados++;
+        }
+      }
+      for (const { colaboradorId, cargoId } of proximoCargoAcoes) {
+        if (cargoId === null) {
+          await tx.colaboradorProximoCargo.deleteMany({ where: { colaboradorId } });
+        } else {
+          await tx.colaboradorProximoCargo.upsert({
+            where: { colaboradorId },
+            create: { colaboradorId, cargoId, updatedBy: user.sub },
+            update: { cargoId, updatedBy: user.sub },
+          });
         }
       }
     });

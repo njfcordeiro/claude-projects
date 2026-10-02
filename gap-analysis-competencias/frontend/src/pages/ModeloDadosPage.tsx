@@ -546,6 +546,20 @@ const TABELAS: TabelaModelo[] = [
     visibilidadeTexto:
       'Gestão de Dados → "Recomendações de LOB por colaborador" — mas o campo colaboradorId aqui é só o ID numérico, sem nome (Colaborador está fora do registo genérico de catálogo). Secção "Objetivos de LOB" na ficha do colaborador (bud=true, adicionar/remover). As linhas com bud=true são também a fonte da "Próxima LOB" mostrada (só leitura) na ficha — a primeira recomendação ainda não atingida; sem nenhuma, cai para a sugestão do sistema de maior prontidão (ver Colaborador acima).',
   },
+  {
+    grupo: 'Avaliações',
+    model: 'ColaboradorProximoCargo',
+    tabela: 'colaborador_proximo_cargo',
+    campos: [
+      { nome: 'colaboradorId', tipo: 'Int (PK)', nota: '→ Colaborador — 1 override no máximo por colaborador' },
+      { nome: 'cargoId', tipo: 'String', nota: '→ Cargo' },
+      { nome: 'createdAt / updatedAt / updatedBy', tipo: 'DateTime / Int?' },
+    ],
+    relacoes: ['A existência da linha É o override — sem linha, "Próximo Cargo" é sempre derivado ao vivo de CargoProgressao (ver ProximoCargoService).'],
+    visibilidade: 'parcial',
+    visibilidadeTexto:
+      'Campo "Próximo Cargo" na ficha do colaborador (lápis, ADMIN_RH) — sem override, mostra o cargo com mais hops a partir do atual em Progressão de Cargos, preferindo a Categoria "Principal" em caso de ambiguidade; com override, mostra sempre esse valor até ser removido ("Repor automático"). Também editável em massa via o ficheiro de Colaboradores (coluna "proximoCargoIdManual" — em branco não altera, "AUTO" remove o override).',
+  },
 
   // --- PDI ---------------------------------------------------------------
   {

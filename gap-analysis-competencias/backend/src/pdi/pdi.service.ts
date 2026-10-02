@@ -7,8 +7,8 @@ import { AuthenticatedUser } from '../auth/jwt-payload.interface';
 import { CreatePdiItemDto } from './dto/create-pdi-item.dto';
 import { UpdatePdiItemDto } from './dto/update-pdi-item.dto';
 import { GerarParaLobDto } from './dto/gerar-para-lob.dto';
-import { GerarParaProximoCargoDto } from './dto/gerar-para-proximo-cargo.dto';
 import { LobObjetivosService } from './lob-objetivos.service';
+import { ProximoCargoService } from './proximo-cargo.service';
 
 const INCLUDE_ITEM = {
   competencia: { select: { nome: true, tipo: true } },
@@ -76,6 +76,7 @@ export class PdiService {
     private readonly colaboradores: ColaboradoresService,
     private readonly gapAnalysis: GapAnalysisService,
     private readonly lobObjetivos: LobObjetivosService,
+    private readonly proximoCargo: ProximoCargoService,
   ) {}
 
   /**
@@ -167,39 +168,24 @@ export class PdiService {
   }
 
   /**
-   * "Gerar para o Próximo Cargo" (pedido do utilizador) — resolve o Próximo
-   * Cargo via Progressão de Cargos (mesmo grafo já usado em Evolução de
-   * Carreiras/Candidatos): escolhe-o automaticamente se só houver um
-   * possível, exige `proximoCargoId` se houver mais que um. Depois visa o
-   * Perfil de Competências desse Cargo.
+   * "Gerar para o Próximo Cargo" (pedido do utilizador) — visa o Próximo
+   * Cargo resolvido do colaborador (ProximoCargoService: override manual se
+   * existir, senão derivado ao vivo de Progressão de Cargos) — a mesma
+   * fonte usada na ficha do colaborador e na geração de PDI em massa, para
+   * nunca haver dois "próximos cargos" diferentes para a mesma pessoa
+   * consoante o ecrã.
    */
-  async gerarParaProximoCargo(colaboradorId: number, dto: GerarParaProximoCargoDto, user: AuthenticatedUser) {
+  async gerarParaProximoCargo(colaboradorId: number, user: AuthenticatedUser) {
     await this.colaboradores.podeEditar(colaboradorId, user);
 
-    const colaborador = await this.prisma.colaborador.findUnique({ where: { id: colaboradorId }, select: { cargoId: true } });
-    if (!colaborador?.cargoId) {
-      throw new BadRequestException('Este colaborador não tem Cargo atribuído.');
+    const { resolvido } = await this.proximoCargo.obter(colaboradorId, user);
+    if (!resolvido) {
+      throw new BadRequestException(
+        'Não há Próximo Cargo definido para este colaborador — define-o manualmente na ficha, ou cria uma Progressão de Cargos em Gestão de Dados a partir do cargo atual.',
+      );
     }
 
-    const progressoes = await this.prisma.cargoProgressao.findMany({ where: { cargoId: colaborador.cargoId } });
-    if (progressoes.length === 0) {
-      throw new BadRequestException('Não há Próximo Cargo definido em Progressão de Cargos para o cargo atual deste colaborador.');
-    }
-
-    let proximoCargoId: string;
-    if (progressoes.length === 1) {
-      proximoCargoId = progressoes[0].proximoCargoId;
-    } else {
-      if (!dto.proximoCargoId) {
-        throw new BadRequestException('Há mais que um Próximo Cargo possível a partir do cargo atual — indica qual escolher.');
-      }
-      if (!progressoes.some((p) => p.proximoCargoId === dto.proximoCargoId)) {
-        throw new BadRequestException(`"${dto.proximoCargoId}" não é um Próximo Cargo possível a partir do cargo atual deste colaborador.`);
-      }
-      proximoCargoId = dto.proximoCargoId;
-    }
-
-    return this.gerarParaPerfilCargo(colaboradorId, proximoCargoId, user);
+    return this.gerarParaPerfilCargo(colaboradorId, resolvido.cargoId, user);
   }
 
   /**

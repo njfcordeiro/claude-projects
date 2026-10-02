@@ -292,6 +292,7 @@ model Cargo {
   // por isso um Cargo só pode ter um perfil de competências possível.
   perfilCompetencias CargoRequisitoCompetencia[]
   pdiItems           PdiItem[]
+  proximoCargoDeColaboradores ColaboradorProximoCargo[]
 
   @@map("cargos")
 }
@@ -307,6 +308,30 @@ model CargoProgressao {
 
   @@id([cargoId, proximoCargoId])
   @@map("cargo_progressao")
+}
+
+// Override manual do "Próximo Cargo" de um colaborador (pedido do
+// utilizador: "ter um campo que tem o próximo cargo previsto... sempre
+// preenchido com base no próximo cargo, respeitando a evolução de
+// carreiras... depois dar para manualmente (ou por ficheiro) alterar. Se se
+// alterar, o sistema não deve voltar a colocar [o automático]"). Mesmo
+// princípio de ColaboradorLobRecomendacao.bud: a existência desta linha É o
+// "manual" — sem override, o Próximo Cargo é sempre derivado ao vivo de
+// CargoProgressao a partir do cargo atual (ver ProximoCargoService), nunca
+// guardado. @@id (não @@unique numa FK normal) porque é 1-para-1 com
+// Colaborador: um colaborador só pode ter UM Próximo Cargo manual.
+model ColaboradorProximoCargo {
+  colaboradorId Int      @id @map("colaborador_id")
+  cargoId       String   @map("cargo_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  updatedBy     Int?     @map("updated_by")
+
+  colaborador Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
+  // onDelete: Restrict (ver nota em Colaborador) — evita apagar um Cargo em uso num override sem aviso.
+  cargo       Cargo       @relation(fields: [cargoId], references: [id], onDelete: Restrict)
+
+  @@map("colaborador_proximo_cargo")
 }
 
 // Escala de proficiência única, 0-5, partilhada por toda a app.
@@ -684,6 +709,7 @@ model Colaborador {
   lobRecomendacoes     ColaboradorLobRecomendacao[]
   pdiItems             PdiItem[]
   projetosParticipados ColaboradorProjeto[]
+  proximoCargoOverride ColaboradorProximoCargo?
 
   gapAnalysisRunsScope    GapAnalysisRun[]
   gapAnalysisLobResults   GapAnalysisLobResult[]
