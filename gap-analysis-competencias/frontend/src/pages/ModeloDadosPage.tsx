@@ -410,6 +410,21 @@ const TABELAS: TabelaModelo[] = [
   },
   {
     grupo: 'Pessoas',
+    model: 'ChatbotUso',
+    tabela: 'chatbot_uso',
+    campos: [
+      { nome: 'id', tipo: 'Int (PK)', nota: 'autoincrement' },
+      { nome: 'userId', tipo: 'Int', nota: '→ User' },
+      { nome: 'data', tipo: 'Date', nota: 'dia (UTC) — chave de agregação para os limites diários' },
+      { nome: 'createdAt', tipo: 'DateTime' },
+    ],
+    relacoes: ['N—1 User'],
+    visibilidade: 'nenhuma',
+    visibilidadeTexto:
+      'Guarda de custo do chatbot de ajuda: um registo por pergunta aceite (nunca o conteúdo), usado só para contar os limites diários por utilizador e global. Sem UI própria.',
+  },
+  {
+    grupo: 'Pessoas',
     model: 'Colaborador',
     tabela: 'colaboradores',
     campos: [

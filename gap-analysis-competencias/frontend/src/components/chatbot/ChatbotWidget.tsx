@@ -4,6 +4,7 @@ import { MessageCircle, Send, X } from 'lucide-react';
 import { endpoints } from '../../api/endpoints';
 import { ApiError } from '../../api/client';
 import { construirContextoDocumentacao } from '../../lib/documentacao';
+import { useAuth } from '../../auth/useAuth';
 
 interface Mensagem {
   role: 'user' | 'assistant';
@@ -20,8 +21,13 @@ interface Mensagem {
  * pergunta, que só o encaixa no pedido à Claude API. Conversa efémera (não
  * persiste entre recarregamentos) — não há necessidade de histórico
  * guardado para um assistente de ajuda pontual.
+ *
+ * Guarda de custo (pedido do utilizador): escondido para EMPLOYEE — o
+ * backend já recusa esse papel (403), isto só evita mostrar um widget que
+ * nunca vai funcionar para quem o vê.
  */
 export function ChatbotWidget() {
+  const { user } = useAuth();
   const [aberto, setAberto] = useState(false);
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [pergunta, setPergunta] = useState('');
@@ -45,6 +51,8 @@ export function ChatbotWidget() {
       requestAnimationFrame(() => listaRef.current?.scrollTo({ top: listaRef.current.scrollHeight, behavior: 'smooth' }));
     },
   });
+
+  if (user?.role === 'EMPLOYEE') return null;
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();

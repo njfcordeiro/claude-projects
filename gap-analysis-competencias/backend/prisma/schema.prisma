@@ -637,8 +637,28 @@ model User {
   avaliacoesFeitas ColaboradorCompetencia[] @relation("Avaliador")
   gapAnalysisRuns  GapAnalysisRun[]
   auditLogs        AuditLog[]
+  chatbotUsos      ChatbotUso[]
 
   @@map("users")
+}
+
+// Um registo por pergunta feita ao chatbot de ajuda — append-only, só para
+// controlar custo (pedido do utilizador): limite diário por utilizador e
+// um corta-circuito diário global, ambos verificados em ChatbotService
+// antes de chamar a Claude API. Sem FK formal a nada além de User — não
+// precisa de histórico de conteúdo, só de contagem por dia.
+model ChatbotUso {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  // Dia (sem hora, UTC) — chave de agregação para os limites diários.
+  data      DateTime @db.Date
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, data])
+  @@index([data])
+  @@map("chatbot_uso")
 }
 
 model Colaborador {
