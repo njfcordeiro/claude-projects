@@ -152,6 +152,7 @@ const TABELAS: TabelaModelo[] = [
     campos: [
       { nome: 'id', tipo: 'String (PK)', nota: 'código, ex. "PLE"' },
       { nome: 'nome', tipo: 'String' },
+      { nome: 'ordem', tipo: 'Int?', nota: 'posição na escala de senioridade — usada por "Evolução de Carreiras" para alinhar Cargos do mesmo nível em Carreiras diferentes' },
       { nome: 'createdAt / updatedAt', tipo: 'DateTime' },
     ],
     relacoes: ['1—N Cargo.categoriaId', '1—N Colaborador.categoriaId'],

@@ -622,6 +622,7 @@ export interface CargoEvolucao {
   grupoCarreiraNome: string | null;
   categoriaId: string;
   categoriaNome: string;
+  categoriaOrdem: number | null;
   totalColaboradores: number;
   prontidaoMedia: number;
 }

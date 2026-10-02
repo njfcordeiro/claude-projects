@@ -245,6 +245,17 @@ model Carreira {
 model Categoria {
   id        String   @id // código, ex. "PLE"
   nome      String
+  // Posição na escala de senioridade (ex. Trainee=1 ... Principal=6) — pedido
+  // do utilizador: "Evolução de Carreiras" ordenava os Cargos pela
+  // profundidade do grafo de Progressão de Cargos (quantos saltos desde um
+  // cargo de entrada), o que podia desalinhar visualmente cargos do mesmo
+  // nível quando a cadeia de progressão tinha comprimentos diferentes em
+  // carreiras distintas (ex. "Principal" ficava numa coluna diferente de
+  // "Associate Architect"/"Manager"). Nullable de propósito — Categorias sem
+  // ordem definida continuam a usar a profundidade do grafo como antes (ver
+  // EvolucaoCarreirasPage.tsx, calcularLayout/coluna()); só preenchida aqui
+  // passa a mandar na posição horizontal.
+  ordem     Int?
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

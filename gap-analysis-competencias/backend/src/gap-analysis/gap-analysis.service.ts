@@ -463,6 +463,7 @@ export class GapAnalysisService {
         grupoCarreiraNome: c.carreira.grupoCarreira?.nome ?? null,
         categoriaId: c.categoriaId,
         categoriaNome: c.categoria.nome,
+        categoriaOrdem: c.categoria.ordem,
         totalColaboradores: itens.length,
         prontidaoMedia: itens.length ? Math.round(itens.reduce((soma, i) => soma + i.prontidaoMedia, 0) / itens.length) : 0,
       };

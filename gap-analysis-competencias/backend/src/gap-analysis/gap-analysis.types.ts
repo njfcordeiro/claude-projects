@@ -379,6 +379,8 @@ export interface CargoEvolucao {
   grupoCarreiraNome: string | null;
   categoriaId: string;
   categoriaNome: string;
+  /** Posição na escala de senioridade (Categoria.ordem) — null se ainda não definida; nesse caso a coluna usa a profundidade do grafo de Progressão de Cargos (ver EvolucaoCarreirasPage.tsx). */
+  categoriaOrdem: number | null;
   /** Nº de colaboradores atualmente neste cargo (0 se nenhum). */
   totalColaboradores: number;
   /** Média de prontidaoMedia dos colaboradores deste cargo — 0 se totalColaboradores for 0. */
