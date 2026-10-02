@@ -13,6 +13,6 @@ import { ProximoCargoService } from './proximo-cargo.service';
   imports: [ColaboradoresModule, GapAnalysisModule],
   controllers: [PdiController, PdiEmMassaController, LobObjetivosController, ProximoCargoController],
   providers: [PdiService, LobObjetivosService, ProximoCargoService],
-  exports: [ProximoCargoService],
+  exports: [PdiService, ProximoCargoService],
 })
 export class PdiModule {}

@@ -1,12 +1,17 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { AvaliacaoFormacao, Prisma, TipoDesenvolvimento } from '@prisma/client';
+import { AvaliacaoFormacao, EstadoPdi, Prisma, TipoDesenvolvimento } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
 import { ColaboradoresService } from '../colaboradores/colaboradores.service';
 import { FormacoesConcluidasService } from '../formacoes-concluidas/formacoes-concluidas.service';
+import { PdiService } from '../pdi/pdi.service';
+import { ProximoCargoService } from '../pdi/proximo-cargo.service';
+import { GapAnalysisService } from '../gap-analysis/gap-analysis.service';
 import { AuthenticatedUser } from '../auth/jwt-payload.interface';
 import { ehMarcaDelete } from '../catalogo/catalogo.service';
 import { FiltrosOrganizacionais } from '../gap-analysis/gap-analysis.types';
+
+const ESTADO_LABEL: Record<EstadoPdi, string> = { PENDENTE: 'Pendente', EM_CURSO: 'Em Curso', CONCLUIDO: 'Concluído' };
 
 export interface ResumoImportacaoDados {
   criados: number;
@@ -60,6 +65,9 @@ export class DadosColaboradoresService {
     private readonly prisma: PrismaService,
     private readonly colaboradores: ColaboradoresService,
     private readonly formacoesConcluidas: FormacoesConcluidasService,
+    private readonly pdi: PdiService,
+    private readonly proximoCargo: ProximoCargoService,
+    private readonly gapAnalysis: GapAnalysisService,
   ) {}
 
   // --- Competências técnicas / comportamentais ------------------------------
@@ -414,6 +422,278 @@ export class DadosColaboradoresService {
           );
           resumo.criados++;
         }
+      } catch (err) {
+        resumo.erros.push(`Linha ${r}: ${err instanceof Error ? err.message : 'erro desconhecido.'}`);
+      }
+    }
+    return resumo;
+  }
+
+  // --- Planos de Desenvolvimento Individual -----------------------------------
+
+  private normalizarTipoAlvo(valor: unknown): 'COMPETENCIA' | 'CERTIFICACAO' {
+    const texto = String(valor).trim().toUpperCase();
+    if (texto.startsWith('COMPET')) return 'COMPETENCIA';
+    if (texto.startsWith('CERTIF')) return 'CERTIFICACAO';
+    throw new Error(`"tipoAlvo" inválido: "${valor}" (tem de ser "Competência" ou "Certificação").`);
+  }
+
+  /** Aceita tanto o valor bruto do enum como o rótulo em português (com ou sem acento) exportado por `exportarPlanosDesenvolvimento`. */
+  private normalizarEstado(valor: unknown): EstadoPdi {
+    const texto = String(valor)
+      .trim()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .toUpperCase()
+      .replace(/\s+/g, '_');
+    if (texto === 'PENDENTE' || texto === 'EM_CURSO' || texto === 'CONCLUIDO') return texto as EstadoPdi;
+    throw new Error(`"estado" inválido: "${valor}" (tem de ser Pendente, Em Curso ou Concluído).`);
+  }
+
+  /**
+   * Grelha "Planos de Desenvolvimento Individual" (pedido do utilizador) —
+   * uma linha por item de PDI (PdiItem), com os campos do colaborador
+   * (Nome/Área/Direção/Núcleo/Cargo atual/Próximo Cargo/LOB Prevista)
+   * herdados e sempre derivados ao vivo (nunca guardados nesta tabela —
+   * ver ProximoCargoService/GapAnalysisService.obterProximaLobEmLote), e
+   * "Nível atual"/"Formação sugerida"/"Nível transmitido" calculados a
+   * partir do estado atual do colaborador e do que o próprio PdiItem já
+   * tem gravado (`formacaoId`) — nunca recalculados a partir do zero, para
+   * mostrarem exatamente a mesma sugestão que o colaborador vê na sua
+   * ficha. "Tipo de competência", "Nível atual", "Nível esperado" e
+   * "Formação sugerida" ficam "N/A" em linhas de Certificação (pedido do
+   * utilizador) — uma certificação não tem escala de nível própria. "Nível
+   * transmitido" aplica-se às duas: para Competência é o nível que a
+   * formação gravada no item transmite NESSA competência
+   * (FormacaoRequisitoCompetencia); para Certificação, quando valida
+   * exatamente uma competência, é o nível que essa certificação transmite
+   * (CertificacaoRequisitoCompetencia) — fica em branco se a certificação
+   * validar nenhuma ou mais que uma competência (não há um único valor
+   * para mostrar).
+   */
+  async listarPlanosDesenvolvimento(filtros: FiltrosOrganizacionais) {
+    const ids = await this.idsColaboradoresFiltrados(filtros);
+    if (ids !== null && ids.length === 0) return [];
+
+    const itens = await this.prisma.pdiItem.findMany({
+      where: ids !== null ? { colaboradorId: { in: ids } } : undefined,
+      include: {
+        colaborador: {
+          select: {
+            nome: true,
+            direcao: { select: { nome: true } },
+            area: { select: { nome: true } },
+            nucleo: { select: { nome: true } },
+            cargo: { select: { nome: true } },
+          },
+        },
+        competencia: { select: { id: true, nome: true, tipo: true } },
+        certificacao: { select: { id: true, nome: true } },
+        formacao: { select: { nome: true } },
+      },
+      orderBy: [{ colaborador: { nome: 'asc' } }, { id: 'asc' }],
+    });
+    if (itens.length === 0) return [];
+
+    const colaboradorIds = Array.from(new Set(itens.map((i) => i.colaboradorId)));
+    const competenciaIds = itens.map((i) => i.competenciaId).filter((v): v is number => v !== null);
+    const [proximosCargos, proximasLobs, niveisAtuais, niveis, formacaoRequisitos, certificacaoRequisitos] = await Promise.all([
+      this.proximoCargo.resolverEmLote(colaboradorIds),
+      this.gapAnalysis.obterProximaLobEmLote(colaboradorIds),
+      this.prisma.$queryRaw<{ colaborador_id: number; competencia_id: number; nivel_id: number }[]>`
+        SELECT colaborador_id, competencia_id, nivel_id FROM colaborador_competencia_atual
+        WHERE colaborador_id = ANY(${colaboradorIds}) AND competencia_id = ANY(${competenciaIds.length > 0 ? competenciaIds : [-1]})
+      `,
+      this.prisma.nivel.findMany(),
+      this.prisma.formacaoRequisitoCompetencia.findMany(),
+      this.prisma.certificacaoRequisitoCompetencia.findMany({ include: { competencia: { select: { tipo: true } } } }),
+    ]);
+
+    const nivelAtualPorChave = new Map(niveisAtuais.map((l) => [`${l.colaborador_id}:${l.competencia_id}`, l.nivel_id]));
+    const nomeNivelPorChave = new Map(niveis.map((n) => [`${n.tipo}:${n.id}`, n.nome]));
+    const nivelTransmitidoFormacao = new Map(formacaoRequisitos.map((f) => [`${f.formacaoId}:${f.competenciaId}`, f.nivelId]));
+    const requisitosPorCertificacao = new Map<string, { nivelId: number; tipo: TipoDesenvolvimento }[]>();
+    for (const req of certificacaoRequisitos) {
+      if (!requisitosPorCertificacao.has(req.certificacaoId)) requisitosPorCertificacao.set(req.certificacaoId, []);
+      requisitosPorCertificacao.get(req.certificacaoId)!.push({ nivelId: req.nivelId, tipo: req.competencia.tipo });
+    }
+
+    return itens.map((item) => {
+      const ehCompetencia = item.competenciaId !== null;
+      const tipoCompetencia = ehCompetencia ? item.competencia!.tipo : null;
+      const proximoCargo = proximosCargos.get(item.colaboradorId)?.resolvido ?? null;
+      const lobPrevista = proximasLobs.get(item.colaboradorId) ?? null;
+
+      const nivelAtualId = ehCompetencia ? (nivelAtualPorChave.get(`${item.colaboradorId}:${item.competenciaId}`) ?? 0) : null;
+      const nivelAtualNome = ehCompetencia ? (nomeNivelPorChave.get(`${tipoCompetencia}:${nivelAtualId}`) ?? String(nivelAtualId)) : null;
+      const nivelEsperadoNome =
+        ehCompetencia && item.nivelAlvoId !== null ? (nomeNivelPorChave.get(`${tipoCompetencia}:${item.nivelAlvoId}`) ?? String(item.nivelAlvoId)) : null;
+
+      let nivelTransmitidoId: number | null = null;
+      let nivelTransmitidoNome: string | null = null;
+      if (ehCompetencia && item.formacaoId !== null) {
+        nivelTransmitidoId = nivelTransmitidoFormacao.get(`${item.formacaoId}:${item.competenciaId}`) ?? null;
+        if (nivelTransmitidoId !== null) nivelTransmitidoNome = nomeNivelPorChave.get(`${tipoCompetencia}:${nivelTransmitidoId}`) ?? String(nivelTransmitidoId);
+      } else if (!ehCompetencia) {
+        const candidatos = requisitosPorCertificacao.get(item.certificacaoId!) ?? [];
+        if (candidatos.length === 1) {
+          nivelTransmitidoId = candidatos[0].nivelId;
+          nivelTransmitidoNome = nomeNivelPorChave.get(`${candidatos[0].tipo}:${candidatos[0].nivelId}`) ?? String(candidatos[0].nivelId);
+        }
+      }
+
+      return {
+        id: item.id,
+        colaboradorId: item.colaboradorId,
+        colaboradorNome: item.colaborador.nome,
+        direcaoNome: item.colaborador.direcao?.nome ?? null,
+        areaNome: item.colaborador.area?.nome ?? null,
+        nucleoNome: item.colaborador.nucleo?.nome ?? null,
+        cargoAtualNome: item.colaborador.cargo?.nome ?? null,
+        proximoCargoNome: proximoCargo?.cargoNome ?? null,
+        lobPrevistaNome: lobPrevista?.lobNome ?? null,
+        tipoAlvo: ehCompetencia ? ('COMPETENCIA' as const) : ('CERTIFICACAO' as const),
+        tipoCompetencia,
+        itemId: ehCompetencia ? item.competenciaId! : item.certificacaoId!,
+        itemNome: ehCompetencia ? item.competencia!.nome : item.certificacao!.nome,
+        nivelAtualId,
+        nivelAtualNome,
+        nivelEsperadoId: item.nivelAlvoId,
+        nivelEsperadoNome,
+        formacaoSugeridaNome: ehCompetencia ? (item.formacao?.nome ?? null) : null,
+        nivelTransmitidoId,
+        nivelTransmitidoNome,
+        estado: item.estado,
+      };
+    });
+  }
+
+  async exportarPlanosDesenvolvimento(filtros: FiltrosOrganizacionais): Promise<Buffer> {
+    const linhas = await this.listarPlanosDesenvolvimento(filtros);
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('planos-desenvolvimento');
+    sheet.addRow([
+      'id',
+      'colaboradorId',
+      'Nome',
+      'Direção',
+      'Área',
+      'Núcleo',
+      'Cargo atual',
+      'Próximo Cargo',
+      'LOB Prevista',
+      'tipoAlvo',
+      'Tipo de competência',
+      'itemId',
+      'Competência/Certificação',
+      'nivelAtualId',
+      'Nível atual',
+      'nivelEsperadoId',
+      'Nível esperado',
+      'Formação sugerida',
+      'nivelTransmitidoId',
+      'Nível transmitido',
+      'estado',
+      'DELETE',
+    ]);
+    for (const l of linhas) {
+      sheet.addRow([
+        l.id,
+        l.colaboradorId,
+        l.colaboradorNome,
+        l.direcaoNome,
+        l.areaNome,
+        l.nucleoNome,
+        l.cargoAtualNome,
+        l.proximoCargoNome,
+        l.lobPrevistaNome,
+        l.tipoAlvo === 'COMPETENCIA' ? 'Competência' : 'Certificação',
+        l.tipoCompetencia === 'TECNICA' ? 'Técnica' : l.tipoCompetencia === 'COMPORTAMENTAL' ? 'Comportamental' : 'N/A',
+        l.itemId,
+        l.itemNome,
+        l.nivelAtualId ?? 'N/A',
+        l.nivelAtualNome ?? 'N/A',
+        l.nivelEsperadoId ?? 'N/A',
+        l.nivelEsperadoNome ?? 'N/A',
+        l.formacaoSugeridaNome ?? 'N/A',
+        l.nivelTransmitidoId,
+        l.nivelTransmitidoNome,
+        ESTADO_LABEL[l.estado],
+        null,
+      ]);
+    }
+    return Buffer.from(await workbook.xlsx.writeBuffer());
+  }
+
+  /**
+   * Round-trip reaproveitando sempre PdiService (nunca um caminho de
+   * escrita paralelo — mesmo princípio das outras 3 tabelas desta classe):
+   * "DELETE" elimina (PdiService.eliminar, exige `id`); `id` preenchido e
+   * encontrado só permite alterar o `estado` (pedido do utilizador —
+   * qualquer outra alteração a uma linha existente é ignorada); `id` em
+   * branco cria uma linha nova (PdiService.criar, que já valida o par
+   * competência/nível-alvo OU certificação, e que o id indicado existe).
+   */
+  async importarPlanosDesenvolvimento(buffer: Buffer, user: AuthenticatedUser): Promise<ResumoImportacaoDados> {
+    const sheet = await carregarPrimeiraFolha(buffer);
+    const cabecalho = cabecalhoDe(sheet);
+    const idxId = cabecalho.findIndex((h) => h === 'id');
+    const idxColaborador = indiceColuna(cabecalho, 'colaboradorId');
+    const idxTipoAlvo = cabecalho.findIndex((h) => h === 'tipoAlvo');
+    const idxItemId = cabecalho.findIndex((h) => h === 'itemId');
+    const idxNivelEsperado = cabecalho.findIndex((h) => h === 'nivelEsperadoId');
+    const idxEstado = cabecalho.findIndex((h) => h === 'estado');
+    const idxDelete = cabecalho.findIndex((h) => h === 'DELETE');
+
+    const resumo: ResumoImportacaoDados = { criados: 0, atualizados: 0, eliminados: 0, erros: [] };
+    for (let r = 2; r <= sheet.rowCount; r++) {
+      const linha = sheet.getRow(r);
+      if (linha.values == null || (Array.isArray(linha.values) && linha.values.length === 0)) continue;
+      const idRaw = idxId === -1 ? null : ler(linha, idxId);
+      const colaboradorIdRaw = ler(linha, idxColaborador);
+      if (colaboradorIdRaw == null && idRaw == null) continue;
+
+      try {
+        if (idxDelete !== -1 && ehMarcaDelete(linha.getCell(idxDelete).value)) {
+          if (idRaw == null) throw new Error('"id" obrigatório para eliminar (DELETE).');
+          if (colaboradorIdRaw == null) throw new Error('"colaboradorId" obrigatório.');
+          await this.pdi.eliminar(Number(colaboradorIdRaw), Number(idRaw), user);
+          resumo.eliminados++;
+          continue;
+        }
+
+        const idExistente = idRaw != null ? Number(idRaw) : null;
+        const estadoRaw = idxEstado === -1 ? null : ler(linha, idxEstado);
+
+        if (idExistente != null) {
+          if (colaboradorIdRaw == null) throw new Error('"colaboradorId" obrigatório.');
+          if (estadoRaw == null) continue;
+          const estado = this.normalizarEstado(estadoRaw);
+          await this.pdi.atualizar(Number(colaboradorIdRaw), idExistente, { estado }, user);
+          resumo.atualizados++;
+          continue;
+        }
+
+        if (colaboradorIdRaw == null) throw new Error('"colaboradorId" obrigatório.');
+        const tipoAlvoRaw = idxTipoAlvo === -1 ? null : ler(linha, idxTipoAlvo);
+        if (tipoAlvoRaw == null) throw new Error('"tipoAlvo" obrigatório ("Competência" ou "Certificação").');
+        const itemIdRaw = idxItemId === -1 ? null : ler(linha, idxItemId);
+        if (itemIdRaw == null) throw new Error('"itemId" obrigatório (id da Competência ou da Certificação).');
+
+        const tipoAlvo = this.normalizarTipoAlvo(tipoAlvoRaw);
+        const nivelEsperadoRaw = idxNivelEsperado === -1 ? null : ler(linha, idxNivelEsperado);
+        const dto =
+          tipoAlvo === 'COMPETENCIA'
+            ? { competenciaId: Number(itemIdRaw), nivelAlvoId: nivelEsperadoRaw != null ? Number(nivelEsperadoRaw) : undefined }
+            : { certificacaoId: String(itemIdRaw) };
+
+        const criado = await this.pdi.criar(Number(colaboradorIdRaw), dto, user);
+        if (estadoRaw != null) {
+          const estado = this.normalizarEstado(estadoRaw);
+          if (estado !== EstadoPdi.PENDENTE) await this.pdi.atualizar(Number(colaboradorIdRaw), criado.id, { estado }, user);
+        }
+        resumo.criados++;
       } catch (err) {
         resumo.erros.push(`Linha ${r}: ${err instanceof Error ? err.message : 'erro desconhecido.'}`);
       }

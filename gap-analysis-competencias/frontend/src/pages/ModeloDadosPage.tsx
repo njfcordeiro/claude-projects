@@ -843,7 +843,8 @@ const MAPA_ECRA_DADOS: { ecra: string; novo?: boolean; dados: string[]; nota?: s
   {
     ecra: 'Gestão de Dados',
     dados: ['todas as tabelas de catálogo'],
-    nota: '(Direção…Formação, LOB, Projeto) + secção "Dados de colaboradores": Avaliação, Certificação do colab., ColaboradorFormacao',
+    nota:
+      '(Direção…Formação, LOB, Projeto) + secção "Dados de colaboradores": Avaliação, Certificação do colab., ColaboradorFormacao, PdiItem (+ Próximo Cargo e LOB Prevista derivados ao vivo)',
   },
   { ecra: 'Como Funciona', dados: ['ConfiguracaoProntidao'], nota: '(leitura)' },
   { ecra: 'Modelo de Dados', dados: ['todas as tabelas'], nota: '(este ecrã)' },

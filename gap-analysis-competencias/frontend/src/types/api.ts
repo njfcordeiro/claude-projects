@@ -191,6 +191,30 @@ export interface DadosFormacaoConcluidaColaborador {
   avaliacao: AvaliacaoFormacao;
 }
 
+export interface DadosPlanoDesenvolvimentoColaborador {
+  id: number;
+  colaboradorId: number;
+  colaboradorNome: string;
+  direcaoNome: string | null;
+  areaNome: string | null;
+  nucleoNome: string | null;
+  cargoAtualNome: string | null;
+  proximoCargoNome: string | null;
+  lobPrevistaNome: string | null;
+  tipoAlvo: 'COMPETENCIA' | 'CERTIFICACAO';
+  tipoCompetencia: 'TECNICA' | 'COMPORTAMENTAL' | null;
+  itemId: number | string;
+  itemNome: string;
+  nivelAtualId: number | null;
+  nivelAtualNome: string | null;
+  nivelEsperadoId: number | null;
+  nivelEsperadoNome: string | null;
+  formacaoSugeridaNome: string | null;
+  nivelTransmitidoId: number | null;
+  nivelTransmitidoNome: string | null;
+  estado: EstadoPdi;
+}
+
 /** Todas as vertentes de um Projeto (catálogo) — usado pelo modal "Registar participação" para escolher mais do que a vertente que originou o clique. */
 export interface ProjetoVertenteDetalhe {
   id: number;

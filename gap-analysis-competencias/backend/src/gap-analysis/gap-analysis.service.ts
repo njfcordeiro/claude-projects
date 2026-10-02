@@ -883,6 +883,78 @@ export class GapAnalysisService {
    * que "não são considerados para análise" em todo o lado. Ver pedido do
    * utilizador.
    */
+  /**
+   * "LOB Prevista" em lote (pedido do utilizador, tabela "Planos de
+   * Desenvolvimento Individual" em Gestão de Dados) — mesma regra de
+   * `calcularResumos`/LobObjetivosService.listar (primeira recomendação do
+   * BUD ainda não atingida, senão a sugestão do sistema da própria Área de
+   * maior prontidão ainda não atingida), mas devolvendo a identidade da LOB
+   * (id/nome), não só a percentagem — por isso não é só reaproveitar
+   * `calcularResumos` (cujo resultado só expõe `prontidaoProximaLob`).
+   * Alguma duplicação face a `calcularResumos` é deliberada: extrair um
+   * helper partilhado agora arriscava alterar o comportamento já estável
+   * do Dashboard para ganhar pouco — este método só é chamado por
+   * DadosColaboradoresService.listarPlanosDesenvolvimento, isolado.
+   */
+  async obterProximaLobEmLote(colaboradorIds: number[]): Promise<Map<number, { lobId: number; lobNome: string } | null>> {
+    const resultado = new Map<number, { lobId: number; lobNome: string } | null>();
+    if (colaboradorIds.length === 0) return resultado;
+
+    const colaboradores = await this.prisma.colaborador.findMany({
+      where: { id: { in: colaboradorIds } },
+      select: { id: true, areaId: true },
+    });
+    const [niveisPorColaborador, certsPorColaborador, todasAsLobs, pesos, budRows] = await Promise.all([
+      this.buscarNiveisAtuaisEmLote(colaboradorIds),
+      this.buscarCertificacoesEmLote(colaboradorIds),
+      this.prisma.lob.findMany({
+        include: {
+          requisitosCompetencia: { include: { competencia: true } },
+          requisitosCertificacao: { include: { certificacao: true } },
+        },
+      }),
+      this.buscarPesosProntidao(),
+      this.prisma.colaboradorLobRecomendacao.findMany({
+        where: { colaboradorId: { in: colaboradorIds }, bud: true },
+        orderBy: { createdAt: 'asc' },
+        select: { colaboradorId: true, lobId: true },
+      }),
+    ]);
+    const budLobIdsPorColaborador = new Map<number, number[]>();
+    for (const b of budRows) {
+      if (!budLobIdsPorColaborador.has(b.colaboradorId)) budLobIdsPorColaborador.set(b.colaboradorId, []);
+      budLobIdsPorColaborador.get(b.colaboradorId)!.push(b.lobId);
+    }
+    const areaIdPorLob = new Map(todasAsLobs.map((l) => [l.id, l.areaId]));
+
+    for (const c of colaboradores) {
+      const niveisAtuais = niveisPorColaborador.get(c.id) ?? new Map();
+      const certsColaborador = certsPorColaborador.get(c.id) ?? new Map();
+
+      const lobsResultados = todasAsLobs.map((lob) => {
+        const requisitosCompetencia = this.mapearRequisitosCompetencia(lob.requisitosCompetencia);
+        const requisitosCertificacao = this.mapearRequisitosCertificacao(lob.requisitosCertificacao);
+        const r = calcularGapLob(lob, requisitosCompetencia, requisitosCertificacao, niveisAtuais, certsColaborador, pesos);
+        return { lobId: lob.id, lobNome: lob.nome, prontidaoPercentual: r.prontidaoPercentual, atingido: r.atingido };
+      });
+
+      const budLobIds = budLobIdsPorColaborador.get(c.id) ?? [];
+      const budNaoAtingida = budLobIds
+        .map((lobId) => lobsResultados.find((r) => r.lobId === lobId))
+        .find((r) => r !== undefined && !r.atingido);
+      const autoNaoAtingida = lobsResultados
+        .filter((r) => areaIdPorLob.get(r.lobId) === c.areaId && !r.atingido)
+        .reduce<(typeof lobsResultados)[number] | null>(
+          (melhor, atual) => (melhor === null || atual.prontidaoPercentual > melhor.prontidaoPercentual ? atual : melhor),
+          null,
+        );
+      const escolhida = budNaoAtingida ?? autoNaoAtingida;
+      resultado.set(c.id, escolhida ? { lobId: escolhida.lobId, lobNome: escolhida.lobNome } : null);
+    }
+
+    return resultado;
+  }
+
   private async calcularResumos(
     where: Prisma.ColaboradorWhereInput,
   ): Promise<{ resumos: ResumoColaboradorDashboard[]; competenciasCriticas: CompetenciaCritica[] }> {
