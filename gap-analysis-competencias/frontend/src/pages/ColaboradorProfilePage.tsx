@@ -155,6 +155,91 @@ function EditarCampoSimplesModal({
   );
 }
 
+/**
+ * Editar o override manual do "Próximo Cargo" (pedido do utilizador: "dar
+ * para manualmente... alterar") — ao contrário de "Próxima LOB" (sem
+ * edição direta, só via Objetivos de LOB), este campo é único por
+ * colaborador, por isso um modal simples com Select + "Repor automático"
+ * (remove o override — ver ProximoCargoService) chega. Permite escolher
+ * QUALQUER Cargo, não só os definidos em Progressão de Cargos a partir do
+ * atual — a progressão "oficial" é só o valor por omissão, não um limite.
+ */
+function EditarProximoCargoModal({
+  colaboradorId,
+  proximoCargoAtualId,
+  temOverride,
+  onClose,
+}: {
+  colaboradorId: number;
+  proximoCargoAtualId: string | null;
+  temOverride: boolean;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const { data: cargos } = useQuery({ queryKey: ['catalogo', 'cargos'], queryFn: () => endpoints.catalogoListar('cargos') });
+  const [cargoId, setCargoId] = useState(proximoCargoAtualId ?? '');
+  const [erro, setErro] = useState<string | null>(null);
+
+  function invalidarEFechar() {
+    queryClient.invalidateQueries({ queryKey: ['proximo-cargo', colaboradorId] });
+    onClose();
+  }
+
+  const guardar = useMutation({
+    mutationFn: () => endpoints.definirProximoCargo(colaboradorId, cargoId),
+    onSuccess: invalidarEFechar,
+    onError: (err) => setErro(err instanceof ApiError ? err.message : 'Não foi possível gravar.'),
+  });
+
+  const repor = useMutation({
+    mutationFn: () => endpoints.removerProximoCargo(colaboradorId),
+    onSuccess: invalidarEFechar,
+    onError: (err) => setErro(err instanceof ApiError ? err.message : 'Não foi possível repor o valor automático.'),
+  });
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!cargoId) return;
+    setErro(null);
+    guardar.mutate();
+  }
+
+  return (
+    <Modal title="Próximo Cargo" onClose={onClose}>
+      <form onSubmit={handleSubmit}>
+        <Field label="Próximo Cargo">
+          <Select value={cargoId} onChange={(e) => setCargoId(e.target.value)} autoFocus>
+            <option value="">— selecionar —</option>
+            {(cargos ?? []).map((c) => (
+              <option key={String(c.id)} value={String(c.id)}>
+                {String(c.nome)}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        {erro && <p className="mb-3 text-sm text-fiori-error">{erro}</p>}
+        <div className="flex items-center justify-between gap-2">
+          {temOverride ? (
+            <Button variant="secondary" onClick={() => repor.mutate()} disabled={repor.isPending}>
+              {repor.isPending ? 'A repor…' : 'Repor automático'}
+            </Button>
+          ) : (
+            <span />
+          )}
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={guardar.isPending || !cargoId}>
+              {guardar.isPending ? 'A gravar…' : 'Gravar'}
+            </Button>
+          </div>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 /** Editar o Estado (Ativo/Inativo) — inativos são excluídos de toda a análise agregada (Dashboard, Skill Matrix, Candidatos, ...). */
 function EditarAtivoModal({ colaborador, onClose }: { colaborador: ColaboradorResumo; onClose: () => void }) {
   const queryClient = useQueryClient();
@@ -227,6 +312,7 @@ export function ColaboradorProfilePage() {
   const [lobSelecionada, setLobSelecionada] = useState<number | null>(null);
   const [mostrarTodasLobs, setMostrarTodasLobs] = useState(false);
   const [editarDataAdmissao, setEditarDataAdmissao] = useState(false);
+  const [editarProximoCargo, setEditarProximoCargo] = useState(false);
   const [editarNivelGestao, setEditarNivelGestao] = useState(false);
   const [editarLocalTrabalho, setEditarLocalTrabalho] = useState(false);
   const [editarAtivo, setEditarAtivo] = useState(false);
@@ -252,6 +338,14 @@ export function ColaboradorProfilePage() {
     objetivosLobQuery.data?.bud.find((o) => o.prontidaoPercentual < 100)?.lobNome ??
     objetivosLobQuery.data?.auto.find((o) => o.prontidaoPercentual < 100)?.lobNome ??
     null;
+  // "Próximo Cargo" (pedido do utilizador) — resolvido pelo backend
+  // (override manual se existir, senão derivado ao vivo de Progressão de
+  // Cargos — ver ProximoCargoService). O pencil abre um modal de edição,
+  // ao contrário de "Próxima LOB" que não tem edição direta.
+  const proximoCargoQuery = useQuery({
+    queryKey: ['proximo-cargo', colaboradorId],
+    queryFn: () => endpoints.proximoCargo(colaboradorId),
+  });
 
   if (colaboradorQuery.isLoading || gapQuery.isLoading) {
     return <p className="text-sm text-fiori-text-secondary">A carregar…</p>;
@@ -322,6 +416,27 @@ export function ColaboradorProfilePage() {
                 <span className="flex items-center gap-1.5" title="Derivada ao vivo dos Objetivos de LOB — não editável diretamente.">
                   Próxima LOB: {proximaLobNome ?? '—'}
                 </span>
+                <span
+                  className="flex items-center gap-1.5"
+                  title={
+                    proximoCargoQuery.data?.resolvido?.origem === 'MANUAL'
+                      ? 'Definido manualmente — o sistema não volta a sugerir automaticamente.'
+                      : 'Derivado ao vivo de Progressão de Cargos a partir do cargo atual.'
+                  }
+                >
+                  Próximo Cargo: {proximoCargoQuery.data?.resolvido?.cargoNome ?? '—'}
+                  {proximoCargoQuery.data?.resolvido?.origem === 'MANUAL' && <Badge status="neutral">Manual</Badge>}
+                  {user?.role === 'ADMIN_RH' && (
+                    <button
+                      type="button"
+                      onClick={() => setEditarProximoCargo(true)}
+                      className="no-print text-fiori-text-secondary hover:text-fiori-primary"
+                      title="Editar Próximo Cargo"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                  )}
+                </span>
                 <span className="flex items-center gap-1.5">
                   Nível de gestão: {colaborador.nivelGestaoNome ?? '—'}
                   {user?.role === 'ADMIN_RH' && (
@@ -381,6 +496,14 @@ export function ColaboradorProfilePage() {
 
       {editarDataAdmissao && colaborador && (
         <EditarDataAdmissaoModal colaborador={colaborador} onClose={() => setEditarDataAdmissao(false)} />
+      )}
+      {editarProximoCargo && (
+        <EditarProximoCargoModal
+          colaboradorId={colaboradorId}
+          proximoCargoAtualId={proximoCargoQuery.data?.resolvido?.cargoId ?? null}
+          temOverride={proximoCargoQuery.data?.manual !== null && proximoCargoQuery.data?.manual !== undefined}
+          onClose={() => setEditarProximoCargo(false)}
+        />
       )}
       {editarNivelGestao && colaborador && (
         <EditarCampoSimplesModal

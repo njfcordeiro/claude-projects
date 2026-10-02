@@ -15,6 +15,7 @@ import { UploadReportModal } from '../components/catalogo/UploadReportModal';
 import { GrelhaCompetencias } from '../components/catalogo/GrelhaCompetencias';
 import { GrelhaCertificacoes } from '../components/catalogo/GrelhaCertificacoes';
 import { GrelhaFormacoesConcluidas } from '../components/catalogo/GrelhaFormacoesConcluidas';
+import { GrelhaPlanosDesenvolvimento } from '../components/catalogo/GrelhaPlanosDesenvolvimento';
 
 /**
  * Export/import em massa dos dados históricos/avaliação dos colaboradores
@@ -45,6 +46,12 @@ const DADOS_COLABORADORES_ITENS: { chave: string; label: string; descricao: stri
     chave: 'formacoes-concluidas',
     label: 'Histórico de formação dos colaboradores',
     descricao: 'Participações em Formações (data, horas, avaliação). Com "id" preenchido atualiza o registo; em branco cria um novo.',
+  },
+  {
+    chave: 'planos-desenvolvimento',
+    label: 'Planos de Desenvolvimento Individual',
+    descricao:
+      'Todos os itens de PDI de todos os colaboradores, com os campos da pessoa (Área/Direção/Núcleo/Cargo atual/Próximo Cargo/LOB Prevista) e da sugestão (nível atual/esperado, formação sugerida, nível transmitido) sempre atualizados. Reimportar só altera o "estado" de uma linha existente, ou cria uma linha nova com "id" em branco (colaboradorId, tipoAlvo e itemId obrigatórios).',
   },
 ];
 
@@ -125,6 +132,7 @@ function DadosColaboradorEspecialCard({ item }: { item: (typeof DADOS_COLABORADO
       {item.chave === 'competencias-comportamentais' && <GrelhaCompetencias tipo="COMPORTAMENTAL" />}
       {item.chave === 'certificacoes' && <GrelhaCertificacoes />}
       {item.chave === 'formacoes-concluidas' && <GrelhaFormacoesConcluidas />}
+      {item.chave === 'planos-desenvolvimento' && <GrelhaPlanosDesenvolvimento />}
     </div>
   );
 }

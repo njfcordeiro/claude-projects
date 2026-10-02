@@ -55,11 +55,21 @@ interface Layout {
 }
 
 /**
- * Coluna = profundidade da progressão (caminho mais longo desde um cargo
- * sem predecessores), calculada sobre TODO o grafo `cargo_progressao`,
- * independentemente da Carreira — é por isso que "Associate Architect" (só
- * alcançável a partir de "Senior Consultant") fica na mesma coluna que
- * "Senior Consultant", não na primeira coluna da sua própria Carreira.
+ * Coluna = posição na escala de senioridade. Quando a Categoria do Cargo tem
+ * `ordem` definida (Gestão de Dados → Categorias), usa-se esse valor
+ * diretamente — garante que, por exemplo, "Principal" (Consultant e Project
+ * Manager) fica sempre na mesma coluna que "Associate Architect"/"Manager",
+ * independentemente de quantos saltos cada Carreira precisa para lá chegar.
+ * Para Cargos cuja Categoria ainda não tem `ordem` definida, cai-se de volta
+ * à heurística anterior — profundidade da progressão (caminho mais longo
+ * desde um cargo sem predecessores), calculada sobre TODO o grafo
+ * `cargo_progressao`, independentemente da Carreira (pedido do utilizador
+ * original: "Associate Architect", só alcançável a partir de "Senior
+ * Consultant", fica na mesma coluna que esse predecessor, não na primeira
+ * coluna da sua própria Carreira) — com a ressalva de que essa heurística só
+ * alinha corretamente Cargos cujas cadeias de progressão tenham o mesmo
+ * comprimento; `ordem` existe precisamente para os casos em que isso não
+ * acontece.
  * Raia = Carreira (relevantes primeiro, depois por nome), aninhada dentro
  * de uma banda por Grupo de Carreira (pedido do utilizador: "agrupar
  * carreira e desenhar o gráfico... onde se percebe quais têm ligação entre
@@ -73,10 +83,16 @@ function calcularLayout(cargos: CargoEvolucao[], progressoes: ProgressaoCargo[])
     if (!predecessores.has(p.proximoCargoId)) predecessores.set(p.proximoCargoId, []);
     predecessores.get(p.proximoCargoId)!.push(p.cargoId);
   }
+  const cargoPorId = new Map(cargos.map((c) => [c.cargoId, c]));
 
   const memo = new Map<string, number>();
   function coluna(cargoId: string, emCurso: Set<string>): number {
     if (memo.has(cargoId)) return memo.get(cargoId)!;
+    const ordemCategoria = cargoPorId.get(cargoId)?.categoriaOrdem;
+    if (ordemCategoria !== null && ordemCategoria !== undefined) {
+      memo.set(cargoId, ordemCategoria);
+      return ordemCategoria;
+    }
     if (emCurso.has(cargoId)) return 0; // ciclo defensivo — não devia acontecer em dados reais
     emCurso.add(cargoId);
     const preds = (predecessores.get(cargoId) ?? []).filter((p) => cargos.some((c) => c.cargoId === p));
@@ -363,9 +379,9 @@ export function EvolucaoCarreirasPage() {
               </svg>
             </div>
             <p className="mt-3 text-xs text-fiori-text-secondary">
-              Clicar num Cargo abre "Colaboradores" já filtrado para esse Cargo. Coluna = profundidade da progressão a partir de um Cargo de
-              entrada (sem predecessores) — não é a Categoria, por isso um Cargo pode ficar numa coluna diferente da sua Carreira quando só é
-              alcançável a partir de outra.
+              Clicar num Cargo abre "Colaboradores" já filtrado para esse Cargo. Coluna = posição na escala de senioridade (ordem da
+              Categoria, definida em Gestão de Dados); Cargos cuja Categoria ainda não tem ordem definida usam a profundidade da progressão a
+              partir de um Cargo de entrada (sem predecessores) como aproximação.
               {layout.grupos.length > 0 && (
                 <> As bandas tracejadas agrupam as Carreiras por Grupo de Carreira — a ausência de setas entre duas bandas mostra que não há progressão definida entre esses grupos.</>
               )}

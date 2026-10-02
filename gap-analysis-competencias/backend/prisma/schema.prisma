@@ -245,6 +245,17 @@ model Carreira {
 model Categoria {
   id        String   @id // código, ex. "PLE"
   nome      String
+  // Posição na escala de senioridade (ex. Trainee=1 ... Principal=6) — pedido
+  // do utilizador: "Evolução de Carreiras" ordenava os Cargos pela
+  // profundidade do grafo de Progressão de Cargos (quantos saltos desde um
+  // cargo de entrada), o que podia desalinhar visualmente cargos do mesmo
+  // nível quando a cadeia de progressão tinha comprimentos diferentes em
+  // carreiras distintas (ex. "Principal" ficava numa coluna diferente de
+  // "Associate Architect"/"Manager"). Nullable de propósito — Categorias sem
+  // ordem definida continuam a usar a profundidade do grafo como antes (ver
+  // EvolucaoCarreirasPage.tsx, calcularLayout/coluna()); só preenchida aqui
+  // passa a mandar na posição horizontal.
+  ordem     Int?
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -281,6 +292,7 @@ model Cargo {
   // por isso um Cargo só pode ter um perfil de competências possível.
   perfilCompetencias CargoRequisitoCompetencia[]
   pdiItems           PdiItem[]
+  proximoCargoDeColaboradores ColaboradorProximoCargo[]
 
   @@map("cargos")
 }
@@ -296,6 +308,30 @@ model CargoProgressao {
 
   @@id([cargoId, proximoCargoId])
   @@map("cargo_progressao")
+}
+
+// Override manual do "Próximo Cargo" de um colaborador (pedido do
+// utilizador: "ter um campo que tem o próximo cargo previsto... sempre
+// preenchido com base no próximo cargo, respeitando a evolução de
+// carreiras... depois dar para manualmente (ou por ficheiro) alterar. Se se
+// alterar, o sistema não deve voltar a colocar [o automático]"). Mesmo
+// princípio de ColaboradorLobRecomendacao.bud: a existência desta linha É o
+// "manual" — sem override, o Próximo Cargo é sempre derivado ao vivo de
+// CargoProgressao a partir do cargo atual (ver ProximoCargoService), nunca
+// guardado. @@id (não @@unique numa FK normal) porque é 1-para-1 com
+// Colaborador: um colaborador só pode ter UM Próximo Cargo manual.
+model ColaboradorProximoCargo {
+  colaboradorId Int      @id @map("colaborador_id")
+  cargoId       String   @map("cargo_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  updatedBy     Int?     @map("updated_by")
+
+  colaborador Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
+  // onDelete: Restrict (ver nota em Colaborador) — evita apagar um Cargo em uso num override sem aviso.
+  cargo       Cargo       @relation(fields: [cargoId], references: [id], onDelete: Restrict)
+
+  @@map("colaborador_proximo_cargo")
 }
 
 // Escala de proficiência única, 0-5, partilhada por toda a app.
@@ -601,8 +637,28 @@ model User {
   avaliacoesFeitas ColaboradorCompetencia[] @relation("Avaliador")
   gapAnalysisRuns  GapAnalysisRun[]
   auditLogs        AuditLog[]
+  chatbotUsos      ChatbotUso[]
 
   @@map("users")
+}
+
+// Um registo por pergunta feita ao chatbot de ajuda — append-only, só para
+// controlar custo (pedido do utilizador): limite diário por utilizador e
+// um corta-circuito diário global, ambos verificados em ChatbotService
+// antes de chamar a Claude API. Sem FK formal a nada além de User — não
+// precisa de histórico de conteúdo, só de contagem por dia.
+model ChatbotUso {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  // Dia (sem hora, UTC) — chave de agregação para os limites diários.
+  data      DateTime @db.Date
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, data])
+  @@index([data])
+  @@map("chatbot_uso")
 }
 
 model Colaborador {
@@ -673,6 +729,7 @@ model Colaborador {
   lobRecomendacoes     ColaboradorLobRecomendacao[]
   pdiItems             PdiItem[]
   projetosParticipados ColaboradorProjeto[]
+  proximoCargoOverride ColaboradorProximoCargo?
 
   gapAnalysisRunsScope    GapAnalysisRun[]
   gapAnalysisLobResults   GapAnalysisLobResult[]

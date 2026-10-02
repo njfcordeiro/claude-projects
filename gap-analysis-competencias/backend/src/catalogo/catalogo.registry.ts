@@ -176,7 +176,16 @@ export const CATALOGO_REGISTRY: CatalogoTabelaDef[] = [
     label: 'Categorias',
     delegate: 'categoria',
     identityFields: ['id'],
-    campos: [campo('id', 'Código', 'string'), campo('nome', 'Nome', 'string')],
+    campos: [
+      campo('id', 'Código', 'string'),
+      campo('nome', 'Nome', 'string'),
+      // Posição na escala de senioridade (ex. Trainee=1 ... Principal=6) — pedido do
+      // utilizador: alinhar visualmente, em "Evolução de Carreiras", Cargos do mesmo
+      // nível mas em Carreiras diferentes (ver comentário em schema.prisma, modelo
+      // Categoria). Opcional: sem ordem definida, essa página usa a profundidade do
+      // grafo de Progressão de Cargos como antes.
+      campo('ordem', 'Ordem (senioridade)', 'int', false),
+    ],
   },
   {
     tabela: 'cargos',

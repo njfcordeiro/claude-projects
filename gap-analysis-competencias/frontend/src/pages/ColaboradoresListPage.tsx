@@ -1,10 +1,17 @@
 import { FormEvent, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { Download, Pencil, Plus, Trash2, Upload } from 'lucide-react';
+import { CheckCircle2, Download, Pencil, Plus, Sparkles, Trash2, Upload, XCircle } from 'lucide-react';
 import { endpoints } from '../api/endpoints';
 import { ApiError } from '../api/client';
-import { ColaboradorResumo, CreateColaboradorInput, ResumoImportacao, UpdateColaboradorInput } from '../types/api';
+import {
+  AlvoGeracaoPdiEmMassa,
+  ColaboradorResumo,
+  CreateColaboradorInput,
+  ResumoGeracaoPdiEmMassa,
+  ResumoImportacao,
+  UpdateColaboradorInput,
+} from '../types/api';
 import { Card } from '../components/ui/Card';
 import { AjudaContextual } from '../components/ui/AjudaContextual';
 import { Badge } from '../components/ui/Badge';
@@ -111,6 +118,88 @@ function construirColunas(
   ];
 }
 
+/**
+ * "Gerar Planos de Desenvolvimento Individual" em massa (pedido do
+ * utilizador) — para os colaboradores atualmente filtrados neste ecrã (ou
+ * todos, se nenhum filtro estiver ativo), gera o PDI de cada um seguindo o
+ * MESMO raciocínio que os botões manuais da ficha ("Gerar Sugestões" +
+ * "Gerar para o Cargo Atual"/"...Próximo Cargo" — ver PdiService.
+ * gerarEmMassa): só falta perguntar aqui, uma vez para o lote todo, qual
+ * dos dois usar para as competências comportamentais.
+ */
+function GerarPdiEmMassaModal({ colaboradorIds, onClose }: { colaboradorIds: number[]; onClose: () => void }) {
+  const [alvo, setAlvo] = useState<AlvoGeracaoPdiEmMassa>('CARGO_ATUAL');
+  const [resultado, setResultado] = useState<ResumoGeracaoPdiEmMassa | null>(null);
+
+  const gerar = useMutation({
+    mutationFn: () => endpoints.pdiGerarEmMassa({ colaboradorIds, alvo }),
+    onSuccess: setResultado,
+    onError: (err) => window.alert(err instanceof ApiError ? err.message : 'Não foi possível gerar os PDIs.'),
+  });
+
+  if (resultado) {
+    const semErros = resultado.erros.length === 0;
+    return (
+      <Modal title="Planos de Desenvolvimento Individual gerados" onClose={onClose}>
+        <div className="space-y-4">
+          <div
+            className={`flex items-start gap-2 rounded border p-3 text-sm ${semErros ? 'border-fiori-success bg-fiori-success-bg' : 'border-fiori-warning bg-fiori-warning-bg'}`}
+          >
+            {semErros ? (
+              <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-fiori-success" />
+            ) : (
+              <XCircle size={18} className="mt-0.5 shrink-0 text-fiori-warning" />
+            )}
+            <p className="text-fiori-text">
+              {resultado.processados} colaborador{resultado.processados === 1 ? '' : 'es'} processado{resultado.processados === 1 ? '' : 's'},{' '}
+              {resultado.criados} {resultado.criados === 1 ? 'item' : 'itens'} de PDI criado{resultado.criados === 1 ? '' : 's'}.
+            </p>
+          </div>
+          {resultado.erros.length > 0 && (
+            <div>
+              <p className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-fiori-warning">
+                <XCircle size={14} /> Avisos/erros ({resultado.erros.length})
+              </p>
+              <ul className="max-h-40 space-y-1 overflow-y-auto rounded border border-fiori-warning bg-fiori-warning-bg p-2 text-xs text-fiori-text">
+                {resultado.erros.map((e, i) => (
+                  <li key={i}>• {e}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div className="flex justify-end">
+            <Button onClick={onClose}>Fechar</Button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal title="Gerar Planos de Desenvolvimento Individual" onClose={onClose}>
+      <p className="mb-3 text-sm text-fiori-text-secondary">
+        Vai gerar o PDI de {colaboradorIds.length} colaborador{colaboradorIds.length === 1 ? '' : 'es'} — os atualmente filtrados neste ecrã. Para
+        cada um: competências técnicas, certificações e formação (a partir da respetiva LOB alvo), mais as competências comportamentais do cargo
+        escolhido abaixo.
+      </p>
+      <Field label="Competências comportamentais para">
+        <Select value={alvo} onChange={(e) => setAlvo(e.target.value as AlvoGeracaoPdiEmMassa)} autoFocus>
+          <option value="CARGO_ATUAL">Cargo Atual</option>
+          <option value="PROXIMO_CARGO">Próximo Cargo</option>
+        </Select>
+      </Field>
+      <div className="flex justify-end gap-2">
+        <Button variant="secondary" onClick={onClose}>
+          Cancelar
+        </Button>
+        <Button onClick={() => gerar.mutate()} disabled={gerar.isPending || colaboradorIds.length === 0}>
+          {gerar.isPending ? 'A gerar…' : 'Gerar'}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
 /** Restrito a ADMIN_RH/VIEWER (RolesGuard do backend em GET /colaboradores). */
 export function ColaboradoresListPage() {
   const navigate = useNavigate();
@@ -129,6 +218,7 @@ export function ColaboradoresListPage() {
   const [filtroNucleoId, setFiltroNucleoId] = useState('');
   // Chegada a partir de "Evolução de Carreiras" (clicar num Cargo) — pré-seleciona esse Cargo.
   const [filtroCargoId, setFiltroCargoId] = useState((location.state as { cargoId?: string } | null)?.cargoId ?? '');
+  const [aGerarPdiEmMassa, setAGerarPdiEmMassa] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const eliminar = useMutation({
@@ -152,6 +242,18 @@ export function ColaboradoresListPage() {
     e.target.value = '';
     if (file) importar.mutate(file);
   }
+
+  /** "Eliminar PDIs em massa" (pedido do utilizador) — elimina TODOS os itens (automáticos e manuais) dos colaboradores filtrados, sempre com confirmação. */
+  const eliminarPdiEmMassa = useMutation({
+    mutationFn: (colaboradorIds: number[]) => endpoints.pdiEliminarEmMassa({ colaboradorIds }),
+    onSuccess: (resultado) => {
+      const erros = resultado.erros.length > 0 ? `\n\nAvisos/erros:\n${resultado.erros.join('\n')}` : '';
+      window.alert(
+        `${resultado.processados} colaborador${resultado.processados === 1 ? '' : 'es'} processado${resultado.processados === 1 ? '' : 's'}, ${resultado.eliminados} ${resultado.eliminados === 1 ? 'item' : 'itens'} de PDI eliminado${resultado.eliminados === 1 ? '' : 's'}.${erros}`,
+      );
+    },
+    onError: (err) => window.alert(err instanceof ApiError ? err.message : 'Não foi possível eliminar os PDIs.'),
+  });
 
   const opcoesDirecao = useMemo(() => opcoesDistintas((data ?? []).map((c) => [c.direcaoId, c.direcaoNome])), [data]);
   const opcoesArea = useMemo(() => opcoesDistintas((data ?? []).map((c) => [c.areaId, c.areaNome])), [data]);
@@ -204,6 +306,28 @@ export function ColaboradoresListPage() {
           <AjudaContextual ecraId="colaboradores" />
         </h1>
         <div className="flex flex-wrap gap-2 no-print">
+          <Button variant="secondary" onClick={() => setAGerarPdiEmMassa(true)} disabled={dadosFiltrados.length === 0}>
+            <span className="flex items-center gap-1.5">
+              <Sparkles size={14} /> Gerar Planos de Desenvolvimento Individual
+            </span>
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              if (
+                window.confirm(
+                  `Eliminar TODOS os Planos de Desenvolvimento Individual (sugeridos e manuais) de ${dadosFiltrados.length} colaborador${dadosFiltrados.length === 1 ? '' : 'es'} — os atualmente filtrados neste ecrã? Esta ação não pode ser desfeita.`,
+                )
+              ) {
+                eliminarPdiEmMassa.mutate(dadosFiltrados.map((c) => c.id));
+              }
+            }}
+            disabled={eliminarPdiEmMassa.isPending || dadosFiltrados.length === 0}
+          >
+            <span className="flex items-center gap-1.5">
+              <Trash2 size={14} /> {eliminarPdiEmMassa.isPending ? 'A eliminar…' : 'Eliminar PDIs em massa'}
+            </span>
+          </Button>
           <PrintButton label="Imprimir" />
           <Button variant="secondary" onClick={() => endpoints.colaboradoresExportar()}>
             <span className="flex items-center gap-1.5">
@@ -369,6 +493,9 @@ export function ColaboradoresListPage() {
         <EditarColaboradorModal colaborador={colaboradorEmEdicao} onClose={() => setColaboradorEmEdicao(null)} />
       )}
       {relatorioImportacao && <UploadReportModal resumo={relatorioImportacao} onClose={() => setRelatorioImportacao(null)} />}
+      {aGerarPdiEmMassa && (
+        <GerarPdiEmMassaModal colaboradorIds={dadosFiltrados.map((c) => c.id)} onClose={() => setAGerarPdiEmMassa(false)} />
+      )}
     </div>
   );
 }

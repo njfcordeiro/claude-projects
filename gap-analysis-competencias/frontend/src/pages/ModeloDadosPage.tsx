@@ -152,6 +152,7 @@ const TABELAS: TabelaModelo[] = [
     campos: [
       { nome: 'id', tipo: 'String (PK)', nota: 'código, ex. "PLE"' },
       { nome: 'nome', tipo: 'String' },
+      { nome: 'ordem', tipo: 'Int?', nota: 'posição na escala de senioridade — usada por "Evolução de Carreiras" para alinhar Cargos do mesmo nível em Carreiras diferentes' },
       { nome: 'createdAt / updatedAt', tipo: 'DateTime' },
     ],
     relacoes: ['1—N Cargo.categoriaId', '1—N Colaborador.categoriaId'],
@@ -409,6 +410,21 @@ const TABELAS: TabelaModelo[] = [
   },
   {
     grupo: 'Pessoas',
+    model: 'ChatbotUso',
+    tabela: 'chatbot_uso',
+    campos: [
+      { nome: 'id', tipo: 'Int (PK)', nota: 'autoincrement' },
+      { nome: 'userId', tipo: 'Int', nota: '→ User' },
+      { nome: 'data', tipo: 'Date', nota: 'dia (UTC) — chave de agregação para os limites diários' },
+      { nome: 'createdAt', tipo: 'DateTime' },
+    ],
+    relacoes: ['N—1 User'],
+    visibilidade: 'nenhuma',
+    visibilidadeTexto:
+      'Guarda de custo do chatbot de ajuda: um registo por pergunta aceite (nunca o conteúdo), usado só para contar os limites diários por utilizador e global. Sem UI própria.',
+  },
+  {
+    grupo: 'Pessoas',
     model: 'Colaborador',
     tabela: 'colaboradores',
     campos: [
@@ -544,6 +560,20 @@ const TABELAS: TabelaModelo[] = [
     visibilidade: 'parcial',
     visibilidadeTexto:
       'Gestão de Dados → "Recomendações de LOB por colaborador" — mas o campo colaboradorId aqui é só o ID numérico, sem nome (Colaborador está fora do registo genérico de catálogo). Secção "Objetivos de LOB" na ficha do colaborador (bud=true, adicionar/remover). As linhas com bud=true são também a fonte da "Próxima LOB" mostrada (só leitura) na ficha — a primeira recomendação ainda não atingida; sem nenhuma, cai para a sugestão do sistema de maior prontidão (ver Colaborador acima).',
+  },
+  {
+    grupo: 'Avaliações',
+    model: 'ColaboradorProximoCargo',
+    tabela: 'colaborador_proximo_cargo',
+    campos: [
+      { nome: 'colaboradorId', tipo: 'Int (PK)', nota: '→ Colaborador — 1 override no máximo por colaborador' },
+      { nome: 'cargoId', tipo: 'String', nota: '→ Cargo' },
+      { nome: 'createdAt / updatedAt / updatedBy', tipo: 'DateTime / Int?' },
+    ],
+    relacoes: ['A existência da linha É o override — sem linha, "Próximo Cargo" é sempre derivado ao vivo de CargoProgressao (ver ProximoCargoService).'],
+    visibilidade: 'parcial',
+    visibilidadeTexto:
+      'Campo "Próximo Cargo" na ficha do colaborador (lápis, ADMIN_RH) — sem override, mostra o cargo com mais hops a partir do atual em Progressão de Cargos, preferindo a Categoria "Principal" em caso de ambiguidade; com override, mostra sempre esse valor até ser removido ("Repor automático"). Também editável em massa via o ficheiro de Colaboradores (coluna "proximoCargoIdManual" — em branco não altera, "AUTO" remove o override).',
   },
 
   // --- PDI ---------------------------------------------------------------
@@ -828,7 +858,8 @@ const MAPA_ECRA_DADOS: { ecra: string; novo?: boolean; dados: string[]; nota?: s
   {
     ecra: 'Gestão de Dados',
     dados: ['todas as tabelas de catálogo'],
-    nota: '(Direção…Formação, LOB, Projeto) + secção "Dados de colaboradores": Avaliação, Certificação do colab., ColaboradorFormacao',
+    nota:
+      '(Direção…Formação, LOB, Projeto) + secção "Dados de colaboradores": Avaliação, Certificação do colab., ColaboradorFormacao, PdiItem (+ Próximo Cargo e LOB Prevista derivados ao vivo)',
   },
   { ecra: 'Como Funciona', dados: ['ConfiguracaoProntidao'], nota: '(leitura)' },
   { ecra: 'Modelo de Dados', dados: ['todas as tabelas'], nota: '(este ecrã)' },

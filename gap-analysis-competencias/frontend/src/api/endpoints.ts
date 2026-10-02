@@ -16,13 +16,14 @@ import {
   CreatePdiItemInput,
   DashboardResponse,
   DimensaoSkillMatrix,
+  EliminarPdiEmMassaInput,
   EliminarSugestoesPdiResponse,
   EvolucaoCarreirasResponse,
   FiltrosEvolucaoCarreiras,
   FiltrosOrganizacionais,
   FormacaoResumo,
+  GerarPdiEmMassaInput,
   GerarPdiParaLobInput,
-  GerarPdiParaProximoCargoInput,
   GerarPdiResponse,
   LobDetalhe,
   LobResumo,
@@ -31,13 +32,18 @@ import {
   PapelUtilizador,
   ParticipacaoProjeto,
   PdiItem,
+  PerguntarChatbotInput,
   PesosProntidao,
   ProjetoVertenteDetalhe,
+  ProximoCargoResponse,
   RegistarParticipacaoProjetoInput,
   RelatorioGapCargo,
   RelatorioGapLob,
   RelatorioGapPerfilCargo,
+  RespostaChatbot,
   ResumoAtribuicao,
+  ResumoEliminacaoPdiEmMassa,
+  ResumoGeracaoPdiEmMassa,
   ResumoImportacao,
   ResumoImportacaoNiveis,
   SenhaTemporariaResponse,
@@ -132,14 +138,16 @@ export const endpoints = {
     api.post<GerarPdiResponse>(`/colaboradores/${colaboradorId}/pdi/gerar-para-lob`, dto),
   pdiGerarParaCargoAtual: (colaboradorId: number) =>
     api.post<GerarPdiResponse>(`/colaboradores/${colaboradorId}/pdi/gerar-para-cargo-atual`, {}),
-  pdiGerarParaProximoCargo: (colaboradorId: number, dto: GerarPdiParaProximoCargoInput) =>
-    api.post<GerarPdiResponse>(`/colaboradores/${colaboradorId}/pdi/gerar-para-proximo-cargo`, dto),
+  pdiGerarParaProximoCargo: (colaboradorId: number) =>
+    api.post<GerarPdiResponse>(`/colaboradores/${colaboradorId}/pdi/gerar-para-proximo-cargo`, {}),
   pdiCriar: (colaboradorId: number, dto: CreatePdiItemInput) => api.post<PdiItem>(`/colaboradores/${colaboradorId}/pdi`, dto),
   pdiAtualizar: (colaboradorId: number, itemId: number, dto: UpdatePdiItemInput) =>
     api.patch<PdiItem>(`/colaboradores/${colaboradorId}/pdi/${itemId}`, dto),
   pdiEliminar: (colaboradorId: number, itemId: number) => api.delete<void>(`/colaboradores/${colaboradorId}/pdi/${itemId}`),
   pdiEliminarSugestoes: (colaboradorId: number) =>
     api.delete<EliminarSugestoesPdiResponse>(`/colaboradores/${colaboradorId}/pdi/sugestoes`),
+  pdiGerarEmMassa: (dto: GerarPdiEmMassaInput) => api.post<ResumoGeracaoPdiEmMassa>('/pdi/gerar-em-massa', dto),
+  pdiEliminarEmMassa: (dto: EliminarPdiEmMassaInput) => api.post<ResumoEliminacaoPdiEmMassa>('/pdi/eliminar-em-massa', dto),
 
   // --- Objetivos de LOB -------------------------------------------------------
   objetivosLob: (colaboradorId: number) => api.get<ObjetivosLobResponse>(`/colaboradores/${colaboradorId}/objetivos-lob`),
@@ -147,6 +155,12 @@ export const endpoints = {
     api.post<ObjetivosLobResponse>(`/colaboradores/${colaboradorId}/objetivos-lob`, { lobId }),
   removerObjetivoLob: (colaboradorId: number, lobId: number) =>
     api.delete<ObjetivosLobResponse>(`/colaboradores/${colaboradorId}/objetivos-lob/${lobId}`),
+
+  // --- Próximo Cargo -----------------------------------------------------------
+  proximoCargo: (colaboradorId: number) => api.get<ProximoCargoResponse>(`/colaboradores/${colaboradorId}/proximo-cargo`),
+  definirProximoCargo: (colaboradorId: number, cargoId: string) =>
+    api.put<ProximoCargoResponse>(`/colaboradores/${colaboradorId}/proximo-cargo`, { cargoId }),
+  removerProximoCargo: (colaboradorId: number) => api.delete<ProximoCargoResponse>(`/colaboradores/${colaboradorId}/proximo-cargo`),
 
   // --- Participação em Projetos -------------------------------------------
   projetosListar: (colaboradorId: number) => api.get<ParticipacaoProjeto[]>(`/colaboradores/${colaboradorId}/projetos`),
@@ -216,4 +230,7 @@ export const endpoints = {
     form.append('file', file);
     return api.postForm<ResumoImportacaoNiveis>('/gap-analysis/skill-matrix/import', form);
   },
+
+  // --- Chatbot de ajuda -------------------------------------------------------
+  chatbotPerguntar: (dto: PerguntarChatbotInput) => api.post<RespostaChatbot>('/chatbot/perguntar', dto),
 };
