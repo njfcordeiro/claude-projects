@@ -28,6 +28,7 @@ export const AJUDA_ECRAS: AjudaEcra[] = [
     paragrafos: [
       'A lista de todas as pessoas na organização. Podes pesquisar por nome, filtrar por Direção/Área/Núcleo/Cargo, e clicar em qualquer linha para abrir a ficha completa dessa pessoa.',
       'Os botões "Novo colaborador", "Download" e "Upload" permitem criar uma pessoa de cada vez, ou fazer alterações em massa através de um ficheiro Excel — útil para atualizar muitos colaboradores de uma vez sem ser um a um.',
+      '"Gerar Planos de Desenvolvimento Individual" cria o PDI de todos os colaboradores atualmente filtrados nesta lista de uma só vez (ou de todos, se não tiveres nenhum filtro ativo) — pergunta se as competências comportamentais devem ser pensadas para o Cargo Atual ou para o Próximo Cargo de cada pessoa. "Eliminar PDIs em massa" apaga os PDIs desse mesmo grupo, sempre com confirmação antes de avançar.',
       'Um colaborador marcado como "Inativo" deixa de contar nos resumos e gráficos (Dashboard, Skill Matrix, Candidatos), mas continua acessível aqui — nada é apagado só por sair da empresa.',
     ],
   },
@@ -36,6 +37,7 @@ export const AJUDA_ECRAS: AjudaEcra[] = [
     titulo: 'Ficha do Colaborador',
     paragrafos: [
       'Tudo sobre uma pessoa, num único sítio: os dados pessoais/organizacionais no topo, e por baixo várias secções — as LOBs que precisa de cumprir, as competências técnicas e comportamentais que já tem, as certificações, o histórico de formações, e o Plano de Desenvolvimento Individual (PDI).',
+      'No topo vês também "Próximo Cargo" — o cargo seguinte da pessoa, sugerido automaticamente com base na Progressão de Cargos (prefere "Principal" quando há mais que uma opção para quem é Sénior). Um Admin RH pode substituir essa sugestão à mão (ícone de lápis); uma vez alterado manualmente, deixa de ser sugerido automaticamente.',
       'A secção de LOBs mostra o progresso em cada uma; clica numa LOB para veres exatamente o que falta — que competências, que certificações. A partir daí consegues avaliar uma competência (dizer o nível que a pessoa tem) diretamente.',
       'O PDI é a lista de "coisas a trabalhar" — podes gerar sugestões automáticas (com base no que falta para as LOBs, ou para o cargo atual/seguinte) ou adicionar itens à mão. Marcar um item como concluído pode subir automaticamente o nível de uma competência.',
       'Quem pode editar o quê depende do teu papel: um gestor só edita a sua própria equipa, um colaborador só vê a sua própria ficha.',
@@ -64,6 +66,7 @@ export const AJUDA_ECRAS: AjudaEcra[] = [
     paragrafos: [
       'Um mapa visual de como os cargos se ligam uns aos outros dentro de uma carreira — de que cargo se pode progredir para que outro cargo.',
       'Útil para perceberes, de forma visual, os caminhos possíveis de progressão antes de ires ver candidatos específicos a cada um.',
+      'Cargos do mesmo nível de senioridade (ex. "Principal" numa carreira, "Associate Architect" ou "Manager" noutra) ficam alinhados na mesma coluna — isso é configurado em Gestão de Dados, na "ordem" de cada Categoria.',
     ],
   },
   {
@@ -82,7 +85,7 @@ export const AJUDA_ECRAS: AjudaEcra[] = [
     paragrafos: [
       'A zona de administração — só para quem tem o papel Admin RH. Aqui vivem todas as "tabelas de referência" da aplicação: Direções, Áreas, Cargos, Competências, Certificações, LOBs, e por aí fora, organizadas em grupos que podes expandir à esquerda.',
       'Cada tabela pode ser editada diretamente (clica numa linha para editar, ou "Nova entrada" para criar), ou em massa através de Download/Upload de um ficheiro Excel.',
-      'O grupo "Dados de Colaboradores" é diferente dos outros — em vez de configuração da organização, gere os dados reais de cada pessoa (competências, certificações, formações). Tem uma tabela própria por baixo do Download/Upload para editares linha a linha.',
+      'O grupo "Dados de Colaboradores" é diferente dos outros — em vez de configuração da organização, gere os dados reais de cada pessoa (competências, certificações, formações, e os Planos de Desenvolvimento Individual de todos os colaboradores). Tem uma tabela própria por baixo do Download/Upload para editares linha a linha.',
       'Uma coluna "DELETE" nos ficheiros Excel permite eliminar linhas em massa: escreve a palavra "DELETE" nessa célula e volta a importar o ficheiro.',
     ],
   },

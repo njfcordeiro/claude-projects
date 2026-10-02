@@ -7,6 +7,7 @@ import {
   GraduationCap,
   Layers,
   ListChecks,
+  Search,
   Sparkles,
   Target,
 } from 'lucide-react';
@@ -14,7 +15,7 @@ import { Card } from '../components/ui/Card';
 import { PrintButton } from '../components/ui/PrintButton';
 import { endpoints } from '../api/endpoints';
 import { PesosProntidao } from '../types/api';
-import { AJUDA_ECRAS } from '../lib/ajudaEcras';
+import { AJUDA_ECRAS, AjudaEcra } from '../lib/ajudaEcras';
 
 const PESOS_PADRAO: PesosProntidao = { pesoCompetencias: 40, pesoCertificacoes: 40, pesoPontos: 20 };
 
@@ -92,10 +93,21 @@ const CONCEITOS: Conceito[] = [
   },
 ];
 
-function GlossarioConceitos() {
+/** Texto simples (título + todos os parágrafos) usado pela pesquisa — case-insensitive, sem acentuar-sensibilidade (mesma regra simples do DataTable). */
+function corresponde(titulo: string, paragrafos: string[], pesquisa: string): boolean {
+  if (!pesquisa) return true;
+  const alvo = pesquisa.toLowerCase();
+  return titulo.toLowerCase().includes(alvo) || paragrafos.some((p) => p.toLowerCase().includes(alvo));
+}
+
+function GlossarioConceitos({ pesquisa }: { pesquisa: string }) {
+  const conceitos = CONCEITOS.filter((c) => corresponde(c.titulo, c.paragrafos, pesquisa));
+  if (conceitos.length === 0) {
+    return <p className="text-sm text-fiori-text-secondary">Nenhum conceito corresponde a "{pesquisa}".</p>;
+  }
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-      {CONCEITOS.map((c) => {
+      {conceitos.map((c) => {
         const Icone = c.icone;
         return (
           <div key={c.titulo} className="rounded-md border border-fiori-border p-3">
@@ -117,10 +129,14 @@ function GlossarioConceitos() {
 
 // --- Ecrã a ecrã (reaproveita o mesmo conteúdo dos ícones de ajuda) --------
 
-function EcraAEcra() {
+function EcraAEcra({ pesquisa }: { pesquisa: string }) {
+  const ecras = AJUDA_ECRAS.filter((a: AjudaEcra) => corresponde(a.titulo, a.paragrafos, pesquisa));
+  if (ecras.length === 0) {
+    return <p className="text-sm text-fiori-text-secondary">Nenhum ecrã corresponde a "{pesquisa}".</p>;
+  }
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-      {AJUDA_ECRAS.map((a) => (
+      {ecras.map((a) => (
         <div key={a.id} className="rounded-md border border-fiori-border p-3">
           <p className="mb-1.5 text-sm font-semibold text-fiori-text">{a.titulo}</p>
           {a.paragrafos.map((p, i) => (
@@ -364,6 +380,14 @@ function TabelaRbac() {
  */
 export function ComoFuncionaPage() {
   const { data: pesos } = useQuery({ queryKey: ['configuracao-prontidao'], queryFn: endpoints.configuracaoProntidao });
+  const [pesquisa, setPesquisa] = useState('');
+
+  const totalResultados = useMemo(() => {
+    if (!pesquisa) return null;
+    const nosConceitos = CONCEITOS.filter((c) => corresponde(c.titulo, c.paragrafos, pesquisa)).length;
+    const nosEcras = AJUDA_ECRAS.filter((a) => corresponde(a.titulo, a.paragrafos, pesquisa)).length;
+    return nosConceitos + nosEcras;
+  }, [pesquisa]);
 
   return (
     <div className="space-y-4">
@@ -379,12 +403,30 @@ export function ComoFuncionaPage() {
         </div>
       </div>
 
+      <div className="no-print">
+        <div className="relative">
+          <Search size={15} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-fiori-text-secondary" />
+          <input
+            type="text"
+            value={pesquisa}
+            onChange={(e) => setPesquisa(e.target.value)}
+            placeholder="Pesquisar nos conceitos e nos ecrãs — ex. 'certificação', 'nível', 'próximo cargo'…"
+            className="w-full rounded border border-fiori-border bg-fiori-surface py-2 pl-8 pr-3 text-sm text-fiori-text placeholder:text-fiori-text-secondary focus:border-fiori-primary focus:outline-none"
+          />
+        </div>
+        {totalResultados !== null && (
+          <p className="mt-1.5 text-xs text-fiori-text-secondary">
+            {totalResultados} resultado{totalResultados === 1 ? '' : 's'} para "{pesquisa}".
+          </p>
+        )}
+      </div>
+
       <Card title="Os conceitos principais">
-        <GlossarioConceitos />
+        <GlossarioConceitos pesquisa={pesquisa} />
       </Card>
 
       <Card title="Ecrã a ecrã">
-        <EcraAEcra />
+        <EcraAEcra pesquisa={pesquisa} />
       </Card>
 
       <Card title="Experimenta: como se calcula a prontidão de uma LOB">
