@@ -503,6 +503,29 @@ export interface ResumoAtribuicao {
   erros: string[];
 }
 
+export type AlvoGeracaoPdiEmMassa = 'CARGO_ATUAL' | 'PROXIMO_CARGO';
+
+export interface GerarPdiEmMassaInput {
+  colaboradorIds: number[];
+  alvo: AlvoGeracaoPdiEmMassa;
+}
+
+export interface ResumoGeracaoPdiEmMassa {
+  processados: number;
+  criados: number;
+  erros: string[];
+}
+
+export interface EliminarPdiEmMassaInput {
+  colaboradorIds: number[];
+}
+
+export interface ResumoEliminacaoPdiEmMassa {
+  processados: number;
+  eliminados: number;
+  erros: string[];
+}
+
 // --- PDI (backend/src/pdi) -------------------------------------------------
 
 export type EstadoPdi = 'PENDENTE' | 'EM_CURSO' | 'CONCLUIDO';

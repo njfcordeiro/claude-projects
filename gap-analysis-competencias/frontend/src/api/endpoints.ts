@@ -16,11 +16,13 @@ import {
   CreatePdiItemInput,
   DashboardResponse,
   DimensaoSkillMatrix,
+  EliminarPdiEmMassaInput,
   EliminarSugestoesPdiResponse,
   EvolucaoCarreirasResponse,
   FiltrosEvolucaoCarreiras,
   FiltrosOrganizacionais,
   FormacaoResumo,
+  GerarPdiEmMassaInput,
   GerarPdiParaLobInput,
   GerarPdiResponse,
   LobDetalhe,
@@ -38,6 +40,8 @@ import {
   RelatorioGapLob,
   RelatorioGapPerfilCargo,
   ResumoAtribuicao,
+  ResumoEliminacaoPdiEmMassa,
+  ResumoGeracaoPdiEmMassa,
   ResumoImportacao,
   ResumoImportacaoNiveis,
   SenhaTemporariaResponse,
@@ -140,6 +144,8 @@ export const endpoints = {
   pdiEliminar: (colaboradorId: number, itemId: number) => api.delete<void>(`/colaboradores/${colaboradorId}/pdi/${itemId}`),
   pdiEliminarSugestoes: (colaboradorId: number) =>
     api.delete<EliminarSugestoesPdiResponse>(`/colaboradores/${colaboradorId}/pdi/sugestoes`),
+  pdiGerarEmMassa: (dto: GerarPdiEmMassaInput) => api.post<ResumoGeracaoPdiEmMassa>('/pdi/gerar-em-massa', dto),
+  pdiEliminarEmMassa: (dto: EliminarPdiEmMassaInput) => api.post<ResumoEliminacaoPdiEmMassa>('/pdi/eliminar-em-massa', dto),
 
   // --- Objetivos de LOB -------------------------------------------------------
   objetivosLob: (colaboradorId: number) => api.get<ObjetivosLobResponse>(`/colaboradores/${colaboradorId}/objetivos-lob`),

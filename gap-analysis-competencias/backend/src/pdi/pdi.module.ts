@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ColaboradoresModule } from '../colaboradores/colaboradores.module';
 import { GapAnalysisModule } from '../gap-analysis/gap-analysis.module';
 import { PdiController } from './pdi.controller';
+import { PdiEmMassaController } from './pdi-em-massa.controller';
 import { PdiService } from './pdi.service';
 import { LobObjetivosController } from './lob-objetivos.controller';
 import { LobObjetivosService } from './lob-objetivos.service';
@@ -10,7 +11,7 @@ import { ProximoCargoService } from './proximo-cargo.service';
 
 @Module({
   imports: [ColaboradoresModule, GapAnalysisModule],
-  controllers: [PdiController, LobObjetivosController, ProximoCargoController],
+  controllers: [PdiController, PdiEmMassaController, LobObjetivosController, ProximoCargoController],
   providers: [PdiService, LobObjetivosService, ProximoCargoService],
   exports: [ProximoCargoService],
 })

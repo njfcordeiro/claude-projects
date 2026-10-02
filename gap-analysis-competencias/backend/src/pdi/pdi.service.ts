@@ -7,8 +7,22 @@ import { AuthenticatedUser } from '../auth/jwt-payload.interface';
 import { CreatePdiItemDto } from './dto/create-pdi-item.dto';
 import { UpdatePdiItemDto } from './dto/update-pdi-item.dto';
 import { GerarParaLobDto } from './dto/gerar-para-lob.dto';
+import { GerarPdiEmMassaDto } from './dto/gerar-pdi-em-massa.dto';
+import { EliminarPdiEmMassaDto } from './dto/eliminar-pdi-em-massa.dto';
 import { LobObjetivosService } from './lob-objetivos.service';
 import { ProximoCargoService } from './proximo-cargo.service';
+
+export interface ResumoGeracaoPdiEmMassa {
+  processados: number;
+  criados: number;
+  erros: string[];
+}
+
+export interface ResumoEliminacaoPdiEmMassa {
+  processados: number;
+  eliminados: number;
+  erros: string[];
+}
 
 const INCLUDE_ITEM = {
   competencia: { select: { nome: true, tipo: true } },
@@ -422,5 +436,63 @@ export class PdiService {
       tx.pdiItem.deleteMany({ where: { colaboradorId, origem: OrigemPdi.AUTOMATICO } }),
     );
     return { eliminados: resultado.count };
+  }
+
+  /**
+   * "Gerar Planos de Desenvolvimento Individual" em massa (pedido do
+   * utilizador, ecrã Colaboradores — botão antes de "Imprimir") — para cada
+   * colaborador do lote, aplica o MESMO raciocínio que os botões manuais da
+   * ficha: `gerar` (técnicas + certificações, a partir da LOB alvo) seguido
+   * de `gerarParaCargoAtual` OU `gerarParaProximoCargo` (comportamentais,
+   * consoante `alvo` — pedido do utilizador: "deve perguntar se queremos
+   * gerar para o cargo Atual ou próximo Cargo"). Um colaborador sem gaps,
+   * sem LOB/perfil de cargo definido, ou sem permissão (RBAC de
+   * `podeEditar`, já aplicado dentro de cada chamada) não interrompe o
+   * lote — fica registado em `erros`, o resto continua.
+   */
+  async gerarEmMassa(dto: GerarPdiEmMassaDto, user: AuthenticatedUser): Promise<ResumoGeracaoPdiEmMassa> {
+    const resumo: ResumoGeracaoPdiEmMassa = { processados: 0, criados: 0, erros: [] };
+
+    for (const colaboradorId of dto.colaboradorIds) {
+      try {
+        const tecnicas = await this.gerar(colaboradorId, user);
+        const comportamentais =
+          dto.alvo === 'CARGO_ATUAL' ? await this.gerarParaCargoAtual(colaboradorId, user) : await this.gerarParaProximoCargo(colaboradorId, user);
+        resumo.processados++;
+        resumo.criados += tecnicas.criados + comportamentais.criados;
+      } catch (err) {
+        resumo.erros.push(`Colaborador ${colaboradorId}: ${err instanceof Error ? err.message : 'Erro desconhecido.'}`);
+      }
+    }
+
+    return resumo;
+  }
+
+  /**
+   * "Eliminar PDIs em massa" (pedido do utilizador) — ao contrário de
+   * `eliminarSugestoes` (só origem AUTOMATICO, um colaborador de cada vez),
+   * aqui elimina TODOS os itens (automáticos e manuais) de cada colaborador
+   * do lote, sempre com confirmação do lado do frontend antes de chamar
+   * isto. RBAC verificado por colaborador antes do DELETE em lote — um id
+   * sem permissão fica registado em `erros`, não bloqueia os restantes.
+   */
+  async eliminarEmMassa(dto: EliminarPdiEmMassaDto, user: AuthenticatedUser): Promise<ResumoEliminacaoPdiEmMassa> {
+    const permitidos: number[] = [];
+    const erros: string[] = [];
+    for (const colaboradorId of dto.colaboradorIds) {
+      try {
+        await this.colaboradores.podeEditar(colaboradorId, user);
+        permitidos.push(colaboradorId);
+      } catch (err) {
+        erros.push(`Colaborador ${colaboradorId}: ${err instanceof Error ? err.message : 'Sem permissão.'}`);
+      }
+    }
+
+    const resultado =
+      permitidos.length > 0
+        ? await this.prisma.runAsUser(user.sub, (tx) => tx.pdiItem.deleteMany({ where: { colaboradorId: { in: permitidos } } }))
+        : { count: 0 };
+
+    return { processados: permitidos.length, eliminados: resultado.count, erros };
   }
 }
