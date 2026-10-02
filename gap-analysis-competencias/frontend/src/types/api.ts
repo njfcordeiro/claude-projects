@@ -765,3 +765,18 @@ export interface UsuarioResumo {
   createdAt: string;
   colaborador: { id: number; nome: string } | null;
 }
+
+export interface MensagemHistoricoChatbotInput {
+  role: 'user' | 'assistant';
+  conteudo: string;
+}
+
+export interface PerguntarChatbotInput {
+  pergunta: string;
+  contexto: string;
+  historico?: MensagemHistoricoChatbotInput[];
+}
+
+export interface RespostaChatbot {
+  resposta: string;
+}

@@ -10,88 +10,34 @@ import {
   Search,
   Sparkles,
   Target,
+  TrendingUp,
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { PrintButton } from '../components/ui/PrintButton';
 import { endpoints } from '../api/endpoints';
 import { PesosProntidao } from '../types/api';
 import { AJUDA_ECRAS, AjudaEcra } from '../lib/ajudaEcras';
+import { CONCEITOS_DOC, RBAC_DOC } from '../lib/documentacao';
 
 const PESOS_PADRAO: PesosProntidao = { pesoCompetencias: 40, pesoCertificacoes: 40, pesoPontos: 20 };
 
 // --- Glossário: os conceitos principais, em linguagem simples --------------
+// Texto vem de lib/documentacao.ts (fonte única, partilhada com o chatbot de
+// ajuda) — aqui só se associa um ícone a cada conceito pela `chave`.
 
-interface Conceito {
-  icone: typeof Target;
-  titulo: string;
-  paragrafos: string[];
-}
+const ICONE_POR_CHAVE: Record<string, typeof Target> = {
+  competencia: Sparkles,
+  certificacao: Award,
+  formacao: GraduationCap,
+  lob: Layers,
+  prontidao: Target,
+  'cargo-carreira': Compass,
+  'proximo-cargo': TrendingUp,
+  pdi: ListChecks,
+  projetos: Briefcase,
+};
 
-const CONCEITOS: Conceito[] = [
-  {
-    icone: Sparkles,
-    titulo: 'Competência',
-    paragrafos: [
-      'Uma capacidade que uma pessoa tem — por exemplo "SAP ABAP" ou "Liderança". Cada colaborador tem um nível nessa competência, de 0 (não tem) a 5 (é uma referência).',
-      'Há dois tipos: Técnica (conhecimento de uma ferramenta, tecnologia ou área de trabalho) e Comportamental (uma soft skill, como comunicação ou liderança). O histórico de competências técnicas fica sempre guardado — não podem ser apagadas, só reavaliadas para um nível diferente. As comportamentais podem ser removidas, porque são atribuídas manualmente.',
-    ],
-  },
-  {
-    icone: Award,
-    titulo: 'Certificação',
-    paragrafos: [
-      'Um certificado externo (de um fornecedor como a SAP, por exemplo) que uma pessoa obteve. Regista-se a data em que foi obtida e, se aplicável, até quando é válida.',
-      'Se a data de validade passar, a certificação deixa de contar como "válida" — mesmo continuando registada. E se apagares a data de obtenção por engano, a certificação volta a ficar "em falta" (nunca fica uma linha vazia guardada).',
-    ],
-  },
-  {
-    icone: GraduationCap,
-    titulo: 'Formação',
-    paragrafos: [
-      'Um curso ou ação de formação do catálogo. Cada vez que um colaborador conclui uma, fica registada no seu histórico com a data, as horas e se foi Aprovado, Reprovado ou se Faltou — e a mesma formação pode repetir-se (ex. reprovar e voltar a fazer).',
-      'Concluir uma formação com Aprovado pode subir automaticamente o nível de uma competência, se essa formação estiver associada a ela — mas nunca desce um nível já alcançado.',
-    ],
-  },
-  {
-    icone: Layers,
-    titulo: 'LOB',
-    paragrafos: [
-      'Uma LOB é um conjunto de exigências que define um objetivo a atingir — pensa nela como um crachá que se ganha ao reunir um conjunto de competências (a um certo nível) e, por vezes, certificações.',
-      'Cada colaborador tem uma "próxima LOB" sugerida automaticamente, e pode ainda ter LOBs recomendadas pelo seu gestor direto.',
-    ],
-  },
-  {
-    icone: Target,
-    titulo: 'Prontidão',
-    paragrafos: [
-      'Uma percentagem que resume o quanto falta a uma pessoa para atingir uma LOB. 100% significa que está tudo cumprido; abaixo disso, falta pelo menos uma coisa (uma competência, uma certificação, ou pontos suficientes).',
-      'É sempre uma combinação de 3 partes — competências obrigatórias, certificações obrigatórias e pontos — cada uma com um peso configurável. Experimenta o simulador mais abaixo para veres isto em ação.',
-    ],
-  },
-  {
-    icone: Compass,
-    titulo: 'Cargo e Carreira',
-    paragrafos: [
-      'Um Cargo é uma posição concreta (ex. "Arquiteto Sénior"). Uma Carreira é o caminho — a sequência de Cargos por onde uma pessoa pode ir progredindo.',
-      'A app sabe de que Cargo se pode progredir para que outro (ver "Evolução de Carreiras"), e usa isso para sugerir quem já pode avançar (ver "Candidatos").',
-    ],
-  },
-  {
-    icone: ListChecks,
-    titulo: 'PDI — Plano de Desenvolvimento Individual',
-    paragrafos: [
-      'A lista de "próximos passos" de cada pessoa. Pode ser gerada automaticamente (com base no que falta para as suas LOBs, ou para o cargo atual/seguinte) ou criada à mão.',
-      'Cada item pode ser marcado como Pendente, Em Curso ou Concluído — e concluir um item de Certificação ou Formação pode subir automaticamente o nível de competência associado.',
-    ],
-  },
-  {
-    icone: Briefcase,
-    titulo: 'Projetos',
-    paragrafos: [
-      'Uma forma alternativa de subir de nível numa competência, para além de Formações e Certificações: ao participar numa vertente de um projeto, a competência ligada a essa vertente sobe 1 nível (até ao máximo da escala). Cada pessoa só conta a participação num dado projeto uma vez.',
-    ],
-  },
-];
+const CONCEITOS = CONCEITOS_DOC.map((c) => ({ ...c, icone: ICONE_POR_CHAVE[c.chave] ?? Sparkles }));
 
 /** Texto simples (título + todos os parágrafos) usado pela pesquisa — case-insensitive, sem acentuar-sensibilidade (mesma regra simples do DataTable). */
 function corresponde(titulo: string, paragrafos: string[], pesquisa: string): boolean {
@@ -349,18 +295,12 @@ function SecaoPesosProntidao({ pesos }: { pesos: PesosProntidao }) {
 }
 
 // --- Quem vê o quê -------------------------------------------------------------
-
-const RBAC: { papel: string; label: string; descricao: string }[] = [
-  { papel: 'ADMIN_RH', label: 'Admin RH', descricao: 'Vê e edita tudo — todos os colaboradores, Gestão de Dados, administração de utilizadores.' },
-  { papel: 'MANAGER', label: 'Gestor', descricao: 'Vê o Dashboard, Candidatos e Skill Matrix da organização, mas só edita a ficha da sua própria equipa direta.' },
-  { papel: 'EMPLOYEE', label: 'Colaborador', descricao: 'Só vê a sua própria ficha — sem acesso ao Dashboard, à lista de Colaboradores ou à Skill Matrix.' },
-  { papel: 'VIEWER', label: 'Leitura', descricao: 'Vê tudo (Dashboard, Colaboradores, Candidatos, Skill Matrix, todas as fichas) mas não pode editar nada.' },
-];
+// Texto vem de lib/documentacao.ts (RBAC_DOC) — fonte única, partilhada com o chatbot de ajuda.
 
 function TabelaRbac() {
   return (
     <div className="space-y-2">
-      {RBAC.map((r) => (
+      {RBAC_DOC.map((r) => (
         <div key={r.papel} className="flex flex-col gap-1 rounded-md border border-fiori-border p-3 sm:flex-row sm:items-baseline sm:gap-3">
           <span className="shrink-0 rounded bg-fiori-primary-bg px-2 py-0.5 text-xs font-semibold text-fiori-primary sm:w-28">{r.label}</span>
           <p className="text-sm text-fiori-text-secondary">{r.descricao}</p>

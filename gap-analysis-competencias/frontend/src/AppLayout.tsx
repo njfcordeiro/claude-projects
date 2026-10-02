@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import { ShellBar } from './components/layout/ShellBar';
 import { SideNav } from './components/layout/SideNav';
 import { MobileNavDrawer } from './components/layout/MobileNavDrawer';
+import { ChatbotWidget } from './components/chatbot/ChatbotWidget';
 
 export function AppLayout() {
   const [drawerAberto, setDrawerAberto] = useState(false);
@@ -23,6 +24,7 @@ export function AppLayout() {
           <Outlet />
         </main>
       </div>
+      <ChatbotWidget />
     </div>
   );
 }

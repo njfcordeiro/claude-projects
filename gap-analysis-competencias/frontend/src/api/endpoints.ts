@@ -32,6 +32,7 @@ import {
   PapelUtilizador,
   ParticipacaoProjeto,
   PdiItem,
+  PerguntarChatbotInput,
   PesosProntidao,
   ProjetoVertenteDetalhe,
   ProximoCargoResponse,
@@ -39,6 +40,7 @@ import {
   RelatorioGapCargo,
   RelatorioGapLob,
   RelatorioGapPerfilCargo,
+  RespostaChatbot,
   ResumoAtribuicao,
   ResumoEliminacaoPdiEmMassa,
   ResumoGeracaoPdiEmMassa,
@@ -228,4 +230,7 @@ export const endpoints = {
     form.append('file', file);
     return api.postForm<ResumoImportacaoNiveis>('/gap-analysis/skill-matrix/import', form);
   },
+
+  // --- Chatbot de ajuda -------------------------------------------------------
+  chatbotPerguntar: (dto: PerguntarChatbotInput) => api.post<RespostaChatbot>('/chatbot/perguntar', dto),
 };
